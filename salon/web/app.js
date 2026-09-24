@@ -1238,13 +1238,13 @@
     $('#catCount').textContent = `${nf.format(list.length)}개 카테고리`;
     $('#catBody').innerHTML = list.map((c, i) => {
       const n = counts[c.name] || 0;
-      return `<tr>
+      return `<tr data-cat-open="${c.id}">
         <td data-label="순서"><span class="order-btns">
           <span class="pos">${i + 1}</span>
           <button type="button" class="icon-btn" data-cat-move="${c.id}" data-dir="-1" aria-label="${esc(c.name)} 위로" ${i === 0 ? 'disabled' : ''}>${svgIcon('i-up')}</button>
           <button type="button" class="icon-btn" data-cat-move="${c.id}" data-dir="1" aria-label="${esc(c.name)} 아래로" ${i === list.length - 1 ? 'disabled' : ''}>${svgIcon('i-down')}</button>
         </span></td>
-        <td class="cell-name"><div class="item-name">${esc(c.name)}</div></td>
+        <td class="cell-name"><button type="button" class="cat-open-btn" data-cat-open-btn="${c.id}" aria-haspopup="dialog">${esc(c.name)}</button></td>
         <td class="num" data-label="제품 수">${nf.format(n)}</td>
         <td class="cell-action"><span class="row-actions">
           <button type="button" class="btn btn-secondary btn-sm" data-cat-edit="${c.id}" aria-label="${esc(c.name)} 이름 변경">${svgIcon('i-edit')}이름 변경</button>
@@ -1315,6 +1315,50 @@
     }
   });
 
+  // Category detail: products of one category in the selected branch
+  const catDetailDialog = setupDialog($('#catDetailDialog'));
+  let detailCategory = null;
+  function openCategoryDetail(c) {
+    detailCategory = c;
+    const items = state.inventory
+      .filter((i) => i.category === c.name)
+      .sort((a, b) => Number(b.active) - Number(a.active) || STATUS[a.status].rank - STATUS[b.status].rank || a.name.localeCompare(b.name, 'ko'));
+    const active = items.filter((i) => i.active);
+    const value = active.reduce((a, i) => a + i.stock * i.cost_price, 0);
+    const low = active.filter((i) => i.status === 'low').length;
+    const out = active.filter((i) => i.status === 'out').length;
+    $('#catDetailTitle').textContent = `${c.name} 제품 현황`;
+    $('#catDetailSub').textContent = `${state.branch.name} 기준 · ${fullFmt.format(new Date())}`;
+    $('#catDetailStats').innerHTML = `
+      <div><dt>제품</dt><dd>${nf.format(active.length)}개</dd></div>
+      <div><dt>재고 금액</dt><dd title="${won.format(value)}">${wonCompact.format(value)}</dd></div>
+      <div class="${low ? 'warn' : ''}"><dt>재고 부족</dt><dd>${nf.format(low)}</dd></div>
+      <div class="${out ? 'out' : ''}"><dt>품절</dt><dd>${nf.format(out)}</dd></div>`;
+    $('#catDetailEmpty').hidden = items.length > 0;
+    $('#catDetailTable').hidden = items.length === 0;
+    $('#catDetailBody').innerHTML = items.map((i) => {
+      const pct = Math.min(100, Math.round((i.stock / Math.max(i.safety_stock * 3, 1)) * 100));
+      return `<tr class="${i.active ? '' : 'inactive-row'}">
+        <td class="cell-name"><div class="item-name">${esc(i.name)}</div><div class="item-sku">${esc(i.sku)}${i.location ? ` · ${esc(i.location)}` : ''}${i.active ? '' : ' · 사용 안 함'}</div></td>
+        <td class="num" data-label="현재고"><span class="stock-cell"><strong>${nf.format(i.stock)}<small class="muted"> ${esc(i.unit)}</small></strong><span class="meter" data-status="${i.status}" aria-hidden="true"><span style="width:${pct}%"></span></span></span></td>
+        <td class="num" data-label="안전재고">${nf.format(i.safety_stock)}</td>
+        <td data-label="상태">${badge(i.status)}</td>
+        <td class="num" data-label="재고 금액">${won.format(i.stock * i.cost_price)}</td>
+      </tr>`;
+    }).join('');
+    $('#catDetailGo').hidden = items.length === 0;
+    catDetailDialog.open();
+    $('#catDetailDialog .icon-btn[data-close]').focus();
+  }
+  $('#catDetailGo').addEventListener('click', () => {
+    if (!detailCategory) return;
+    Object.assign(state.inv, { q: '', status: '', cat: detailCategory.name });
+    $('#invQ').value = ''; $('#invStatus').value = ''; $('#invCat').value = detailCategory.name;
+    $('#catDetailDialog').close();
+    location.hash = '#/inventory';
+    renderInventory();
+  });
+
   // Generic confirm dialog (window.confirm is not used so it works everywhere)
   const confirmDialog = setupDialog($('#confirmDialog'));
   let confirmAction = null;
@@ -1372,6 +1416,14 @@
     if (ed) return openProduct(itemById(ed.dataset.edit));
     const eu = e.target.closest('[data-edit-user]');
     if (eu) return openUser(state.users.find((u) => u.user_id === eu.dataset.editUser));
+    const cob = e.target.closest('[data-cat-open-btn]');
+    if (cob) return openCategoryDetail(state.categories.find((c) => c.id === cob.dataset.catOpenBtn));
+    const row = e.target.closest('tr[data-cat-open]');
+    if (row && !e.target.closest('button, a, input, select')) {
+      // Focus the row's name button first so closing the popup returns focus to this row.
+      $('.cat-open-btn', row)?.focus({ preventScroll: true });
+      return openCategoryDetail(state.categories.find((c) => c.id === row.dataset.catOpen));
+    }
     const cm = e.target.closest('[data-cat-move]');
     if (cm) return moveCategory(cm.dataset.catMove, Number(cm.dataset.dir), cm);
     const ce = e.target.closest('[data-cat-edit]');
