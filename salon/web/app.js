@@ -44,7 +44,7 @@
     dashboard: '대시보드',
     inventory: '재고 목록',
     movements: '입출고 내역',
-    products: '품목 관리',
+    products: '제품 관리',
     users: '사용자 관리',
     branches: '지점 관리',
   };
