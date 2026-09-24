@@ -33,7 +33,8 @@
     transfer_out: { label: '지점 이동 출고', tag: 'use' },
   };
   const OUT_TYPES = ['use', 'sale', 'dispose'];
-  const ROLE_LABEL = { staff: '직원', manager: '점장', admin: '본사 관리자' };
+  const ROLE_LABEL = { staff: '직원', manager: '지점 관리자', admin: '전체 관리자' };
+  const roleTag = (r) => `<span class="tag tag-${r}">${ROLE_LABEL[r]}</span>`;
   const STATUS = {
     ok: { label: '정상', icon: 'i-check-circle', rank: 2 },
     low: { label: '부족', icon: 'i-alert', rank: 1 },
@@ -44,7 +45,10 @@
     inventory: '재고 목록',
     movements: '입출고 내역',
     products: '품목 관리',
+    users: '사용자 관리',
+    branches: '지점 관리',
   };
+  const MANAGER_ROUTES = ['products', 'users', 'branches'];
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
   const typeTag = (t) => `<span class="tag tag-${TYPES[t]?.tag || 'adjust'}">${TYPES[t]?.label || t}</span>`;
@@ -61,11 +65,16 @@
     inv: { q: '', cat: '', status: '', sortKey: 'status', sortDir: 'asc' },
     mv: { q: '', type: '', days: 7 },
     pd: { q: '' },
+    us: { q: '', branch: '' },
+    users: [],
+    invitations: [],
     range: 14,
     activeIdx: null,
     loading: false,
   };
   const isManager = () => ['manager', 'admin'].includes(state.profile?.role);
+  const isAdmin = () => state.profile?.role === 'admin';
+  const branchName = (id) => state.branches.find((b) => b.id === id)?.name || '미배정';
   const activeItems = () => state.inventory.filter((i) => i.active);
   const itemById = (id) => state.inventory.find((i) => i.product_id === id);
 
@@ -78,6 +87,8 @@
   function showLogin(message) {
     state.user = null;
     show('screenLogin');
+    $('#loginForm').hidden = false;
+    $('#signupForm').hidden = true;
     const err = $('#loginError');
     err.hidden = !message;
     err.textContent = message || '';
@@ -115,6 +126,47 @@
     }
   });
 
+  $('#toSignup').addEventListener('click', () => {
+    $('#loginForm').hidden = true;
+    $('#signupForm').hidden = false;
+    $('#signupError').hidden = true;
+    $('#signupDone').hidden = true;
+    $('#suEmail').value = $('#loginEmail').value.trim() && api.mode !== 'demo' ? $('#loginEmail').value.trim() : '';
+    $('#suName').focus();
+  });
+  $('#toLogin').addEventListener('click', () => showLogin());
+
+  $('#signupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#suName').value.trim();
+    const email = $('#suEmail').value.trim();
+    const password = $('#suPassword').value;
+    const err = $('#signupError');
+    const fail = (msg, el) => { err.textContent = msg; err.hidden = false; el.focus(); };
+    err.hidden = true;
+    if (!name) return fail('이름을 입력해 주세요.', $('#suName'));
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('초대받은 이메일 주소를 정확히 입력해 주세요.', $('#suEmail'));
+    if (password.length < 8) return fail('비밀번호는 8자 이상으로 입력해 주세요.', $('#suPassword'));
+    const btn = $('#signupBtn');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      const signedIn = await api.signUp(email, password, name);
+      $('#suPassword').value = '';
+      if (signedIn) {
+        await enter(await api.getUser());
+      } else {
+        const done = $('#signupDone');
+        done.textContent = `${email}로 인증 메일을 보냈습니다. 메일의 링크를 누른 뒤 로그인해 주세요.`;
+        done.hidden = false;
+        $('#loginEmail').value = email;
+      }
+    } catch (ex) {
+      fail(api.toAppError(ex).message, $('#suEmail'));
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
   $('#pwToggle').addEventListener('click', (e) => {
     const input = $('#loginPassword');
     const showPw = input.type === 'password';
@@ -143,9 +195,17 @@
     }
     state.profile = ctx.profile;
     state.branches = ctx.branches || [];
+    if (api.mode === 'demo') $('#demoRole').value = api.demoRole;
+    if (state.profile && state.profile.active === false) {
+      $('#pendingTitle').textContent = '사용이 중지된 계정입니다';
+      $('#pendingText').innerHTML = `<strong>${esc(user.email || '')}</strong> 계정은 관리자가 사용을 중지했습니다. 다시 사용해야 하면 지점 관리자에게 요청해 주세요.`;
+      show('screenPending');
+      return;
+    }
     const assigned = state.profile && (state.profile.role === 'admin' ? state.branches.length > 0 : state.profile.branch_id);
     if (!assigned) {
-      $('#pendingEmail').textContent = user.email || '';
+      $('#pendingTitle').textContent = '지점 배정을 기다리고 있어요';
+      $('#pendingText').innerHTML = `<strong>${esc(user.email || '')}</strong> 계정이 아직 지점에 배정되지 않았습니다. 지점 관리자에게 이 이메일을 알려 주고 배정을 요청해 주세요.`;
       show('screenPending');
       return;
     }
@@ -160,10 +220,7 @@
     $('#userName').textContent = name;
     $('#userInitial').textContent = name.slice(0, 1).toUpperCase();
     $('#userRole').textContent = `${ROLE_LABEL[state.profile.role]} · ${user.email || ''}`;
-    const sel = $('#branchSelect');
-    sel.innerHTML = state.branches.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
-    sel.value = state.branch.id;
-    sel.hidden = state.branches.length < 2;
+    fillBranchSelect();
     $('#demoBanner').hidden = api.mode !== 'demo';
 
     show('screenApp');
@@ -171,10 +228,25 @@
     await loadData();
   }
 
+  function fillBranchSelect() {
+    const sel = $('#branchSelect');
+    sel.innerHTML = state.branches.map((b) => `<option value="${b.id}">${esc(b.name)}${b.active === false ? ' (중지)' : ''}</option>`).join('');
+    sel.value = state.branch.id;
+    sel.hidden = state.branches.length < 2;
+  }
+
   $('#branchSelect').addEventListener('change', (e) => {
     state.branch = state.branches.find((b) => b.id === e.target.value);
     try { localStorage.setItem('hp-branch', state.branch.id); } catch (err) {}
     loadData();
+    if (state.route === 'users') loadUsers();
+  });
+
+  $('#demoRole').addEventListener('change', async (e) => {
+    api.setDemoRole(e.target.value);
+    state.us.branch = '';
+    await enter(await api.getUser());
+    toast(`${ROLE_LABEL[state.profile.role]} 화면으로 전환했습니다.`);
   });
 
   // ------------------------------------------------------------------
@@ -219,6 +291,7 @@
     renderInventory();
     renderMovements();
     renderProducts();
+    renderBranches();
     fillMoveItems();
   }
 
@@ -227,7 +300,7 @@
   // ------------------------------------------------------------------
   function applyRoute(moveFocus = true) {
     let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'dashboard';
-    if (!ROUTES[route] || (route === 'products' && !isManager())) route = 'dashboard';
+    if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager())) route = 'dashboard';
     state.route = route;
     $$('.view').forEach((v) => { v.hidden = v.dataset.view !== route; });
     $$('.nav-link').forEach((a) => {
@@ -237,6 +310,8 @@
     $('#pageTitle').textContent = ROUTES[route];
     document.title = `${ROUTES[route]} · H Place 살롱 재고`;
     if (route === 'dashboard') renderChart();
+    if (route === 'users') loadUsers();
+    if (route === 'branches') renderBranches();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
     window.scrollTo(0, 0);
@@ -585,7 +660,7 @@
       <td class="num" data-label="안전재고">${nf.format(i.safety_stock)}</td>
       <td data-label="보관 위치">${esc(i.location || '—')}</td>
       <td data-label="사용">${i.active ? '사용 중' : '사용 안 함'}${i.is_retail ? ' · 판매용' : ''}</td>
-      <td class="cell-action"><button type="button" class="btn btn-secondary btn-sm" data-edit="${i.product_id}" aria-label="${esc(i.name)} 수정">${svgIcon('i-edit')}수정</button></td>
+      <td class="cell-action"><button type="button" class="btn btn-secondary btn-sm" data-edit="${i.product_id}" aria-label="${esc(i.name)} ${isAdmin() ? '수정' : '지점 설정'}">${svgIcon('i-edit')}${isAdmin() ? '수정' : '설정'}</button></td>
     </tr>`).join('');
   }
   let pdTimer = 0;
@@ -761,14 +836,39 @@
     $('#pLocation').value = item?.location || '';
     $('#pRetailFlag').checked = Boolean(item?.is_retail);
     $('#pActive').checked = item ? item.active : true;
+    const catalogLocked = !isAdmin();
+    $$('[data-catalog]', productForm).forEach((el) => { el.disabled = catalogLocked; });
+    $('#productScopeNote').hidden = !catalogLocked;
+    if (catalogLocked) $('#productTitle').textContent = `${state.branch.name} 품목 설정`;
     productDialog.open();
-    $('#pName').focus();
+    (catalogLocked ? $('#pSafety') : $('#pName')).focus();
   }
 
   productForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearErrors(productForm);
     const errors = [];
+    if (!isAdmin()) {
+      const raw = $('#pSafety').value.trim();
+      const n = Number(raw);
+      if (raw === '' || !Number.isInteger(n) || n < 0) {
+        fieldError($('#pSafety'), '안전재고는 0 이상의 정수로 입력해 주세요.');
+        return showSummary(productForm, [{ id: 'pSafety', msg: '안전재고를 확인해 주세요.' }]);
+      }
+      const btn = $('#productSubmit');
+      btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+      try {
+        await api.setBranchItem(state.branch.id, editingId, n, $('#pLocation').value);
+        $('#productDialog').close();
+        toast(`${$('#pName').value.trim()}의 ${state.branch.name} 설정을 저장했습니다.`);
+        await loadData();
+      } catch (ex) {
+        showServerError(productForm, api.toAppError(ex).message);
+      } finally {
+        btn.disabled = false; btn.removeAttribute('aria-busy');
+      }
+      return;
+    }
     const need = (id, label) => {
       const el = $('#' + id);
       if (!el.value.trim()) { fieldError(el, `${label}을(를) 입력해 주세요.`); errors.push({ id, msg: `${label}을(를) 입력해 주세요.` }); return false; }
@@ -819,6 +919,329 @@
   });
 
   // ------------------------------------------------------------------
+  // Users & invitations (manager: own branch · admin: every branch)
+  // ------------------------------------------------------------------
+  const ROLE_RANK = { admin: 0, manager: 1, staff: 2 };
+  const relFmt = new Intl.RelativeTimeFormat('ko-KR', { numeric: 'auto' });
+  function relTime(iso) {
+    if (!iso) return '로그인 기록 없음';
+    const diff = (Date.parse(iso) - Date.now()) / 1000;
+    const abs = Math.abs(diff);
+    if (abs < 60) return '방금';
+    if (abs < 3600) return relFmt.format(Math.round(diff / 60), 'minute');
+    if (abs < 86400) return relFmt.format(Math.round(diff / 3600), 'hour');
+    return relFmt.format(Math.round(diff / 86400), 'day');
+  }
+
+  function fillUserBranchFilter() {
+    const sel = $('#usBranch');
+    sel.innerHTML = '<option value="">전체 지점</option><option value="none">미배정</option>'
+      + state.branches.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+    sel.value = state.us.branch;
+  }
+
+  async function loadUsers() {
+    if (!isManager() || !state.branch) return;
+    const scope = isAdmin() ? null : state.branch.id;
+    $('#usCount').textContent = '불러오는 중…';
+    try {
+      const [users, invitations] = await Promise.all([api.listUsers(scope), api.listInvitations(scope)]);
+      state.users = users;
+      state.invitations = invitations;
+    } catch (e) {
+      $('#usCount').textContent = '';
+      toast(api.toAppError(e).message, { error: true });
+      return;
+    }
+    fillUserBranchFilter();
+    renderUsers();
+    renderInvites();
+  }
+
+  function renderUsers() {
+    const q = state.us.q.trim().toLowerCase();
+    const f = state.us.branch;
+    const rows = state.users
+      .filter((u) => (!q || (u.full_name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))
+        && (!f || (f === 'none' ? !u.branch_id && u.role !== 'admin' : u.branch_id === f)))
+      .sort((a, b) => Number(b.active) - Number(a.active) || ROLE_RANK[a.role] - ROLE_RANK[b.role] || (a.full_name || '').localeCompare(b.full_name || '', 'ko'));
+    const unassigned = state.users.filter((u) => !u.branch_id && u.role !== 'admin').length;
+    $('#usCount').textContent = `${nf.format(rows.length)}명${isAdmin() && unassigned ? ` · 미배정 ${nf.format(unassigned)}명` : ''}`;
+    $('#usEmpty').hidden = rows.length > 0;
+    $('#usTable').hidden = rows.length === 0;
+    $('#usBody').innerHTML = rows.map((u) => {
+      const self = u.user_id === state.user.id;
+      const branch = u.role === 'admin' ? '<span class="muted">전체 지점</span>'
+        : u.branch_id ? esc(u.branch_name || branchName(u.branch_id)) : '<span class="tag tag-warn">미배정</span>';
+      return `<tr class="${u.active ? '' : 'inactive-row'}">
+        <td class="cell-name"><div class="item-name">${esc(u.full_name || '(이름 없음)')}${self ? '<span class="you">나</span>' : ''}</div><div class="item-sku">${esc(u.email)}</div></td>
+        <td data-label="지점">${branch}</td>
+        <td data-label="역할">${roleTag(u.role)}</td>
+        <td data-label="상태">${u.active ? '사용 중' : '<span class="tag tag-off">중지</span>'}</td>
+        <td data-label="최근 로그인">${relTime(u.last_sign_in_at)}</td>
+        <td class="cell-action"><button type="button" class="btn btn-secondary btn-sm" data-edit-user="${u.user_id}" aria-label="${esc(u.full_name || u.email)} 수정">${svgIcon('i-edit')}수정</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderInvites() {
+    const ul = $('#inviteList');
+    if (!state.invitations.length) {
+      ul.innerHTML = '<li class="invite-empty">대기 중인 초대가 없습니다.</li>';
+      return;
+    }
+    ul.innerHTML = state.invitations.map((i) => {
+      const age = Math.floor((Date.now() - Date.parse(i.created_at)) / DAY);
+      const left = Math.max(0, 14 - age);
+      const where = i.role === 'admin' ? '전체 지점' : branchName(i.branch_id);
+      return `<li>
+        ${roleTag(i.role)}
+        <div><p class="i-mail">${esc(i.email)}${i.full_name ? ` <span class="muted">· ${esc(i.full_name)}</span>` : ''}</p>
+        <p class="i-meta">${esc(where)} · ${age === 0 ? '오늘' : `${age}일 전`} 초대 · ${left}일 뒤 만료</p></div>
+        <button type="button" class="btn btn-secondary btn-sm" data-cancel-invite="${i.id}" aria-label="${esc(i.email)} 초대 취소">취소</button>
+      </li>`;
+    }).join('');
+  }
+
+  let usTimer = 0;
+  $('#usQ').addEventListener('input', (e) => { clearTimeout(usTimer); usTimer = setTimeout(() => { state.us.q = e.target.value; renderUsers(); }, 150); });
+  $('#usBranch').addEventListener('change', (e) => { state.us.branch = e.target.value; renderUsers(); });
+
+  async function cancelInvite(id, button) {
+    button.disabled = true; button.setAttribute('aria-busy', 'true');
+    try {
+      await api.cancelInvitation(id);
+      toast('초대를 취소했습니다.');
+      await loadUsers();
+    } catch (e) {
+      toast(api.toAppError(e).message, { error: true });
+      button.disabled = false; button.removeAttribute('aria-busy');
+    }
+  }
+
+  // Invite dialog
+  const inviteDialog = setupDialog($('#inviteDialog'));
+  const inviteForm = $('#inviteForm');
+  const inviteRole = () => $('input[name="ivRole"]:checked').value;
+
+  function syncInviteBranch() {
+    const sel = $('#ivBranch');
+    const help = $('#ivBranchHelp');
+    if (inviteRole() === 'admin') {
+      sel.disabled = true;
+      help.textContent = '전체 관리자는 특정 지점 없이 모든 지점을 관리합니다.';
+    } else if (!isAdmin()) {
+      sel.disabled = true;
+      help.textContent = '지점 관리자는 자기 지점으로만 초대할 수 있습니다.';
+    } else {
+      sel.disabled = false;
+      help.textContent = '';
+    }
+  }
+  $$('input[name="ivRole"]').forEach((r) => r.addEventListener('change', syncInviteBranch));
+
+  function openInvite() {
+    inviteForm.reset();
+    clearErrors(inviteForm);
+    const choices = isAdmin() ? state.branches.filter((b) => b.active !== false) : [state.branch];
+    $('#ivBranch').innerHTML = choices.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+    const preferred = isAdmin() && state.us.branch && state.us.branch !== 'none' ? state.us.branch : state.branch.id;
+    $('#ivBranch').value = choices.some((b) => b.id === preferred) ? preferred : choices[0]?.id || '';
+    syncInviteBranch();
+    inviteDialog.open();
+    $('#ivEmail').focus();
+  }
+
+  inviteForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(inviteForm);
+    const email = $('#ivEmail').value.trim();
+    const role = inviteRole();
+    const branchId = role === 'admin' ? null : $('#ivBranch').value;
+    const errors = [];
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { fieldError($('#ivEmail'), '초대할 사람의 이메일 주소를 정확히 입력해 주세요.'); errors.push({ id: 'ivEmail', msg: '이메일을 확인해 주세요.' }); }
+    if (role !== 'admin' && !branchId) { fieldError($('#ivBranch'), '초대할 지점을 선택해 주세요.'); errors.push({ id: 'ivBranch', msg: '지점을 선택해 주세요.' }); }
+    if (errors.length) return showSummary(inviteForm, errors);
+
+    const btn = $('#inviteSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      const result = await api.inviteUser({ email, fullName: $('#ivName').value, branchId, role });
+      $('#inviteDialog').close();
+      const where = role === 'admin' ? '전체 관리자' : `${branchName(branchId)} ${ROLE_LABEL[role]}`;
+      if (result === 'assigned') {
+        toast(`이미 가입된 계정이라 바로 ${where}(으)로 배정했습니다.`);
+      } else {
+        toast(`${email}을(를) ${where}(으)로 초대했습니다. 이 주소로 가입하도록 안내해 주세요.`, {
+          action: { label: '가입 주소 복사', run: copySignupLink },
+        });
+      }
+      await loadUsers();
+    } catch (ex) {
+      const err = api.toAppError(ex);
+      if (['INVALID_EMAIL', 'USER_EXISTS', 'INVITE_EXISTS'].includes(err.code)) {
+        fieldError($('#ivEmail'), err.message);
+        showSummary(inviteForm, [{ id: 'ivEmail', msg: err.message }]);
+      } else {
+        showServerError(inviteForm, err.message);
+      }
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  async function copySignupLink() {
+    const url = location.origin + location.pathname;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('가입 주소를 복사했습니다. 초대한 사람에게 보내 주세요.');
+    } catch (e) {
+      toast(`가입 주소: ${url}`);
+    }
+  }
+
+  // User edit dialog
+  const userDialog = setupDialog($('#userDialog'));
+  const userForm = $('#userForm');
+  let editingUser = null;
+  const userRole = () => $('input[name="uRole"]:checked')?.value;
+
+  function syncUserBranch() {
+    const self = editingUser && editingUser.user_id === state.user.id;
+    const sel = $('#uBranch');
+    const help = $('#uBranchHelp');
+    if (userRole() === 'admin') {
+      sel.disabled = true;
+      help.textContent = '전체 관리자는 특정 지점 없이 모든 지점을 관리합니다.';
+    } else {
+      sel.disabled = self;
+      help.textContent = isAdmin() ? '' : '지점 관리자는 다른 지점으로 옮길 수 없습니다. 이동은 전체 관리자에게 요청해 주세요.';
+    }
+  }
+  $$('input[name="uRole"]').forEach((r) => r.addEventListener('change', syncUserBranch));
+
+  function openUser(u) {
+    editingUser = u;
+    userForm.reset();
+    clearErrors(userForm);
+    const self = u.user_id === state.user.id;
+    $('#userTitle').textContent = self ? '내 정보' : '사용자 수정';
+    $('#uEmail').textContent = u.email;
+    $('#uSelfNote').hidden = !self;
+    $('#uName').value = u.full_name || '';
+    const options = isAdmin()
+      ? '<option value="">미배정</option>' + state.branches.map((b) => `<option value="${b.id}">${esc(b.name)}${b.active === false ? ' (중지)' : ''}</option>`).join('')
+      : `<option value="${state.branch.id}">${esc(state.branch.name)}</option><option value="">지점에서 제외</option>`;
+    $('#uBranch').innerHTML = options;
+    $('#uBranch').value = u.branch_id || '';
+    $$('input[name="uRole"]').forEach((r) => { r.checked = r.value === u.role; r.disabled = self; });
+    $('#uActive').checked = u.active;
+    $('#uActive').disabled = self;
+    syncUserBranch();
+    userDialog.open();
+    $('#uName').focus();
+  }
+
+  userForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(userForm);
+    const u = editingUser;
+    const role = userRole();
+    const btn = $('#userSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      await api.updateUser({
+        userId: u.user_id, fullName: $('#uName').value, role,
+        branchId: role === 'admin' ? null : $('#uBranch').value || null,
+        active: $('#uActive').checked,
+      });
+      $('#userDialog').close();
+      toast(`${$('#uName').value.trim() || u.email} 정보를 저장했습니다.`);
+      if (u.user_id === state.user.id) {
+        state.profile.full_name = $('#uName').value.trim() || state.profile.full_name;
+        $('#userName').textContent = state.profile.full_name;
+      }
+      await loadUsers();
+    } catch (ex) {
+      showServerError(userForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Branches (admin: all · manager: own branch info)
+  // ------------------------------------------------------------------
+  function renderBranches() {
+    if (!isManager()) return;
+    $('#branchNote').textContent = isAdmin()
+      ? '전체 관리자는 지점을 추가하고 모든 지점의 정보와 운영 여부를 바꿀 수 있습니다. 새 지점에는 모든 품목이 재고 0으로 준비됩니다.'
+      : '지점 관리자는 이 지점의 이름, 전화번호, 주소를 수정할 수 있습니다. 지점 코드와 운영 여부는 전체 관리자가 바꿉니다.';
+    $('#brBody').innerHTML = state.branches.map((b) => `<tr class="${b.active === false ? 'inactive-row' : ''}">
+      <td class="cell-name"><div class="item-name">${esc(b.name)}</div><div class="item-sku">${esc(b.code)}</div></td>
+      <td data-label="연락처">${esc(b.phone || '—')}</td>
+      <td data-label="주소"><span class="memo">${esc(b.address || '—')}</span></td>
+      <td data-label="상태">${b.active === false ? '<span class="tag tag-off">중지</span>' : '운영 중'}</td>
+      <td class="cell-action"><button type="button" class="btn btn-secondary btn-sm" data-edit-branch="${b.id}" aria-label="${esc(b.name)} 수정">${svgIcon('i-edit')}수정</button></td>
+    </tr>`).join('');
+  }
+
+  const branchDialog = setupDialog($('#branchDialog'));
+  const branchForm = $('#branchForm');
+  let editingBranch = null;
+
+  function openBranch(b) {
+    editingBranch = b;
+    branchForm.reset();
+    clearErrors(branchForm);
+    $('#branchTitle').textContent = b ? `${b.name} 정보 수정` : '지점 추가';
+    $('#bCode').value = b?.code || '';
+    $('#bName').value = b?.name || '';
+    $('#bPhone').value = b?.phone || '';
+    $('#bAddress').value = b?.address || '';
+    $('#bActive').checked = b ? b.active !== false : true;
+    $('#bCode').disabled = !isAdmin();
+    branchDialog.open();
+    (isAdmin() && !b ? $('#bCode') : $('#bName')).focus();
+  }
+
+  branchForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(branchForm);
+    const code = $('#bCode').value.trim().toUpperCase();
+    const errors = [];
+    if (isAdmin() && !/^[A-Z0-9-]{2,12}$/.test(code)) { fieldError($('#bCode'), '지점 코드는 영문 대문자·숫자·하이픈 2~12자로 입력해 주세요.'); errors.push({ id: 'bCode', msg: '지점 코드를 확인해 주세요.' }); }
+    if (!$('#bName').value.trim()) { fieldError($('#bName'), '지점명을 입력해 주세요.'); errors.push({ id: 'bName', msg: '지점명을 입력해 주세요.' }); }
+    if (errors.length) return showSummary(branchForm, errors);
+
+    const btn = $('#branchSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      await api.saveBranch({
+        id: editingBranch?.id || null, code: code || editingBranch?.code, name: $('#bName').value,
+        phone: $('#bPhone').value, address: $('#bAddress').value, active: $('#bActive').checked,
+      });
+      $('#branchDialog').close();
+      toast(editingBranch ? `${$('#bName').value.trim()} 정보를 저장했습니다.` : `새 지점 "${$('#bName').value.trim()}"을 추가했습니다. 모든 품목이 재고 0으로 준비되었습니다.`);
+      state.branches = await api.listBranches();
+      state.branch = state.branches.find((b) => b.id === state.branch.id) || state.branches[0];
+      fillBranchSelect();
+      renderBranches();
+      $('#branchLine').textContent = `${state.branch.name} · ${fullFmt.format(new Date())}`;
+    } catch (ex) {
+      const err = api.toAppError(ex);
+      if (err.code === 'DUPLICATE_BRANCH_CODE' || err.code === 'INVALID_BRANCH') {
+        fieldError($('#bCode'), err.message);
+        showSummary(branchForm, [{ id: 'bCode', msg: err.message }]);
+      } else {
+        showServerError(branchForm, err.message);
+      }
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  // ------------------------------------------------------------------
   // Global click actions
   // ------------------------------------------------------------------
   document.addEventListener('click', (e) => {
@@ -828,31 +1251,41 @@
     if (rv) return revert(rv.dataset.revert, rv);
     const ed = e.target.closest('[data-edit]');
     if (ed) return openProduct(itemById(ed.dataset.edit));
+    const eu = e.target.closest('[data-edit-user]');
+    if (eu) return openUser(state.users.find((u) => u.user_id === eu.dataset.editUser));
+    const ci = e.target.closest('[data-cancel-invite]');
+    if (ci) return cancelInvite(ci.dataset.cancelInvite, ci);
+    const eb = e.target.closest('[data-edit-branch]');
+    if (eb) return openBranch(state.branches.find((b) => b.id === eb.dataset.editBranch));
   });
+  $('#inviteBtn').addEventListener('click', openInvite);
+  $('#newBranchBtn').addEventListener('click', () => openBranch(null));
   $('#newMoveBtn').addEventListener('click', () => openMove());
   $('#newProductBtn').addEventListener('click', () => openProduct(null));
   $('#demoReset').addEventListener('click', async () => {
     if (!api.resetDemo) return;
     api.resetDemo();
+    await enter(await api.getUser());
     toast('샘플 데이터로 초기화했습니다.');
-    await loadData();
   });
 
   // ------------------------------------------------------------------
   // Toast
   // ------------------------------------------------------------------
-  function toast(msg, { undo, error } = {}) {
+  function toast(msg, { undo, error, action } = {}) {
+    if (undo) action = { label: '실행 취소', run: undo };
     const el = document.createElement('div');
     el.className = 'toast';
-    el.innerHTML = `${svgIcon(error ? 'i-alert' : 'i-check-circle')}<p></p>${undo ? '<button type="button">실행 취소</button>' : ''}`;
+    el.innerHTML = `${svgIcon(error ? 'i-alert' : 'i-check-circle')}<p></p>${action ? '<button type="button"></button>' : ''}`;
+    if (action) $('button', el).textContent = action.label;
     $('p', el).textContent = msg;
     if (error) $('.icon', el).style.color = 'var(--danger)';
     $('#toastRegion').replaceChildren(el);
-    let timer = setTimeout(() => el.remove(), undo || error ? 7000 : 4000);
+    let timer = setTimeout(() => el.remove(), action || error ? 7000 : 4000);
     el.addEventListener('mouseenter', () => clearTimeout(timer));
     el.addEventListener('focusin', () => clearTimeout(timer));
     el.addEventListener('mouseleave', () => { timer = setTimeout(() => el.remove(), 3000); });
-    if (undo) $('button', el).addEventListener('click', () => { el.remove(); undo(); });
+    if (action) $('button', el).addEventListener('click', () => { el.remove(); action.run(); });
   }
 
   // ------------------------------------------------------------------
