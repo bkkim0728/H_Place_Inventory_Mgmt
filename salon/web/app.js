@@ -94,7 +94,7 @@
     err.textContent = message || '';
     if (api.mode === 'demo') {
       $('#loginDemoNote').hidden = false;
-      if (!$('#loginEmail').value) $('#loginEmail').value = 'demo@hplace.example';
+      if (!$('#loginEmail').value) $('#loginEmail').value = 'h001';
       if (!$('#loginPassword').value) $('#loginPassword').value = 'demo';
     }
     $('#loginEmail').focus();
@@ -106,9 +106,15 @@
     const password = $('#loginPassword').value;
     const err = $('#loginError');
     if (!email || !password) {
-      err.textContent = '이메일과 비밀번호를 모두 입력해 주세요.';
+      err.textContent = '아이디(또는 이메일)와 비밀번호를 모두 입력해 주세요.';
       err.hidden = false;
       (!email ? $('#loginEmail') : $('#loginPassword')).focus();
+      return;
+    }
+    if (!email.includes('@') && !api.isLoginId(email)) {
+      err.textContent = '아이디는 영문과 숫자, 마침표(.), 밑줄(_), 하이픈(-)으로 2~30자입니다.';
+      err.hidden = false;
+      $('#loginEmail').focus();
       return;
     }
     const btn = $('#loginBtn');
@@ -131,7 +137,8 @@
     $('#signupForm').hidden = false;
     $('#signupError').hidden = true;
     $('#signupDone').hidden = true;
-    $('#suEmail').value = $('#loginEmail').value.trim() && api.mode !== 'demo' ? $('#loginEmail').value.trim() : '';
+    const typed = $('#loginEmail').value.trim();
+    $('#suEmail').value = typed.includes('@') && api.mode !== 'demo' ? typed : '';
     $('#suName').focus();
   });
   $('#toLogin').addEventListener('click', () => showLogin());

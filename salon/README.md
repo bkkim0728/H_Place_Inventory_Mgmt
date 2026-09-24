@@ -72,16 +72,25 @@ branches ─┬─ profiles (사용자 ↔ 지점·역할·사용 여부)
 
 ### 2. 첫 전체 관리자 만들기 (한 번만)
 
-첫 관리자는 초대할 사람이 없으니 SQL로 지정합니다.
+로그인 화면은 **아이디** 또는 이메일을 받습니다. 아이디 `h001`은 내부적으로 `h001@hplace.local` 계정으로 로그인합니다. (도메인은 Render 환경 변수 `LOGIN_DOMAIN`으로 바꿀 수 있습니다.)
 
-1. **Authentication → Users → Add user → Create new user**에서 본인 이메일과 비밀번호로 계정을 만듭니다. (**Auto Confirm User** 체크)
-2. **SQL Editor**에서 실행합니다.
+1. **Authentication → Users → Add user → Create new user**
+   - Email: `h001@hplace.local`
+   - Password: 사용할 비밀번호 (이 저장소에는 비밀번호를 적지 않습니다)
+   - **Auto Confirm User** 체크 — 실제로 없는 메일 주소라 인증 메일을 받을 수 없습니다.
+2. **SQL Editor**에서 전체 관리자로 지정합니다.
 
 ```sql
 update public.profiles
    set role = 'admin', branch_id = null, full_name = '본사 관리자'
- where user_id = (select id from auth.users where email = 'me@example.com');
+ where user_id = (select id from auth.users where email = 'h001@hplace.local');
 ```
+
+3. 앱 로그인 화면에서 아이디 `h001`과 비밀번호로 로그인합니다.
+
+> **비밀번호 권장**: 전체 관리자는 모든 지점의 데이터와 사용자를 바꿀 수 있고 사이트는 인터넷에 공개됩니다. 숫자만 6자리인 비밀번호는 추측 공격에 약하니, 운영 전에는 영문·숫자·기호를 섞은 12자 이상으로 바꾸세요. 비밀번호 변경은 **Authentication → Users → 해당 사용자 → Reset password / Update password**에서 합니다.
+
+> Supabase가 `hplace.local` 주소를 받지 않으면 회사가 가진 도메인(예: `hplace.co.kr`)으로 계정을 만들고 Render 환경 변수 `LOGIN_DOMAIN`을 같은 값으로 설정하세요.
 
 이후 사용자는 모두 앱의 **사용자 관리 → 사용자 초대**로 추가합니다. 예를 들어 1호점 지점 관리자를 초대하면, 그 지점 관리자가 다시 직원을 초대합니다.
 
@@ -94,7 +103,7 @@ update public.profiles
 | Branch | 배포할 브랜치 |
 | Build Command | `node salon/scripts/build-config.mjs` |
 | Publish Directory | `salon/web` |
-| Environment | `SUPABASE_URL` = Project URL, `SUPABASE_ANON_KEY` = anon public key |
+| Environment | `SUPABASE_URL` = Project URL, `SUPABASE_ANON_KEY` = anon public key, (선택) `LOGIN_DOMAIN` = 아이디 로그인용 도메인, 기본 `hplace.local` |
 
 두 값은 Supabase **Project Settings → API**(또는 **Connect**)에서 확인합니다. anon key는 브라우저에 공개되도록 만들어진 키이고 데이터는 RLS로 보호됩니다. **`service_role` 키는 절대 넣지 마세요.**
 
