@@ -1,3 +1,9 @@
+/* Paperlogy (SIL Open Font License 1.1) — see fonts/README.md */
+@font-face { font-family: "Paperlogy"; src: url("fonts/Paperlogy-400.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Paperlogy"; src: url("fonts/Paperlogy-500.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Paperlogy"; src: url("fonts/Paperlogy-600.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Paperlogy"; src: url("fonts/Paperlogy-700.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
 /* ============================================================
    H Place 재고 관리 — Design tokens
    Style: Minimalism & Swiss (dense dashboard)
@@ -38,7 +44,7 @@
 
   --radius: 8px;
   --radius-sm: 6px;
-  --font: "Noto Sans KR", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font: "Paperlogy", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
 
   --dur-fast: 150ms;
   --dur: 200ms;
