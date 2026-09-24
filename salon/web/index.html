@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>H Place 살롱 재고</title>
+  <meta name="description" content="H Place 헤어살롱 지점 재고관리" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="app.css" />
+  <script>
+    try {
+      const t = localStorage.getItem('hp-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+  <div class="ambient" aria-hidden="true"><span class="a1"></span><span class="a2"></span><span class="a3"></span></div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></symbol>
+      <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+      <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></symbol>
+      <symbol id="i-won" viewBox="0 0 24 24"><path d="m4 6 3 12 5-10 5 10 3-12"/><path d="M3 10h18M3 14h18"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+      <symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+      <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+      <symbol id="i-sort" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></symbol>
+      <symbol id="i-up" viewBox="0 0 24 24"><path d="m7 14 5-5 5 5"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    </defs>
+  </svg>
+
+  <!-- Loading -->
+  <div class="screen" id="screenLoading">
+    <div class="screen-card card" role="status"><span class="spinner" aria-hidden="true"></span><p>불러오는 중…</p></div>
+  </div>
+
+  <!-- Login -->
+  <div class="screen" id="screenLogin" hidden>
+    <form class="screen-card card login" id="loginForm" novalidate>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-scissors"/></svg></span>
+        <span class="brand-name">H Place<small>살롱 재고관리</small></span>
+      </div>
+      <h1>로그인</h1>
+      <p class="demo-note" id="loginDemoNote" hidden>데모 모드입니다. 아무 이메일과 비밀번호로 들어갈 수 있고, 데이터는 이 브라우저에만 저장됩니다.</p>
+      <p class="err-box" id="loginError" role="alert" hidden></p>
+      <div class="form-field">
+        <label for="loginEmail">이메일</label>
+        <input id="loginEmail" type="email" autocomplete="username" required />
+      </div>
+      <div class="form-field">
+        <label for="loginPassword">비밀번호</label>
+        <div class="pw-wrap">
+          <input id="loginPassword" type="password" autocomplete="current-password" required />
+          <button type="button" class="pw-toggle" id="pwToggle" aria-label="비밀번호 보기" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg></button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" id="loginBtn" type="submit">로그인</button>
+      <p class="muted small center">계정은 점장 또는 본사 관리자가 발급합니다.</p>
+    </form>
+  </div>
+
+  <!-- Signed in, no branch yet -->
+  <div class="screen" id="screenPending" hidden>
+    <div class="screen-card card">
+      <span class="kpi-icon tone-violet big-icon" aria-hidden="true"><svg class="icon"><use href="#i-clock"/></svg></span>
+      <h1>지점 배정을 기다리고 있어요</h1>
+      <p class="muted"><strong id="pendingEmail"></strong> 계정이 아직 지점에 배정되지 않았습니다. 점장에게 이 이메일을 알려 주고 배정을 요청해 주세요.</p>
+      <div class="row-gap">
+        <button class="btn btn-secondary" type="button" id="pendingRetry">다시 확인</button>
+        <button class="btn btn-secondary" type="button" data-signout>로그아웃</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div class="app" id="screenApp" hidden>
+    <aside class="sidebar" id="sidebar" aria-label="주 메뉴">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-scissors"/></svg></span>
+        <span class="brand-name">H Place<small>살롱 재고관리</small></span>
+      </div>
+      <nav>
+        <ul class="nav-list">
+          <li><a href="#/dashboard" class="nav-link" data-route="dashboard"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>대시보드</a></li>
+          <li><a href="#/inventory" class="nav-link" data-route="inventory"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>재고 목록<span class="nav-badge" id="navAlertCount" data-zero="true">0</span></a></li>
+          <li><a href="#/movements" class="nav-link" data-route="movements"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>입출고 내역</a></li>
+          <li data-manager-only><a href="#/products" class="nav-link" data-route="products"><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>품목 관리</a></li>
+        </ul>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <span class="avatar" id="userInitial" aria-hidden="true">?</span>
+          <span class="user-meta"><strong id="userName">—</strong><small id="userRole">—</small></span>
+        </div>
+        <button class="btn btn-secondary btn-sm btn-block" type="button" data-signout><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg>로그아웃</button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <div class="main-wrap">
+      <div class="demo-banner" id="demoBanner" hidden>
+        <span><strong>데모 모드</strong> · Supabase가 연결되지 않아 샘플 데이터로 실행 중입니다. 변경 내용은 이 브라우저에만 저장됩니다.</span>
+        <button type="button" class="link-btn" id="demoReset">샘플 데이터로 초기화</button>
+      </div>
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="메뉴 열기" aria-controls="sidebar" aria-expanded="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+        </button>
+        <div class="topbar-title">
+          <h1 id="pageTitle">대시보드</h1>
+          <p class="muted" id="branchLine">—</p>
+        </div>
+        <div class="topbar-actions">
+          <label class="sr-only" for="branchSelect">지점 선택</label>
+          <select id="branchSelect" class="branch-select" hidden></select>
+          <button class="icon-btn" id="refreshBtn" type="button" aria-label="새로고침"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+          <button class="icon-btn" id="themeBtn" type="button" aria-label="라이트 모드로 전환"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg></button>
+          <button class="btn btn-primary" id="newMoveBtn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>입출고 등록</span></button>
+        </div>
+      </header>
+
+      <main id="main" tabindex="-1">
+        <p class="err-box" id="loadError" role="alert" hidden></p>
+
+        <!-- Dashboard -->
+        <section class="view" data-view="dashboard" aria-labelledby="pageTitle">
+          <div class="kpi-grid">
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">관리 품목</span><span class="kpi-icon tone-neutral" aria-hidden="true"><svg class="icon"><use href="#i-box"/></svg></span></div>
+              <p class="kpi-value" id="kpiItems">0</p>
+              <p class="kpi-sub muted" id="kpiItemsSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">재고 금액 (매입가)</span><span class="kpi-icon tone-accent" aria-hidden="true"><svg class="icon"><use href="#i-won"/></svg></span></div>
+              <p class="kpi-value" id="kpiValue">₩0</p>
+              <p class="kpi-sub muted" id="kpiUse">—</p>
+            </article>
+            <button type="button" class="card kpi kpi-action" data-filter="low">
+              <div class="kpi-head"><span class="kpi-label">재고 부족</span><span class="kpi-icon tone-warn" aria-hidden="true"><svg class="icon"><use href="#i-alert"/></svg></span></div>
+              <p class="kpi-value" id="kpiLow">0</p>
+              <p class="kpi-sub muted">안전재고 이하 · 목록 보기</p>
+            </button>
+            <button type="button" class="card kpi kpi-action" data-filter="out">
+              <div class="kpi-head"><span class="kpi-label">품절</span><span class="kpi-icon tone-danger" aria-hidden="true"><svg class="icon"><use href="#i-x-circle"/></svg></span></div>
+              <p class="kpi-value" id="kpiOut">0</p>
+              <p class="kpi-sub muted">재고 0 · 목록 보기</p>
+            </button>
+          </div>
+
+          <div class="split">
+            <section class="card panel" aria-labelledby="trend-heading">
+              <div class="panel-head">
+                <div>
+                  <h2 id="trend-heading">입고 · 출고 추이</h2>
+                  <p class="muted small">출고 = 시술 사용 + 판매 + 폐기 (수량)</p>
+                </div>
+                <div class="segmented" role="group" aria-label="기간 선택">
+                  <button type="button" data-range="7" aria-pressed="false">7일</button>
+                  <button type="button" data-range="14" aria-pressed="true">14일</button>
+                  <button type="button" data-range="30" aria-pressed="false">30일</button>
+                </div>
+              </div>
+              <div class="legend" aria-hidden="true">
+                <span class="legend-item"><span class="swatch swatch-in"></span>입고</span>
+                <span class="legend-item"><span class="swatch swatch-out"></span>출고</span>
+              </div>
+              <div class="chart" id="chart">
+                <svg id="chartSvg" role="img" tabindex="0" aria-describedby="chartHelp"></svg>
+                <div class="chart-tip" id="chartTip" hidden></div>
+              </div>
+              <p id="chartHelp" class="sr-only">좌우 방향키로 날짜별 수치를 확인할 수 있습니다.</p>
+            </section>
+
+            <section class="card panel" aria-labelledby="alerts-heading">
+              <div class="panel-head">
+                <div>
+                  <h2 id="alerts-heading">발주 필요</h2>
+                  <p class="muted small">안전재고 대비 부족한 순</p>
+                </div>
+              </div>
+              <ul class="alert-list" id="alertList"></ul>
+            </section>
+          </div>
+
+          <section class="card panel" aria-labelledby="recent-heading">
+            <div class="panel-head">
+              <div>
+                <h2 id="recent-heading">최근 입출고</h2>
+                <p class="muted small">최근 8건</p>
+              </div>
+              <a class="btn btn-secondary btn-sm" href="#/movements">전체 내역</a>
+            </div>
+            <ul class="recent-list" id="recentList"></ul>
+          </section>
+        </section>
+
+        <!-- Inventory -->
+        <section class="view card panel" data-view="inventory" hidden aria-labelledby="pageTitle">
+          <div class="toolbar">
+            <div class="field field-search">
+              <label for="invQ" class="sr-only">품목명 또는 코드 검색</label>
+              <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+              <input id="invQ" type="search" placeholder="품목명, 코드, 위치 검색" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="invCat">카테고리</label>
+              <select id="invCat"><option value="">전체</option></select>
+            </div>
+            <div class="field">
+              <label for="invStatus">상태</label>
+              <select id="invStatus">
+                <option value="">전체</option>
+                <option value="ok">정상</option>
+                <option value="low">부족</option>
+                <option value="out">품절</option>
+              </select>
+            </div>
+          </div>
+          <p class="muted small result-count" id="invCount" aria-live="polite"></p>
+          <div class="table-wrap">
+            <table class="inv-table" id="invTable">
+              <caption class="sr-only">재고 목록. 열 머리글의 버튼으로 정렬할 수 있습니다.</caption>
+              <thead>
+                <tr>
+                  <th scope="col" data-key="name"><button type="button" class="sort-btn">품목<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="category"><button type="button" class="sort-btn">카테고리<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="stock" class="num"><button type="button" class="sort-btn">현재고<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="safety_stock" class="num"><button type="button" class="sort-btn">안전재고<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="cost_price" class="num"><button type="button" class="sort-btn">매입가<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="value" class="num"><button type="button" class="sort-btn">재고 금액<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="status"><button type="button" class="sort-btn">상태<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col"><span class="sr-only">작업</span></th>
+                </tr>
+              </thead>
+              <tbody id="invBody"></tbody>
+            </table>
+            <div class="empty" id="invEmpty" hidden>
+              <svg class="icon icon-lg" aria-hidden="true"><use href="#i-search"/></svg>
+              <p><strong>조건에 맞는 품목이 없습니다.</strong></p>
+              <p class="muted small">검색어나 필터를 바꿔 보세요.</p>
+              <button type="button" class="btn btn-secondary" id="invClear">필터 초기화</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Movements -->
+        <section class="view card panel" data-view="movements" hidden aria-labelledby="pageTitle">
+          <div class="toolbar">
+            <div class="field field-search">
+              <label for="mvQ" class="sr-only">품목명 또는 메모 검색</label>
+              <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+              <input id="mvQ" type="search" placeholder="품목명, 메모, 담당자 검색" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="mvType">구분</label>
+              <select id="mvType">
+                <option value="">전체</option>
+                <option value="receive">입고</option>
+                <option value="use">시술 사용</option>
+                <option value="sale">판매</option>
+                <option value="dispose">폐기</option>
+                <option value="adjust">재고 실사</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="mvDays">기간</label>
+              <select id="mvDays">
+                <option value="1">오늘</option>
+                <option value="7" selected>최근 7일</option>
+                <option value="30">최근 30일</option>
+              </select>
+            </div>
+          </div>
+          <p class="muted small result-count" id="mvCount" aria-live="polite"></p>
+          <div class="table-wrap">
+            <table class="inv-table" id="mvTable">
+              <caption class="sr-only">입출고 내역 (최신순)</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="th-plain">품목 · 일시</th>
+                  <th scope="col" class="th-plain">코드</th>
+                  <th scope="col" class="th-plain">구분</th>
+                  <th scope="col" class="th-plain num">변동</th>
+                  <th scope="col" class="th-plain num">변동 후</th>
+                  <th scope="col" class="th-plain">담당자</th>
+                  <th scope="col" class="th-plain">메모</th>
+                  <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
+                </tr>
+              </thead>
+              <tbody id="mvBody"></tbody>
+            </table>
+            <div class="empty" id="mvEmpty" hidden>
+              <svg class="icon icon-lg" aria-hidden="true"><use href="#i-history"/></svg>
+              <p><strong>이 기간에 기록된 입출고가 없습니다.</strong></p>
+              <p class="muted small">기간을 늘리거나 필터를 바꿔 보세요.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Products (manager) -->
+        <section class="view card panel" data-view="products" hidden aria-labelledby="pageTitle">
+          <div class="toolbar">
+            <div class="field field-search">
+              <label for="pdQ" class="sr-only">품목 검색</label>
+              <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+              <input id="pdQ" type="search" placeholder="품목명, 코드 검색" autocomplete="off" />
+            </div>
+            <button class="btn btn-primary" type="button" id="newProductBtn"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>품목 추가</button>
+          </div>
+          <p class="muted small result-count" id="pdCount" aria-live="polite"></p>
+          <div class="table-wrap">
+            <table class="inv-table" id="pdTable">
+              <caption class="sr-only">품목 목록</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="th-plain">품목</th>
+                  <th scope="col" class="th-plain">카테고리</th>
+                  <th scope="col" class="th-plain">단위</th>
+                  <th scope="col" class="th-plain num">매입가</th>
+                  <th scope="col" class="th-plain num">판매가</th>
+                  <th scope="col" class="th-plain num">안전재고</th>
+                  <th scope="col" class="th-plain">보관 위치</th>
+                  <th scope="col" class="th-plain">사용</th>
+                  <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
+                </tr>
+              </thead>
+              <tbody id="pdBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Movement dialog -->
+  <dialog class="modal" id="moveDialog" aria-labelledby="moveTitle">
+    <form id="moveForm" novalidate>
+      <div class="modal-head">
+        <h2 id="moveTitle">입출고 등록</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="moveErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <div class="form-field">
+          <label for="mItem">품목 <span class="req" aria-hidden="true">*</span></label>
+          <select id="mItem" required aria-describedby="mItemErr"></select>
+          <p class="err" id="mItemErr" hidden></p>
+        </div>
+        <fieldset class="form-field">
+          <legend>구분 <span class="req" aria-hidden="true">*</span></legend>
+          <div class="type-grid" id="typeGrid">
+            <label class="radio"><input type="radio" name="mType" value="receive" checked /> 입고</label>
+            <label class="radio"><input type="radio" name="mType" value="use" /> 시술 사용</label>
+            <label class="radio"><input type="radio" name="mType" value="sale" /> 판매</label>
+            <label class="radio"><input type="radio" name="mType" value="dispose" /> 폐기</label>
+            <label class="radio" data-manager-only><input type="radio" name="mType" value="adjust" /> 재고 실사</label>
+          </div>
+        </fieldset>
+        <div class="form-field">
+          <label for="mQty" id="mQtyLabel">수량 <span class="req" aria-hidden="true">*</span></label>
+          <input id="mQty" type="number" inputmode="numeric" min="0" step="1" required aria-describedby="mPreview mQtyErr" />
+          <p class="help preview" id="mPreview">품목을 선택하면 등록 후 재고를 미리 보여 줍니다.</p>
+          <p class="err" id="mQtyErr" hidden></p>
+        </div>
+        <div class="form-field">
+          <label for="mMemo">메모 <span class="muted small">(선택)</span></label>
+          <input id="mMemo" type="text" maxlength="200" placeholder="예: 거래처 택배, 고객명, 파손 사유" />
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="moveSubmit">등록</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Product dialog -->
+  <dialog class="modal modal-wide" id="productDialog" aria-labelledby="productTitle">
+    <form id="productForm" novalidate>
+      <div class="modal-head">
+        <h2 id="productTitle">품목 추가</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="productErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <div class="form-grid">
+          <div class="form-field span-2">
+            <label for="pName">품목명 <span class="req" aria-hidden="true">*</span></label>
+            <input id="pName" type="text" maxlength="80" required aria-describedby="pNameErr" />
+            <p class="err" id="pNameErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pSku">품목 코드 <span class="req" aria-hidden="true">*</span></label>
+            <input id="pSku" type="text" maxlength="30" required autocapitalize="characters" aria-describedby="pSkuHelp pSkuErr" />
+            <p class="help" id="pSkuHelp">영문·숫자·하이픈. 예: CL-6N</p>
+            <p class="err" id="pSkuErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pBrand">브랜드 <span class="muted small">(선택)</span></label>
+            <input id="pBrand" type="text" maxlength="40" />
+          </div>
+          <div class="form-field">
+            <label for="pCategory">카테고리 <span class="req" aria-hidden="true">*</span></label>
+            <input id="pCategory" type="text" list="categoryList" maxlength="30" required aria-describedby="pCategoryErr" />
+            <datalist id="categoryList"></datalist>
+            <p class="err" id="pCategoryErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pUnit">단위 <span class="req" aria-hidden="true">*</span></label>
+            <input id="pUnit" type="text" list="unitList" maxlength="10" required aria-describedby="pUnitErr" />
+            <datalist id="unitList"><option value="개"></option><option value="병"></option><option value="통"></option><option value="박스"></option><option value="팩"></option><option value="롤"></option><option value="세트"></option></datalist>
+            <p class="err" id="pUnitErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pCost">매입가 (원) <span class="req" aria-hidden="true">*</span></label>
+            <input id="pCost" type="number" inputmode="numeric" min="0" step="10" required aria-describedby="pCostErr" />
+            <p class="err" id="pCostErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pRetail">판매가 (원) <span class="muted small">(판매용만)</span></label>
+            <input id="pRetail" type="number" inputmode="numeric" min="0" step="10" aria-describedby="pRetailErr" />
+            <p class="err" id="pRetailErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pSafety">안전재고 <span class="req" aria-hidden="true">*</span></label>
+            <input id="pSafety" type="number" inputmode="numeric" min="0" step="1" required aria-describedby="pSafetyHelp pSafetyErr" />
+            <p class="help" id="pSafetyHelp">이 수량 이하가 되면 발주 필요로 표시합니다.</p>
+            <p class="err" id="pSafetyErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pLocation">보관 위치 <span class="muted small">(선택)</span></label>
+            <input id="pLocation" type="text" maxlength="30" placeholder="예: 염색실 A" />
+          </div>
+          <div class="form-field span-2 checks">
+            <label class="check"><input type="checkbox" id="pRetailFlag" /> 고객 판매용 품목</label>
+            <label class="check"><input type="checkbox" id="pActive" checked /> 사용 중 (해제하면 입출고 목록에서 숨김)</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="productSubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="vendor/supabase-2.117.1.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
