@@ -155,3 +155,18 @@ input:disabled, select:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn-ghost-danger { background: transparent; border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }
 .btn-ghost-danger:hover { background: var(--danger-soft); }
 .pos { font-variant-numeric: tabular-nums; color: var(--fg-muted); min-width: 1.5em; display: inline-block; }
+
+/* Category rows open a product summary */
+#catBody tr[data-cat-open] { cursor: pointer; }
+.cat-open-btn { background: none; border: 0; padding: 4px 0; font: inherit; font-weight: 600; color: var(--fg); text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 4px; }
+.cat-open-btn:hover { text-decoration-color: var(--accent); }
+.cat-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: 0 0 var(--space-4); }
+.cat-stats div { padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
+.cat-stats dt { font-size: 12.5px; color: var(--fg-muted); }
+.cat-stats dd { margin: 2px 0 0; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cat-stats .warn dd { color: var(--warn); }
+.cat-stats .out dd { color: var(--danger); }
+#catDetailDialog .modal-head { align-items: flex-start; }
+@media (max-width: 767px) {
+  .cat-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
