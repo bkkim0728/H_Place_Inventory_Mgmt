@@ -6,6 +6,8 @@
 
 /* Role gating */
 body[data-role="staff"] [data-manager-only] { display: none !important; }
+body:not([data-role="admin"]) [data-admin-only] { display: none !important; }
+body[data-role="admin"] [data-manager-note] { display: none !important; }
 
 /* Full-page screens: loading, login, pending */
 .screen { min-height: 100dvh; display: grid; place-items: center; padding: var(--space-4); }
@@ -108,4 +110,42 @@ tr.is-reversal td { color: var(--fg-muted); }
   .memo { max-width: none; }
   .branch-select { max-width: 120px; }
   #refreshBtn { display: none; }
+}
+
+/* Navigation sections */
+.nav-section { margin: var(--space-4) var(--space-3) var(--space-1); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--fg-muted); }
+
+.demo-tools { display: inline-flex; align-items: center; gap: var(--space-2); }
+.demo-tools label { font-weight: 600; }
+.demo-tools select { min-height: 32px; padding: 0 var(--space-3); font-size: 13px; border-radius: 999px; }
+
+.note { padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); background: var(--violet-soft); font-size: 13.5px; margin: 0 0 var(--space-3); }
+.toolbar .note.grow { flex: 1; margin: 0; }
+.role-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.role-grid .radio { flex: none; }
+.radio:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+input:disabled, select:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Role / status tags */
+.tag-admin { background: var(--accent-soft); color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+.tag-manager { background: var(--violet-soft); color: var(--violet-text); }
+.tag-staff { background: var(--surface-2); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.tag-off { background: var(--danger-soft); color: var(--danger); }
+.tag-warn { background: var(--warn-soft); color: var(--warn); }
+.you { font-size: 11.5px; font-weight: 700; color: var(--violet-text); margin-left: 6px; }
+
+/* Invitations */
+.invite-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.invite-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: 12px 0; border-bottom: 1px solid var(--border); }
+.invite-list li:last-child { border-bottom: 0; }
+.invite-list .i-mail { font-weight: 600; overflow-wrap: anywhere; }
+.invite-list .i-meta { font-size: 12.5px; color: var(--fg-muted); }
+.invite-empty { color: var(--fg-muted); padding: var(--space-3) 0; }
+
+@media (max-width: 767px) {
+  .role-grid { grid-template-columns: minmax(0, 1fr); }
+  .demo-tools { width: 100%; }
+  .demo-tools select { flex: 1; min-width: 0; }
+  .invite-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .invite-list li > .tag { display: none; }
 }

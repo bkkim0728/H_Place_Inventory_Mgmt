@@ -5,14 +5,24 @@
 -- Designed for multiple branches (12개 지점) from day one; the prototype
 -- starts with a single branch.
 --
+-- Roles
+--   admin   (전체 관리자)  every branch: branches, users, product catalog, stock
+--   manager (지점 관리자)  own branch only: branch info, its users, safety stock
+--                          and storage locations, stock (incl. 재고 실사)
+--   staff   (직원)         own branch stock movements
+--
 -- Security model
 --   * Every table has Row Level Security. Users only see rows of the branch
---     assigned to them in `profiles` (role 'admin' sees every branch).
---   * Clients never write tables directly. Stock changes go through
---     `record_movement()` so every change is logged in `stock_movements`,
---     and product edits go through `save_product()` (manager/admin only).
---   * New sign-ups get a profile with no branch (no data access) until a
---     manager/admin assigns one. See README.md.
+--     assigned to them in `profiles`; admins see every branch. Deactivated
+--     profiles (active = false) see nothing.
+--   * Clients never write tables directly. Every change goes through a
+--     security-definer function below that checks the caller's role, so
+--     every stock change is logged in `stock_movements`.
+--   * Accounts are created by invitation: an admin/manager invites an email
+--     with a branch and role; signing up with that email applies them.
+--     Sign-ups without an invitation get no branch and therefore no data.
+--   * Nobody can change their own role, branch or active flag, and the last
+--     active admin cannot be demoted or deactivated.
 -- ============================================================================
 
 
@@ -37,16 +47,45 @@ create table if not exists public.branches (
   id          uuid primary key default gen_random_uuid(),
   code        text not null unique,
   name        text not null,
+  phone       text,
+  address     text,
+  active      boolean not null default true,
   created_at  timestamptz not null default now()
 );
+-- Columns added after the first version (keeps re-runs safe on older installs)
+alter table public.branches add column if not exists phone   text;
+alter table public.branches add column if not exists address text;
+alter table public.branches add column if not exists active  boolean not null default true;
 
 create table if not exists public.profiles (
   user_id     uuid primary key references auth.users(id) on delete cascade,
   branch_id   uuid references public.branches(id) on delete set null,
+  email       text,
   full_name   text,
   role        public.app_role not null default 'staff',
+  active      boolean not null default true,
   created_at  timestamptz not null default now()
 );
+alter table public.profiles add column if not exists email  text;
+alter table public.profiles add column if not exists active boolean not null default true;
+create index if not exists profiles_branch_idx on public.profiles (branch_id);
+create index if not exists profiles_email_idx  on public.profiles (lower(email));
+
+-- Pending account invitations. Signing up with the email applies branch + role.
+create table if not exists public.invitations (
+  id           uuid primary key default gen_random_uuid(),
+  email        text not null,
+  full_name    text,
+  branch_id    uuid references public.branches(id) on delete cascade,
+  role         public.app_role not null default 'staff',
+  invited_by   uuid references auth.users(id) on delete set null,
+  created_at   timestamptz not null default now(),
+  accepted_at  timestamptz,
+  accepted_by  uuid references auth.users(id) on delete set null,
+  constraint invitations_branch_required check (role = 'admin' or branch_id is not null)
+);
+create unique index if not exists invitations_pending_email_idx
+  on public.invitations (lower(email)) where accepted_at is null;
 
 -- Product catalog is shared by all branches; stock lives in `inventory`.
 create table if not exists public.products (
@@ -95,13 +134,23 @@ create index if not exists stock_movements_product_idx
 -- ---------------------------------------------------------------------------
 -- Access helpers (security definer so policies don't recurse into profiles)
 -- ---------------------------------------------------------------------------
+create or replace function public.is_admin()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.user_id = auth.uid() and p.active and p.role = 'admin'
+  );
+$$;
+
 create or replace function public.is_branch_member(p_branch_id uuid)
 returns boolean
 language sql stable security definer set search_path = public
 as $$
   select exists (
     select 1 from public.profiles p
-    where p.user_id = auth.uid()
+    where p.user_id = auth.uid() and p.active
       and (p.role = 'admin' or p.branch_id = p_branch_id)
   );
 $$;
@@ -112,10 +161,16 @@ language sql stable security definer set search_path = public
 as $$
   select exists (
     select 1 from public.profiles p
-    where p.user_id = auth.uid()
+    where p.user_id = auth.uid() and p.active
       and (p.role = 'admin' or (p.role = 'manager' and p.branch_id = p_branch_id))
   );
 $$;
+
+-- Invitations expire after 14 days.
+create or replace function public.invitation_is_open(i public.invitations)
+returns boolean
+language sql immutable
+as $$ select i.accepted_at is null and i.created_at > now() - interval '14 days' $$;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
@@ -125,6 +180,7 @@ alter table public.profiles        enable row level security;
 alter table public.products        enable row level security;
 alter table public.inventory       enable row level security;
 alter table public.stock_movements enable row level security;
+alter table public.invitations     enable row level security;
 
 drop policy if exists "branches: members read" on public.branches;
 create policy "branches: members read" on public.branches
@@ -147,11 +203,16 @@ drop policy if exists "movements: members read" on public.stock_movements;
 create policy "movements: members read" on public.stock_movements
   for select to authenticated using (public.is_branch_member(branch_id));
 
+drop policy if exists "invitations: admins and branch managers read" on public.invitations;
+create policy "invitations: admins and branch managers read" on public.invitations
+  for select to authenticated
+  using (public.is_admin() or (branch_id is not null and role <> 'admin' and public.is_branch_manager(branch_id)));
+
 -- Reads only; all writes go through the functions below.
 revoke all on public.branches, public.profiles, public.products,
-              public.inventory, public.stock_movements from anon, authenticated;
+              public.inventory, public.stock_movements, public.invitations from anon, authenticated;
 grant select on public.branches, public.profiles, public.products,
-                public.inventory, public.stock_movements to authenticated;
+                public.inventory, public.stock_movements, public.invitations to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Views (security_invoker: the caller's RLS applies)
@@ -329,10 +390,12 @@ begin
 end;
 $$;
 
+
 -- ---------------------------------------------------------------------------
--- save_product: create/update a catalog item and its branch settings
--- (manager/admin). Returns the product id.
--- Errors: MANAGER_ONLY, INVALID_PRODUCT, DUPLICATE_SKU, PRODUCT_NOT_FOUND
+-- save_product: create/update a catalog item (admin only; the catalog is shared
+-- by every branch). A new product gets an inventory row in every branch.
+-- p_branch_id / p_safety_stock / p_location also set that branch's settings.
+-- Errors: ADMIN_ONLY, INVALID_PRODUCT, DUPLICATE_SKU, PRODUCT_NOT_FOUND
 -- ---------------------------------------------------------------------------
 create or replace function public.save_product(
   p_branch_id     uuid,
@@ -355,8 +418,8 @@ as $$
 declare
   v_id uuid;
 begin
-  if not public.is_branch_manager(p_branch_id) then
-    raise exception 'MANAGER_ONLY' using errcode = '42501';
+  if not public.is_admin() then
+    raise exception 'ADMIN_ONLY' using errcode = '42501';
   end if;
   if coalesce(btrim(p_sku), '') = '' or coalesce(btrim(p_name), '') = ''
      or coalesce(btrim(p_category), '') = '' or coalesce(btrim(p_unit), '') = ''
@@ -374,6 +437,10 @@ begin
          btrim(p_unit), coalesce(p_cost_price, 0), p_retail_price, coalesce(p_is_retail, false),
          coalesce(p_active, true))
       returning id into v_id;
+
+      insert into public.inventory (branch_id, product_id)
+      select b.id, v_id from public.branches b
+      on conflict do nothing;
     else
       update public.products
          set sku = upper(btrim(p_sku)), name = btrim(p_name), brand = nullif(btrim(p_brand), ''),
@@ -390,35 +457,349 @@ begin
     raise exception 'DUPLICATE_SKU' using errcode = '23505';
   end;
 
-  insert into public.inventory (branch_id, product_id, safety_stock, location)
-  values (p_branch_id, v_id, coalesce(p_safety_stock, 0), nullif(btrim(p_location), ''))
-  on conflict (branch_id, product_id) do update
-    set safety_stock = excluded.safety_stock,
-        location     = excluded.location,
-        updated_at   = now();
-
+  if p_branch_id is not null then
+    perform public.set_branch_item(p_branch_id, v_id, coalesce(p_safety_stock, 0), p_location);
+  end if;
   return v_id;
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- set_branch_item: a branch's own settings for a product (manager of that
+-- branch, or admin). Errors: MANAGER_ONLY, INVALID_PRODUCT, PRODUCT_NOT_FOUND
+-- ---------------------------------------------------------------------------
+create or replace function public.set_branch_item(
+  p_branch_id     uuid,
+  p_product_id    uuid,
+  p_safety_stock  integer,
+  p_location      text
+)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.is_branch_manager(p_branch_id) then
+    raise exception 'MANAGER_ONLY' using errcode = '42501';
+  end if;
+  if p_safety_stock is null or p_safety_stock < 0 then
+    raise exception 'INVALID_PRODUCT' using errcode = '22023';
+  end if;
+  if not exists (select 1 from public.products where id = p_product_id) then
+    raise exception 'PRODUCT_NOT_FOUND' using errcode = 'P0002';
+  end if;
+
+  insert into public.inventory (branch_id, product_id, safety_stock, location)
+  values (p_branch_id, p_product_id, p_safety_stock, nullif(btrim(p_location), ''))
+  on conflict (branch_id, product_id) do update
+    set safety_stock = excluded.safety_stock,
+        location     = excluded.location,
+        updated_at   = now();
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- save_branch: admins create/update any branch; a branch manager may update
+-- their own branch's name, phone and address (code and active stay as they are).
+-- A new branch gets an inventory row for every product.
+-- Errors: FORBIDDEN, INVALID_BRANCH, DUPLICATE_BRANCH_CODE, BRANCH_NOT_FOUND
+-- ---------------------------------------------------------------------------
+create or replace function public.save_branch(
+  p_branch_id  uuid,          -- null → create (admin only)
+  p_code       text,
+  p_name       text,
+  p_phone      text,
+  p_address    text,
+  p_active     boolean default true
+)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id    uuid;
+  v_admin boolean := public.is_admin();
+begin
+  if not v_admin and (p_branch_id is null or not public.is_branch_manager(p_branch_id)) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if coalesce(btrim(p_name), '') = ''
+     or (v_admin and coalesce(upper(btrim(p_code)), '') !~ '^[A-Z0-9-]{2,12}$') then
+    raise exception 'INVALID_BRANCH' using errcode = '22023';
+  end if;
+
+  begin
+    if p_branch_id is null then
+      insert into public.branches (code, name, phone, address, active)
+      values (upper(btrim(p_code)), btrim(p_name), nullif(btrim(p_phone), ''),
+              nullif(btrim(p_address), ''), coalesce(p_active, true))
+      returning id into v_id;
+
+      insert into public.inventory (branch_id, product_id)
+      select v_id, p.id from public.products p
+      on conflict do nothing;
+    elsif v_admin then
+      update public.branches
+         set code = upper(btrim(p_code)), name = btrim(p_name),
+             phone = nullif(btrim(p_phone), ''), address = nullif(btrim(p_address), ''),
+             active = coalesce(p_active, true)
+       where id = p_branch_id
+      returning id into v_id;
+    else
+      update public.branches
+         set name = btrim(p_name), phone = nullif(btrim(p_phone), ''),
+             address = nullif(btrim(p_address), '')
+       where id = p_branch_id
+      returning id into v_id;
+    end if;
+  exception when unique_violation then
+    raise exception 'DUPLICATE_BRANCH_CODE' using errcode = '23505';
+  end;
+
+  if v_id is null then
+    raise exception 'BRANCH_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  return v_id;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- list_users: admins pass null for every user (including unassigned sign-ups)
+-- or a branch id; managers must pass their own branch id.
+-- Errors: FORBIDDEN
+-- ---------------------------------------------------------------------------
+create or replace function public.list_users(p_branch_id uuid default null)
+returns table (
+  user_id          uuid,
+  email            text,
+  full_name        text,
+  role             public.app_role,
+  branch_id        uuid,
+  branch_name      text,
+  active           boolean,
+  created_at       timestamptz,
+  last_sign_in_at  timestamptz
+)
+language plpgsql stable security definer set search_path = public
+as $$
+#variable_conflict use_column
+begin
+  if not (public.is_admin() or (p_branch_id is not null and public.is_branch_manager(p_branch_id))) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+
+  return query
+    select p.user_id, coalesce(p.email, u.email::text), p.full_name, p.role, p.branch_id,
+           b.name, p.active, p.created_at, u.last_sign_in_at
+      from public.profiles p
+      join auth.users u on u.id = p.user_id
+      left join public.branches b on b.id = p.branch_id
+     where p_branch_id is null or p.branch_id = p_branch_id
+     order by b.code nulls first, p.role desc, p.full_name;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- invite_user: invite an email to a branch with a role.
+--   admin   → any branch, any role ('admin' invites have no branch)
+--   manager → own branch, role staff or manager
+-- If an unassigned account with that email already exists it is assigned
+-- right away ('assigned'); otherwise an invitation is stored ('invited').
+-- Errors: INVALID_EMAIL, FORBIDDEN, BRANCH_NOT_FOUND, USER_EXISTS, INVITE_EXISTS
+-- ---------------------------------------------------------------------------
+create or replace function public.invite_user(
+  p_email      text,
+  p_full_name  text,
+  p_branch_id  uuid,
+  p_role       public.app_role
+)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_email  text := lower(btrim(p_email));
+  v_branch uuid := case when p_role = 'admin' then null else p_branch_id end;
+  v_prof   public.profiles;
+begin
+  if v_email is null or v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
+    raise exception 'INVALID_EMAIL' using errcode = '22023';
+  end if;
+  if p_role = 'admin' then
+    if not public.is_admin() then
+      raise exception 'FORBIDDEN' using errcode = '42501';
+    end if;
+  else
+    if v_branch is null or not public.is_branch_manager(v_branch) then
+      raise exception 'FORBIDDEN' using errcode = '42501';
+    end if;
+    if not exists (select 1 from public.branches where id = v_branch and active) then
+      raise exception 'BRANCH_NOT_FOUND' using errcode = 'P0002';
+    end if;
+  end if;
+
+  select * into v_prof from public.profiles where lower(email) = v_email;
+  if found then
+    if v_prof.branch_id is null and v_prof.role <> 'admin' then
+      update public.profiles
+         set branch_id = v_branch, role = p_role, active = true,
+             full_name = coalesce(nullif(btrim(p_full_name), ''), full_name)
+       where user_id = v_prof.user_id;
+      return 'assigned';
+    end if;
+    raise exception 'USER_EXISTS' using errcode = '23505';
+  end if;
+
+  -- Replace an expired invitation for the same email; refuse a live one.
+  delete from public.invitations i
+   where lower(i.email) = v_email and i.accepted_at is null and not public.invitation_is_open(i);
+  begin
+    insert into public.invitations (email, full_name, branch_id, role, invited_by)
+    values (v_email, nullif(btrim(p_full_name), ''), v_branch, p_role, auth.uid());
+  exception when unique_violation then
+    raise exception 'INVITE_EXISTS' using errcode = '23505';
+  end;
+  return 'invited';
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- cancel_invitation. Errors: INVITE_NOT_FOUND, FORBIDDEN
+-- ---------------------------------------------------------------------------
+create or replace function public.cancel_invitation(p_invitation_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_inv public.invitations;
+begin
+  select * into v_inv from public.invitations where id = p_invitation_id and accepted_at is null;
+  if not found then
+    raise exception 'INVITE_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if not (public.is_admin()
+          or (v_inv.role <> 'admin' and v_inv.branch_id is not null and public.is_branch_manager(v_inv.branch_id))) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  delete from public.invitations where id = p_invitation_id;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- update_user: change another user's name, branch, role and active flag.
+--   admin   → anyone; 'admin' role means no branch. Cannot remove the last
+--             active admin.
+--   manager → users of their own branch who are not admins; role staff or
+--             manager; branch may only stay the same or be cleared (release).
+--   Anyone may change only their own name.
+-- Errors: USER_NOT_FOUND, CANNOT_CHANGE_SELF, FORBIDDEN, LAST_ADMIN,
+--         BRANCH_NOT_FOUND
+-- ---------------------------------------------------------------------------
+create or replace function public.update_user(
+  p_user_id    uuid,
+  p_full_name  text,
+  p_branch_id  uuid,
+  p_role       public.app_role,
+  p_active     boolean
+)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_target public.profiles;
+  v_branch uuid := case when p_role = 'admin' then null else p_branch_id end;
+begin
+  if auth.uid() is null then
+    raise exception 'NOT_AUTHENTICATED' using errcode = '28000';
+  end if;
+  select * into v_target from public.profiles where user_id = p_user_id;
+  if not found then
+    raise exception 'USER_NOT_FOUND' using errcode = 'P0002';
+  end if;
+
+  if p_user_id = auth.uid() then
+    if v_target.role is distinct from p_role
+       or v_target.branch_id is distinct from v_branch
+       or v_target.active is distinct from p_active then
+      raise exception 'CANNOT_CHANGE_SELF' using errcode = '42501';
+    end if;
+  elsif public.is_admin() then
+    if v_branch is not null and not exists (select 1 from public.branches where id = v_branch) then
+      raise exception 'BRANCH_NOT_FOUND' using errcode = 'P0002';
+    end if;
+    if v_target.role = 'admin' and v_target.active
+       and (p_role <> 'admin' or not p_active)
+       and (select count(*) from public.profiles where role = 'admin' and active) <= 1 then
+      raise exception 'LAST_ADMIN' using errcode = '42501';
+    end if;
+  else
+    if v_target.role = 'admin'
+       or v_target.branch_id is null
+       or not public.is_branch_manager(v_target.branch_id)
+       or p_role not in ('staff', 'manager')
+       or (v_branch is not null and v_branch <> v_target.branch_id) then
+      raise exception 'FORBIDDEN' using errcode = '42501';
+    end if;
+  end if;
+
+  update public.profiles
+     set full_name = coalesce(nullif(btrim(p_full_name), ''), full_name),
+         branch_id = v_branch,
+         role      = p_role,
+         active    = p_active
+   where user_id = p_user_id;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Function privileges: signed-in users only (each function checks the role)
+-- ---------------------------------------------------------------------------
 revoke all on function public.record_movement(uuid, uuid, public.movement_type, integer, text) from public, anon;
 revoke all on function public.revert_movement(bigint) from public, anon;
 revoke all on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) from public, anon;
+revoke all on function public.set_branch_item(uuid, uuid, integer, text) from public, anon;
+revoke all on function public.save_branch(uuid, text, text, text, text, boolean) from public, anon;
+revoke all on function public.list_users(uuid) from public, anon;
+revoke all on function public.invite_user(text, text, uuid, public.app_role) from public, anon;
+revoke all on function public.cancel_invitation(uuid) from public, anon;
+revoke all on function public.update_user(uuid, text, uuid, public.app_role, boolean) from public, anon;
 grant execute on function public.record_movement(uuid, uuid, public.movement_type, integer, text) to authenticated;
 grant execute on function public.revert_movement(bigint) to authenticated;
 grant execute on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) to authenticated;
+grant execute on function public.set_branch_item(uuid, uuid, integer, text) to authenticated;
+grant execute on function public.save_branch(uuid, text, text, text, text, boolean) to authenticated;
+grant execute on function public.list_users(uuid) to authenticated;
+grant execute on function public.invite_user(text, text, uuid, public.app_role) to authenticated;
+grant execute on function public.cancel_invitation(uuid) to authenticated;
+grant execute on function public.update_user(uuid, text, uuid, public.app_role, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- New users get a profile without a branch (no data access until assigned)
+-- New users: apply an open invitation for their email if there is one;
+-- otherwise the profile has no branch (no data access until assigned).
 -- ---------------------------------------------------------------------------
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql security definer set search_path = public
 as $$
+declare
+  v_inv public.invitations;
 begin
-  insert into public.profiles (user_id, full_name)
-  values (new.id, coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)))
+  select * into v_inv
+    from public.invitations i
+   where lower(i.email) = lower(new.email) and public.invitation_is_open(i)
+   order by i.created_at desc
+   limit 1;
+
+  insert into public.profiles (user_id, email, full_name, branch_id, role)
+  values (
+    new.id,
+    lower(new.email),
+    coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), v_inv.full_name, split_part(new.email, '@', 1)),
+    v_inv.branch_id,
+    coalesce(v_inv.role, 'staff')
+  )
   on conflict (user_id) do nothing;
+
+  if v_inv.id is not null then
+    update public.invitations set accepted_at = now(), accepted_by = new.id where id = v_inv.id;
+  end if;
   return new;
 end;
 $$;
@@ -427,3 +808,9 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Backfill emails for profiles created before the email column existed.
+update public.profiles p
+   set email = lower(u.email)
+  from auth.users u
+ where u.id = p.user_id and p.email is null;

@@ -44,6 +44,10 @@
       <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></symbol>
       <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></symbol>
       <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+      <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9 4.5 4h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0Z"/><path d="M5 13v8h14v-8M10 21v-5h4v5"/></symbol>
+      <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     </defs>
   </svg>
@@ -75,7 +79,33 @@
         </div>
       </div>
       <button class="btn btn-primary btn-block" id="loginBtn" type="submit">로그인</button>
-      <p class="muted small center">계정은 점장 또는 본사 관리자가 발급합니다.</p>
+      <p class="muted small center">초대를 받으셨나요? <button type="button" class="link-btn" id="toSignup">초대받은 이메일로 가입하기</button></p>
+    </form>
+
+    <form class="screen-card card login" id="signupForm" novalidate hidden>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-scissors"/></svg></span>
+        <span class="brand-name">H Place<small>살롱 재고관리</small></span>
+      </div>
+      <h1>계정 만들기</h1>
+      <p class="muted small">관리자에게 초대받은 이메일로 가입하면 지점과 역할이 자동으로 적용됩니다.</p>
+      <p class="err-box" id="signupError" role="alert" hidden></p>
+      <p class="demo-note" id="signupDone" role="status" hidden></p>
+      <div class="form-field">
+        <label for="suName">이름</label>
+        <input id="suName" type="text" autocomplete="name" maxlength="40" required />
+      </div>
+      <div class="form-field">
+        <label for="suEmail">초대받은 이메일</label>
+        <input id="suEmail" type="email" autocomplete="email" required />
+      </div>
+      <div class="form-field">
+        <label for="suPassword">비밀번호</label>
+        <input id="suPassword" type="password" autocomplete="new-password" minlength="8" required aria-describedby="suPwHelp" />
+        <p class="help" id="suPwHelp">8자 이상</p>
+      </div>
+      <button class="btn btn-primary btn-block" id="signupBtn" type="submit">가입하기</button>
+      <p class="muted small center"><button type="button" class="link-btn" id="toLogin">이미 계정이 있으면 로그인</button></p>
     </form>
   </div>
 
@@ -83,8 +113,8 @@
   <div class="screen" id="screenPending" hidden>
     <div class="screen-card card">
       <span class="kpi-icon tone-violet big-icon" aria-hidden="true"><svg class="icon"><use href="#i-clock"/></svg></span>
-      <h1>지점 배정을 기다리고 있어요</h1>
-      <p class="muted"><strong id="pendingEmail"></strong> 계정이 아직 지점에 배정되지 않았습니다. 점장에게 이 이메일을 알려 주고 배정을 요청해 주세요.</p>
+      <h1 id="pendingTitle">지점 배정을 기다리고 있어요</h1>
+      <p class="muted" id="pendingText"><strong id="pendingEmail"></strong> 계정이 아직 지점에 배정되지 않았습니다. 지점 관리자에게 이 이메일을 알려 주고 배정을 요청해 주세요.</p>
       <div class="row-gap">
         <button class="btn btn-secondary" type="button" id="pendingRetry">다시 확인</button>
         <button class="btn btn-secondary" type="button" data-signout>로그아웃</button>
@@ -104,7 +134,12 @@
           <li><a href="#/dashboard" class="nav-link" data-route="dashboard"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>대시보드</a></li>
           <li><a href="#/inventory" class="nav-link" data-route="inventory"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>재고 목록<span class="nav-badge" id="navAlertCount" data-zero="true">0</span></a></li>
           <li><a href="#/movements" class="nav-link" data-route="movements"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>입출고 내역</a></li>
-          <li data-manager-only><a href="#/products" class="nav-link" data-route="products"><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>품목 관리</a></li>
+        </ul>
+        <p class="nav-section" data-manager-only>관리</p>
+        <ul class="nav-list" data-manager-only>
+          <li><a href="#/products" class="nav-link" data-route="products"><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>품목 관리</a></li>
+          <li><a href="#/users" class="nav-link" data-route="users"><svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>사용자 관리</a></li>
+          <li><a href="#/branches" class="nav-link" data-route="branches"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>지점 관리</a></li>
         </ul>
       </nav>
       <div class="sidebar-foot">
@@ -119,8 +154,16 @@
 
     <div class="main-wrap">
       <div class="demo-banner" id="demoBanner" hidden>
-        <span><strong>데모 모드</strong> · Supabase가 연결되지 않아 샘플 데이터로 실행 중입니다. 변경 내용은 이 브라우저에만 저장됩니다.</span>
-        <button type="button" class="link-btn" id="demoReset">샘플 데이터로 초기화</button>
+        <span><strong>데모 모드</strong> · 샘플 데이터로 실행 중이며 변경 내용은 이 브라우저에만 저장됩니다.</span>
+        <span class="demo-tools">
+          <label for="demoRole">역할 보기</label>
+          <select id="demoRole">
+            <option value="admin">전체 관리자 (본사)</option>
+            <option value="manager">지점 관리자 (1호점)</option>
+            <option value="staff">직원 (1호점)</option>
+          </select>
+          <button type="button" class="link-btn" id="demoReset">초기화</button>
+        </span>
       </div>
       <header class="topbar">
         <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="메뉴 열기" aria-controls="sidebar" aria-expanded="false">
@@ -325,8 +368,9 @@
               <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
               <input id="pdQ" type="search" placeholder="품목명, 코드 검색" autocomplete="off" />
             </div>
-            <button class="btn btn-primary" type="button" id="newProductBtn"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>품목 추가</button>
+            <button class="btn btn-primary" type="button" id="newProductBtn" data-admin-only><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>품목 추가</button>
           </div>
+          <p class="note" data-manager-note>품목 목록은 모든 지점이 함께 씁니다. 품목 추가와 이름·가격 변경은 전체 관리자가 하고, 지점 관리자는 이 지점의 안전재고와 보관 위치를 설정합니다.</p>
           <p class="muted small result-count" id="pdCount" aria-live="polite"></p>
           <div class="table-wrap">
             <table class="inv-table" id="pdTable">
@@ -345,6 +389,76 @@
                 </tr>
               </thead>
               <tbody id="pdBody"></tbody>
+            </table>
+          </div>
+        </section>
+        <!-- Users (manager+) -->
+        <section class="view" data-view="users" hidden aria-labelledby="pageTitle">
+          <div class="card panel">
+            <div class="toolbar">
+              <div class="field field-search">
+                <label for="usQ" class="sr-only">이름 또는 이메일 검색</label>
+                <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+                <input id="usQ" type="search" placeholder="이름, 이메일 검색" autocomplete="off" />
+              </div>
+              <div class="field" data-admin-only>
+                <label for="usBranch">지점</label>
+                <select id="usBranch"></select>
+              </div>
+              <button class="btn btn-primary" type="button" id="inviteBtn"><svg class="icon" aria-hidden="true"><use href="#i-mail"/></svg>사용자 초대</button>
+            </div>
+            <p class="muted small result-count" id="usCount" aria-live="polite"></p>
+            <div class="table-wrap">
+              <table class="inv-table" id="usTable">
+                <caption class="sr-only">사용자 목록</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" class="th-plain">사용자</th>
+                    <th scope="col" class="th-plain">지점</th>
+                    <th scope="col" class="th-plain">역할</th>
+                    <th scope="col" class="th-plain">상태</th>
+                    <th scope="col" class="th-plain">최근 로그인</th>
+                    <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
+                  </tr>
+                </thead>
+                <tbody id="usBody"></tbody>
+              </table>
+              <div class="empty" id="usEmpty" hidden>
+                <svg class="icon icon-lg" aria-hidden="true"><use href="#i-users"/></svg>
+                <p><strong>조건에 맞는 사용자가 없습니다.</strong></p>
+              </div>
+            </div>
+          </div>
+          <section class="card panel" aria-labelledby="inv-heading">
+            <div class="panel-head">
+              <div>
+                <h2 id="inv-heading">대기 중인 초대</h2>
+                <p class="muted small">초대받은 사람이 해당 이메일로 가입하면 자동으로 배정됩니다. 14일 뒤 만료됩니다.</p>
+              </div>
+            </div>
+            <ul class="invite-list" id="inviteList"></ul>
+          </section>
+        </section>
+
+        <!-- Branches (manager+) -->
+        <section class="view card panel" data-view="branches" hidden aria-labelledby="pageTitle">
+          <div class="toolbar">
+            <p class="note grow" id="branchNote"></p>
+            <button class="btn btn-primary" type="button" id="newBranchBtn" data-admin-only><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>지점 추가</button>
+          </div>
+          <div class="table-wrap">
+            <table class="inv-table" id="brTable">
+              <caption class="sr-only">지점 목록</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="th-plain">지점</th>
+                  <th scope="col" class="th-plain">연락처</th>
+                  <th scope="col" class="th-plain">주소</th>
+                  <th scope="col" class="th-plain">상태</th>
+                  <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
+                </tr>
+              </thead>
+              <tbody id="brBody"></tbody>
             </table>
           </div>
         </section>
@@ -403,42 +517,43 @@
       </div>
       <div class="modal-body">
         <div class="error-summary" id="productErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <p class="note" id="productScopeNote" hidden>품목 이름·코드·가격은 전체 관리자만 바꿀 수 있습니다. 이 지점의 안전재고와 보관 위치만 저장됩니다.</p>
         <div class="form-grid">
           <div class="form-field span-2">
             <label for="pName">품목명 <span class="req" aria-hidden="true">*</span></label>
-            <input id="pName" type="text" maxlength="80" required aria-describedby="pNameErr" />
+            <input data-catalog id="pName" type="text" maxlength="80" required aria-describedby="pNameErr" />
             <p class="err" id="pNameErr" hidden></p>
           </div>
           <div class="form-field">
             <label for="pSku">품목 코드 <span class="req" aria-hidden="true">*</span></label>
-            <input id="pSku" type="text" maxlength="30" required autocapitalize="characters" aria-describedby="pSkuHelp pSkuErr" />
+            <input data-catalog id="pSku" type="text" maxlength="30" required autocapitalize="characters" aria-describedby="pSkuHelp pSkuErr" />
             <p class="help" id="pSkuHelp">영문·숫자·하이픈. 예: CL-6N</p>
             <p class="err" id="pSkuErr" hidden></p>
           </div>
           <div class="form-field">
             <label for="pBrand">브랜드 <span class="muted small">(선택)</span></label>
-            <input id="pBrand" type="text" maxlength="40" />
+            <input data-catalog id="pBrand" type="text" maxlength="40" />
           </div>
           <div class="form-field">
             <label for="pCategory">카테고리 <span class="req" aria-hidden="true">*</span></label>
-            <input id="pCategory" type="text" list="categoryList" maxlength="30" required aria-describedby="pCategoryErr" />
+            <input data-catalog id="pCategory" type="text" list="categoryList" maxlength="30" required aria-describedby="pCategoryErr" />
             <datalist id="categoryList"></datalist>
             <p class="err" id="pCategoryErr" hidden></p>
           </div>
           <div class="form-field">
             <label for="pUnit">단위 <span class="req" aria-hidden="true">*</span></label>
-            <input id="pUnit" type="text" list="unitList" maxlength="10" required aria-describedby="pUnitErr" />
+            <input data-catalog id="pUnit" type="text" list="unitList" maxlength="10" required aria-describedby="pUnitErr" />
             <datalist id="unitList"><option value="개"></option><option value="병"></option><option value="통"></option><option value="박스"></option><option value="팩"></option><option value="롤"></option><option value="세트"></option></datalist>
             <p class="err" id="pUnitErr" hidden></p>
           </div>
           <div class="form-field">
             <label for="pCost">매입가 (원) <span class="req" aria-hidden="true">*</span></label>
-            <input id="pCost" type="number" inputmode="numeric" min="0" step="10" required aria-describedby="pCostErr" />
+            <input data-catalog id="pCost" type="number" inputmode="numeric" min="0" step="10" required aria-describedby="pCostErr" />
             <p class="err" id="pCostErr" hidden></p>
           </div>
           <div class="form-field">
             <label for="pRetail">판매가 (원) <span class="muted small">(판매용만)</span></label>
-            <input id="pRetail" type="number" inputmode="numeric" min="0" step="10" aria-describedby="pRetailErr" />
+            <input data-catalog id="pRetail" type="number" inputmode="numeric" min="0" step="10" aria-describedby="pRetailErr" />
             <p class="err" id="pRetailErr" hidden></p>
           </div>
           <div class="form-field">
@@ -452,14 +567,131 @@
             <input id="pLocation" type="text" maxlength="30" placeholder="예: 염색실 A" />
           </div>
           <div class="form-field span-2 checks">
-            <label class="check"><input type="checkbox" id="pRetailFlag" /> 고객 판매용 품목</label>
-            <label class="check"><input type="checkbox" id="pActive" checked /> 사용 중 (해제하면 입출고 목록에서 숨김)</label>
+            <label class="check"><input data-catalog type="checkbox" id="pRetailFlag" /> 고객 판매용 품목</label>
+            <label class="check"><input data-catalog type="checkbox" id="pActive" checked /> 사용 중 (해제하면 입출고 목록에서 숨김)</label>
           </div>
         </div>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn btn-secondary" data-close>취소</button>
         <button type="submit" class="btn btn-primary" id="productSubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Invite dialog -->
+  <dialog class="modal" id="inviteDialog" aria-labelledby="inviteTitle">
+    <form id="inviteForm" novalidate>
+      <div class="modal-head">
+        <h2 id="inviteTitle">사용자 초대</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="inviteErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <div class="form-field">
+          <label for="ivEmail">이메일 <span class="req" aria-hidden="true">*</span></label>
+          <input id="ivEmail" type="email" autocomplete="off" required aria-describedby="ivEmailHelp ivEmailErr" />
+          <p class="help" id="ivEmailHelp">이 이메일로 가입하면 아래 지점과 역할이 자동으로 적용됩니다. 초대는 14일 동안 유효합니다.</p>
+          <p class="err" id="ivEmailErr" hidden></p>
+        </div>
+        <div class="form-field">
+          <label for="ivName">이름 <span class="muted small">(선택)</span></label>
+          <input id="ivName" type="text" maxlength="40" />
+        </div>
+        <fieldset class="form-field">
+          <legend>역할 <span class="req" aria-hidden="true">*</span></legend>
+          <div class="role-grid">
+            <label class="radio"><input type="radio" name="ivRole" value="staff" checked /> 직원</label>
+            <label class="radio"><input type="radio" name="ivRole" value="manager" /> 지점 관리자</label>
+            <label class="radio" data-admin-only><input type="radio" name="ivRole" value="admin" /> 전체 관리자</label>
+          </div>
+        </fieldset>
+        <div class="form-field">
+          <label for="ivBranch">지점 <span class="req" aria-hidden="true">*</span></label>
+          <select id="ivBranch" aria-describedby="ivBranchHelp ivBranchErr"></select>
+          <p class="help" id="ivBranchHelp"></p>
+          <p class="err" id="ivBranchErr" hidden></p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="inviteSubmit">초대하기</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- User edit dialog -->
+  <dialog class="modal" id="userDialog" aria-labelledby="userTitle">
+    <form id="userForm" novalidate>
+      <div class="modal-head">
+        <h2 id="userTitle">사용자 수정</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="userErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <p class="muted small" id="uEmail"></p>
+        <p class="note" id="uSelfNote" hidden>본인의 역할·지점·사용 여부는 다른 관리자만 바꿀 수 있습니다.</p>
+        <div class="form-field">
+          <label for="uName">이름</label>
+          <input id="uName" type="text" maxlength="40" />
+        </div>
+        <fieldset class="form-field">
+          <legend>역할</legend>
+          <div class="role-grid">
+            <label class="radio"><input type="radio" name="uRole" value="staff" /> 직원</label>
+            <label class="radio"><input type="radio" name="uRole" value="manager" /> 지점 관리자</label>
+            <label class="radio" data-admin-only><input type="radio" name="uRole" value="admin" /> 전체 관리자</label>
+          </div>
+        </fieldset>
+        <div class="form-field">
+          <label for="uBranch">지점</label>
+          <select id="uBranch" aria-describedby="uBranchHelp"></select>
+          <p class="help" id="uBranchHelp"></p>
+        </div>
+        <label class="check"><input type="checkbox" id="uActive" /> 사용 중 <span class="muted small">(해제하면 로그인해도 아무 데이터도 볼 수 없습니다)</span></label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="userSubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Branch dialog -->
+  <dialog class="modal" id="branchDialog" aria-labelledby="branchTitle">
+    <form id="branchForm" novalidate>
+      <div class="modal-head">
+        <h2 id="branchTitle">지점 추가</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="branchErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="bCode">지점 코드 <span class="req" aria-hidden="true">*</span></label>
+            <input id="bCode" type="text" maxlength="12" autocapitalize="characters" aria-describedby="bCodeHelp bCodeErr" />
+            <p class="help" id="bCodeHelp">영문 대문자·숫자·하이픈 2~12자. 예: BR03</p>
+            <p class="err" id="bCodeErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="bName">지점명 <span class="req" aria-hidden="true">*</span></label>
+            <input id="bName" type="text" maxlength="30" aria-describedby="bNameErr" />
+            <p class="err" id="bNameErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="bPhone">전화번호 <span class="muted small">(선택)</span></label>
+            <input id="bPhone" type="tel" autocomplete="off" maxlength="20" />
+          </div>
+          <div class="form-field">
+            <label for="bAddress">주소 <span class="muted small">(선택)</span></label>
+            <input id="bAddress" type="text" maxlength="80" />
+          </div>
+          <label class="check span-2" data-admin-only><input type="checkbox" id="bActive" checked /> 운영 중 <span class="muted small">(해제하면 새 초대를 받을 수 없습니다)</span></label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="branchSubmit">저장</button>
       </div>
     </form>
   </dialog>
