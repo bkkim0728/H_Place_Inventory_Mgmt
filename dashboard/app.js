@@ -593,10 +593,8 @@
 
     // Theme toggle
     const themeBtn = $('#themeBtn');
-    const isDark = () => {
-      const t = document.documentElement.dataset.theme;
-      return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    };
+    // Dark glass is the default look; light is an explicit opt-in.
+    const isDark = () => document.documentElement.dataset.theme !== 'light';
     const syncThemeBtn = () => {
       const dark = isDark();
       $('use', themeBtn).setAttribute('href', dark ? '#i-sun' : '#i-moon');
