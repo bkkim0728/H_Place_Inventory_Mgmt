@@ -65,7 +65,7 @@
         <span class="brand-name">H Place<small>살롱 재고관리</small></span>
       </div>
       <h1>로그인</h1>
-      <p class="demo-note" id="loginDemoNote" hidden>데모 모드입니다. 아이디 <strong>h001</strong>로 로그인하면 전체 관리자, 그 밖의 아이디는 지점 관리자로 들어갑니다. 비밀번호는 아무거나 입력하면 되고, 데이터는 이 브라우저에만 저장됩니다.</p>
+      <p class="demo-note" id="loginDemoNote" hidden>데모 모드입니다. 아이디 <strong>h001</strong>(전체 관리자), <strong>m101</strong>(1호점 지점 관리자), <strong>s101</strong>(1호점 직원)로 로그인해 보세요. 데모에서는 비밀번호를 확인하지 않고, 데이터는 이 브라우저에만 저장됩니다.</p>
       <p class="err-box" id="loginError" role="alert" hidden></p>
       <div class="form-field">
         <label for="loginEmail">아이디 또는 이메일</label>
@@ -79,33 +79,7 @@
         </div>
       </div>
       <button class="btn btn-primary btn-block" id="loginBtn" type="submit">로그인</button>
-      <p class="muted small center">초대를 받으셨나요? <button type="button" class="link-btn" id="toSignup">초대받은 이메일로 가입하기</button></p>
-    </form>
-
-    <form class="screen-card card login" id="signupForm" novalidate hidden>
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-scissors"/></svg></span>
-        <span class="brand-name">H Place<small>살롱 재고관리</small></span>
-      </div>
-      <h1>계정 만들기</h1>
-      <p class="muted small">관리자에게 초대받은 이메일로 가입하면 지점과 역할이 자동으로 적용됩니다.</p>
-      <p class="err-box" id="signupError" role="alert" hidden></p>
-      <p class="demo-note" id="signupDone" role="status" hidden></p>
-      <div class="form-field">
-        <label for="suName">이름</label>
-        <input id="suName" type="text" autocomplete="name" maxlength="40" required />
-      </div>
-      <div class="form-field">
-        <label for="suEmail">초대받은 이메일</label>
-        <input id="suEmail" type="email" autocomplete="email" required />
-      </div>
-      <div class="form-field">
-        <label for="suPassword">비밀번호</label>
-        <input id="suPassword" type="password" autocomplete="new-password" minlength="8" required aria-describedby="suPwHelp" />
-        <p class="help" id="suPwHelp">8자 이상</p>
-      </div>
-      <button class="btn btn-primary btn-block" id="signupBtn" type="submit">가입하기</button>
-      <p class="muted small center"><button type="button" class="link-btn" id="toLogin">이미 계정이 있으면 로그인</button></p>
+      <p class="muted small center">계정은 전체 관리자가 만들어 드립니다. 비밀번호를 잊었으면 전체 관리자에게 재설정을 요청해 주세요.</p>
     </form>
   </div>
 
@@ -114,7 +88,7 @@
     <div class="screen-card card">
       <span class="kpi-icon tone-violet big-icon" aria-hidden="true"><svg class="icon"><use href="#i-clock"/></svg></span>
       <h1 id="pendingTitle">지점 배정을 기다리고 있어요</h1>
-      <p class="muted" id="pendingText"><strong id="pendingEmail"></strong> 계정이 아직 지점에 배정되지 않았습니다. 지점 관리자에게 이 이메일을 알려 주고 배정을 요청해 주세요.</p>
+      <p class="muted" id="pendingText"><strong id="pendingEmail"></strong> 계정이 아직 지점에 배정되지 않았습니다. 전체 관리자에게 배정을 요청해 주세요.</p>
       <div class="row-gap">
         <button class="btn btn-secondary" type="button" id="pendingRetry">다시 확인</button>
         <button class="btn btn-secondary" type="button" data-signout>로그아웃</button>
@@ -405,8 +379,9 @@
                 <label for="usBranch">지점</label>
                 <select id="usBranch"></select>
               </div>
-              <button class="btn btn-primary" type="button" id="inviteBtn"><svg class="icon" aria-hidden="true"><use href="#i-mail"/></svg>사용자 초대</button>
+              <button class="btn btn-primary" type="button" id="addUserBtn" data-admin-only><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>사용자 추가</button>
             </div>
+            <p class="note" data-manager-note>사용자 추가와 아이디·비밀번호 변경은 전체 관리자가 합니다. 지점 관리자는 이 지점 사용자의 역할(직원·지점 관리자)과 사용 여부를 바꿀 수 있습니다.</p>
             <p class="muted small result-count" id="usCount" aria-live="polite"></p>
             <div class="table-wrap">
               <table class="inv-table" id="usTable">
@@ -429,15 +404,6 @@
               </div>
             </div>
           </div>
-          <section class="card panel" aria-labelledby="inv-heading">
-            <div class="panel-head">
-              <div>
-                <h2 id="inv-heading">대기 중인 초대</h2>
-                <p class="muted small">초대받은 사람이 해당 이메일로 가입하면 자동으로 배정됩니다. 14일 뒤 만료됩니다.</p>
-              </div>
-            </div>
-            <ul class="invite-list" id="inviteList"></ul>
-          </section>
         </section>
 
         <!-- Branches (manager+) -->
@@ -579,49 +545,66 @@
     </form>
   </dialog>
 
-  <!-- Invite dialog -->
-  <dialog class="modal" id="inviteDialog" aria-labelledby="inviteTitle">
-    <form id="inviteForm" novalidate>
+  <!-- Create user dialog (admin) -->
+  <dialog class="modal" id="createUserDialog" aria-labelledby="createUserTitle">
+    <form id="createUserForm" novalidate autocomplete="off">
       <div class="modal-head">
-        <h2 id="inviteTitle">사용자 초대</h2>
+        <h2 id="createUserTitle">사용자 추가</h2>
         <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
       </div>
       <div class="modal-body">
-        <div class="error-summary" id="inviteErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
-        <div class="form-field">
-          <label for="ivEmail">이메일 <span class="req" aria-hidden="true">*</span></label>
-          <input id="ivEmail" type="email" autocomplete="off" required aria-describedby="ivEmailHelp ivEmailErr" />
-          <p class="help" id="ivEmailHelp">이 이메일로 가입하면 아래 지점과 역할이 자동으로 적용됩니다. 초대는 14일 동안 유효합니다.</p>
-          <p class="err" id="ivEmailErr" hidden></p>
-        </div>
-        <div class="form-field">
-          <label for="ivName">이름 <span class="muted small">(선택)</span></label>
-          <input id="ivName" type="text" maxlength="40" />
+        <div class="error-summary" id="createUserErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="cuLogin">아이디 <span class="req" aria-hidden="true">*</span></label>
+            <input id="cuLogin" type="text" maxlength="30" autocapitalize="none" spellcheck="false" autocomplete="off" aria-describedby="cuLoginHelp cuLoginErr" />
+            <p class="help" id="cuLoginHelp">영문 소문자·숫자로 시작, 2~30자. 예: s104</p>
+            <p class="err" id="cuLoginErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="cuName">이름 <span class="req" aria-hidden="true">*</span></label>
+            <input id="cuName" type="text" maxlength="40" autocomplete="off" aria-describedby="cuNameErr" />
+            <p class="err" id="cuNameErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="cuPassword">비밀번호 <span class="req" aria-hidden="true">*</span></label>
+            <div class="pw-wrap">
+              <input id="cuPassword" type="password" autocomplete="new-password" maxlength="72" aria-describedby="cuPasswordHelp cuPasswordErr" />
+              <button type="button" class="pw-toggle" data-pw-toggle="cuPassword cuPassword2" aria-label="비밀번호 보기" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg></button>
+            </div>
+            <p class="help" id="cuPasswordHelp">6자 이상. <button type="button" class="link-btn" data-pw-generate="cuPassword cuPassword2">자동 생성</button></p>
+            <p class="err" id="cuPasswordErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="cuPassword2">비밀번호 확인 <span class="req" aria-hidden="true">*</span></label>
+            <input id="cuPassword2" type="password" autocomplete="new-password" maxlength="72" aria-describedby="cuPassword2Err" />
+            <p class="err" id="cuPassword2Err" hidden></p>
+          </div>
         </div>
         <fieldset class="form-field">
           <legend>역할 <span class="req" aria-hidden="true">*</span></legend>
           <div class="role-grid">
-            <label class="radio"><input type="radio" name="ivRole" value="staff" checked /> 직원</label>
-            <label class="radio"><input type="radio" name="ivRole" value="manager" /> 지점 관리자</label>
-            <label class="radio" data-admin-only><input type="radio" name="ivRole" value="admin" /> 전체 관리자</label>
+            <label class="radio"><input type="radio" name="cuRole" value="staff" checked /> 직원</label>
+            <label class="radio"><input type="radio" name="cuRole" value="manager" /> 지점 관리자</label>
+            <label class="radio"><input type="radio" name="cuRole" value="admin" /> 전체 관리자</label>
           </div>
         </fieldset>
         <div class="form-field">
-          <label for="ivBranch">지점 <span class="req" aria-hidden="true">*</span></label>
-          <select id="ivBranch" aria-describedby="ivBranchHelp ivBranchErr"></select>
-          <p class="help" id="ivBranchHelp"></p>
-          <p class="err" id="ivBranchErr" hidden></p>
+          <label for="cuBranch">지점 <span class="req" aria-hidden="true">*</span></label>
+          <select id="cuBranch" aria-describedby="cuBranchHelp cuBranchErr"></select>
+          <p class="help" id="cuBranchHelp"></p>
+          <p class="err" id="cuBranchErr" hidden></p>
         </div>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn btn-secondary" data-close>취소</button>
-        <button type="submit" class="btn btn-primary" id="inviteSubmit">초대하기</button>
+        <button type="submit" class="btn btn-primary" id="createUserSubmit">추가</button>
       </div>
     </form>
   </dialog>
 
   <!-- User edit dialog -->
-  <dialog class="modal" id="userDialog" aria-labelledby="userTitle">
+  <dialog class="modal modal-wide" id="userDialog" aria-labelledby="userTitle">
     <form id="userForm" novalidate>
       <div class="modal-head">
         <h2 id="userTitle">사용자 수정</h2>
@@ -629,11 +612,18 @@
       </div>
       <div class="modal-body">
         <div class="error-summary" id="userErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
-        <p class="muted small" id="uEmail"></p>
-        <p class="note" id="uSelfNote" hidden>본인의 역할·지점·사용 여부는 다른 관리자만 바꿀 수 있습니다.</p>
-        <div class="form-field">
-          <label for="uName">이름</label>
-          <input id="uName" type="text" maxlength="40" />
+        <p class="note" id="uSelfNote" hidden>본인의 역할·지점·사용 여부는 다른 전체 관리자만 바꿀 수 있습니다. 실수로 관리 권한을 잃지 않도록 막아 두었습니다.</p>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="uLogin">아이디</label>
+            <input id="uLogin" type="text" maxlength="30" autocapitalize="none" spellcheck="false" autocomplete="off" aria-describedby="uLoginHelp uLoginErr" />
+            <p class="help" id="uLoginHelp"></p>
+            <p class="err" id="uLoginErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="uName">이름</label>
+            <input id="uName" type="text" maxlength="40" autocomplete="off" />
+          </div>
         </div>
         <fieldset class="form-field">
           <legend>역할</legend>
@@ -649,6 +639,25 @@
           <p class="help" id="uBranchHelp"></p>
         </div>
         <label class="check"><input type="checkbox" id="uActive" /> 사용 중 <span class="muted small">(해제하면 로그인해도 아무 데이터도 볼 수 없습니다)</span></label>
+        <fieldset class="form-field pw-reset" data-admin-only>
+          <legend>비밀번호 재설정 <span class="muted small">(바꿀 때만 입력)</span></legend>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="uPassword">새 비밀번호</label>
+              <div class="pw-wrap">
+                <input id="uPassword" type="password" autocomplete="new-password" maxlength="72" aria-describedby="uPasswordHelp uPasswordErr" />
+                <button type="button" class="pw-toggle" data-pw-toggle="uPassword uPassword2" aria-label="비밀번호 보기" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg></button>
+              </div>
+              <p class="help" id="uPasswordHelp">6자 이상. <button type="button" class="link-btn" data-pw-generate="uPassword uPassword2">자동 생성</button></p>
+              <p class="err" id="uPasswordErr" hidden></p>
+            </div>
+            <div class="form-field">
+              <label for="uPassword2">새 비밀번호 확인</label>
+              <input id="uPassword2" type="password" autocomplete="new-password" maxlength="72" aria-describedby="uPassword2Err" />
+              <p class="err" id="uPassword2Err" hidden></p>
+            </div>
+          </div>
+        </fieldset>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn btn-secondary" data-close>취소</button>

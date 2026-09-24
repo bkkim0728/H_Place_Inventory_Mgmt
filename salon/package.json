@@ -5,7 +5,7 @@
   "description": "H Place salon inventory prototype (static web app + Supabase)",
   "scripts": {
     "build": "node scripts/build-config.mjs",
-    "test": "node tests/db.test.mjs"
+    "test": "node tests/db.test.mjs && node tests/admin-users.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"

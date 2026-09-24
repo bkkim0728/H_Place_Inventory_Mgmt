@@ -28,10 +28,13 @@
     INVALID_BRANCH: '지점 정보를 확인해 주세요. 지점 코드는 영문 대문자·숫자·하이픈 2~12자입니다.',
     DUPLICATE_BRANCH_CODE: '이미 사용 중인 지점 코드입니다.',
     BRANCH_NOT_FOUND: '지점을 찾을 수 없거나 사용 중지된 지점입니다.',
-    INVALID_EMAIL: '이메일 형식이 올바르지 않습니다.',
-    USER_EXISTS: '이미 다른 지점에 배정된 사용자입니다. 전체 관리자에게 이동을 요청해 주세요.',
-    INVITE_EXISTS: '이 이메일로 보낸 초대가 이미 대기 중입니다.',
-    INVITE_NOT_FOUND: '초대를 찾을 수 없습니다. 이미 수락되었거나 취소되었습니다.',
+    INVALID_LOGIN_ID: '아이디는 영문 소문자·숫자로 시작하고, 영문·숫자·마침표·밑줄·하이픈으로 2~30자입니다.',
+    LOGIN_ID_TAKEN: '이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.',
+    WEAK_PASSWORD: '비밀번호는 6자 이상 72자 이하로 입력해 주세요.',
+    INVALID_ROLE: '역할을 다시 선택해 주세요.',
+    CREATE_FAILED: '사용자를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    UPDATE_FAILED: '계정 정보를 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    FUNCTION_NOT_DEPLOYED: '계정 관리 기능(admin-users Edge Function)이 아직 배포되지 않았습니다. README의 설치 순서를 확인해 주세요.',
     USER_NOT_FOUND: '사용자를 찾을 수 없습니다.',
     CANNOT_CHANGE_SELF: '본인의 역할·지점·사용 여부는 바꿀 수 없습니다. 다른 관리자에게 요청해 주세요.',
     LAST_ADMIN: '마지막 전체 관리자는 역할을 바꾸거나 중지할 수 없습니다.',
@@ -51,8 +54,6 @@
     if (code) return new AppError(code);
     if (/invalid login credentials/i.test(text)) return new AppError('LOGIN_FAILED', '아이디(이메일) 또는 비밀번호가 올바르지 않습니다.');
     if (/email not confirmed/i.test(text)) return new AppError('LOGIN_FAILED', '이메일 인증이 끝나지 않았습니다. 받은편지함의 인증 메일을 확인해 주세요.');
-    if (/already registered|already been registered/i.test(text)) return new AppError('SIGNUP_FAILED', '이미 가입된 이메일입니다. 로그인해 주세요.');
-    if (/password should be|weak password/i.test(text)) return new AppError('SIGNUP_FAILED', '비밀번호가 너무 짧거나 단순합니다. 8자 이상으로 입력해 주세요.');
     if (/rate limit/i.test(text)) return new AppError('RATE_LIMIT', '요청이 너무 많습니다. 몇 분 뒤 다시 시도해 주세요.');
     if (/failed to fetch|networkerror|load failed/i.test(text)) return new AppError('NETWORK', '서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
     return new AppError('UNKNOWN', `요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요. (${text})`);
@@ -64,18 +65,18 @@
     const midnight = Math.floor((Date.now() + KST) / DAY) * DAY - KST;
     return new Date(midnight - (days - 1) * DAY).toISOString();
   }
-  const INVITE_DAYS = 14;
 
   // Accepts an ID ("h001") or an email. IDs map to <id>@<loginDomain> so that
   // Supabase Auth, which signs in by email, can hold ID-style accounts.
   const LOGIN_DOMAIN = (cfg.loginDomain || 'hplace.local').toLowerCase();
   const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,29}$/i;
+  const normLoginId = (v) => String(v || '').trim().toLowerCase();
+  const passwordOk = (v) => typeof v === 'string' && v.length >= 6 && v.length <= 72;
   function toLoginEmail(input) {
     const v = String(input || '').trim().toLowerCase();
     return v.includes('@') ? v : `${v}@${LOGIN_DOMAIN}`;
   }
   const isLoginId = (input) => ID_PATTERN.test(String(input || '').trim());
-  const inviteOpen = (i) => !i.accepted_at && Date.parse(i.created_at) > Date.now() - INVITE_DAYS * DAY;
 
   // ------------------------------------------------------------------
   // Supabase
@@ -103,20 +104,11 @@
       async signIn(login, password) {
         await run(sb.auth.signInWithPassword({ email: toLoginEmail(login), password }));
       },
-      // Returns true when the user is signed in right away, false when the
-      // project requires email confirmation first.
-      async signUp(email, password, fullName) {
-        const data = await run(sb.auth.signUp({
-          email, password,
-          options: { data: { full_name: fullName }, emailRedirectTo: location.origin + location.pathname },
-        }));
-        return Boolean(data.session);
-      },
       async signOut() {
         await sb.auth.signOut();
       },
       async getContext(user) {
-        const profile = await run(sb.from('profiles').select('user_id, email, full_name, role, branch_id, active').eq('user_id', user.id).maybeSingle());
+        const profile = await run(sb.from('profiles').select('user_id, email, login_id, full_name, role, branch_id, active').eq('user_id', user.id).maybeSingle());
         if (!profile || !profile.active) return { profile, branches: [] };
         // RLS returns only the branches this user may see (all of them for admins).
         const branches = await run(sb.from('branches').select('id, code, name, phone, address, active').order('code'));
@@ -151,16 +143,27 @@
           p_phone: b.phone || null, p_address: b.address || null, p_active: b.active,
         })),
       listUsers: (branchId) => run(sb.rpc('list_users', { p_branch_id: branchId || null })),
-      async listInvitations(branchId) {
-        let query = sb.from('invitations').select('id, email, full_name, branch_id, role, created_at, accepted_at')
-          .is('accepted_at', null).order('created_at', { ascending: false });
-        if (branchId) query = query.eq('branch_id', branchId);
-        const rows = await run(query);
-        return rows.filter(inviteOpen);
+      // Account operations that need the service role run in the admin-users
+      // Edge Function; it answers { error: CODE } on failure.
+      async adminUsers(body) {
+        let res;
+        try { res = await sb.functions.invoke('admin-users', { body }); } catch (e) { throw toAppError(e); }
+        if (!res.error) return res.data;
+        let code = null;
+        try { code = (await res.error.context.json()).error; } catch (e) { /* no JSON body */ }
+        if (!code && res.error.context && res.error.context.status === 404) code = 'FUNCTION_NOT_DEPLOYED';
+        if (!code && /failed to send a request|relay error/i.test(res.error.message || '')) code = 'FUNCTION_NOT_DEPLOYED';
+        throw toAppError(code || res.error);
       },
-      inviteUser: ({ email, fullName, branchId, role }) =>
-        run(sb.rpc('invite_user', { p_email: email, p_full_name: fullName || null, p_branch_id: branchId || null, p_role: role })),
-      cancelInvitation: (id) => run(sb.rpc('cancel_invitation', { p_invitation_id: id })),
+      createUser(u) {
+        return this.adminUsers({ action: 'create', loginId: normLoginId(u.loginId), password: u.password, fullName: u.fullName, role: u.role, branchId: u.branchId || null });
+      },
+      changeLoginId(userId, loginId) {
+        return this.adminUsers({ action: 'change_login', userId, loginId: normLoginId(loginId) });
+      },
+      setPassword(userId, password) {
+        return this.adminUsers({ action: 'set_password', userId, password });
+      },
       updateUser: ({ userId, fullName, branchId, role, active }) =>
         run(sb.rpc('update_user', { p_user_id: userId, p_full_name: fullName || null, p_branch_id: branchId || null, p_role: role, p_active: active })),
     };
@@ -170,7 +173,7 @@
   // Demo store (same catalog as supabase/seed.sql, plus a second branch and
   // sample users so every role can be tried)
   // ------------------------------------------------------------------
-  const DEMO_KEY = 'hplace-salon-demo-v3';
+  const DEMO_KEY = 'hplace-salon-demo-v4';
   const PERSONA = { admin: 'u-admin', manager: 'u-mgr1', staff: 'u-staff1' };
 
   const CATALOG = [
@@ -225,19 +228,14 @@
       { id: 'br02', code: 'BR02', name: '2호점', phone: '02-555-0202', address: '서울 마포구 양화로 202', active: true },
     ];
     const users = [
-      { user_id: 'u-admin', email: 'h001@hplace.local', full_name: '본사 관리자', role: 'admin', branch_id: null, active: true, created_at: iso(now - 90 * DAY), last_sign_in_at: iso(now - 2 * 3600000) },
-      { user_id: 'u-mgr1', email: 'manager1@hplace.example', full_name: '데모 점장', role: 'manager', branch_id: 'br01', active: true, created_at: iso(now - 80 * DAY), last_sign_in_at: iso(now - 20 * 60000) },
-      { user_id: 'u-staff1', email: 'jisu@hplace.example', full_name: '김지수', role: 'staff', branch_id: 'br01', active: true, created_at: iso(now - 60 * DAY), last_sign_in_at: iso(now - 5 * 3600000) },
-      { user_id: 'u-staff2', email: 'minjun@hplace.example', full_name: '박민준', role: 'staff', branch_id: 'br01', active: true, created_at: iso(now - 40 * DAY), last_sign_in_at: iso(now - 3 * DAY) },
-      { user_id: 'u-staff4', email: 'haneul@hplace.example', full_name: '정하늘', role: 'staff', branch_id: 'br01', active: false, created_at: iso(now - 120 * DAY), last_sign_in_at: iso(now - 45 * DAY) },
-      { user_id: 'u-mgr2', email: 'manager2@hplace.example', full_name: '이서연', role: 'manager', branch_id: 'br02', active: true, created_at: iso(now - 70 * DAY), last_sign_in_at: iso(now - DAY) },
-      { user_id: 'u-staff3', email: 'yuna@hplace.example', full_name: '최유나', role: 'staff', branch_id: 'br02', active: true, created_at: iso(now - 30 * DAY), last_sign_in_at: iso(now - 6 * 3600000) },
-      { user_id: 'u-new', email: 'newbie@gmail.example', full_name: '신규 가입자', role: 'staff', branch_id: null, active: true, created_at: iso(now - 3600000), last_sign_in_at: iso(now - 3600000) },
-    ];
-    const invitations = [
-      { id: 'inv1', email: 'seoyoon@hplace.example', full_name: '윤서윤', branch_id: 'br01', role: 'staff', created_at: iso(now - 2 * DAY), accepted_at: null },
-      { id: 'inv2', email: 'dohyun@hplace.example', full_name: '강도현', branch_id: 'br02', role: 'staff', created_at: iso(now - 5 * DAY), accepted_at: null },
-    ];
+      { user_id: 'u-admin', login_id: 'h001', full_name: '본사 관리자', role: 'admin', branch_id: null, active: true, created_at: iso(now - 90 * DAY), last_sign_in_at: iso(now - 2 * 3600000) },
+      { user_id: 'u-mgr1', login_id: 'm101', full_name: '데모 점장', role: 'manager', branch_id: 'br01', active: true, created_at: iso(now - 80 * DAY), last_sign_in_at: iso(now - 20 * 60000) },
+      { user_id: 'u-staff1', login_id: 's101', full_name: '김지수', role: 'staff', branch_id: 'br01', active: true, created_at: iso(now - 60 * DAY), last_sign_in_at: iso(now - 5 * 3600000) },
+      { user_id: 'u-staff2', login_id: 's102', full_name: '박민준', role: 'staff', branch_id: 'br01', active: true, created_at: iso(now - 40 * DAY), last_sign_in_at: iso(now - 3 * DAY) },
+      { user_id: 'u-staff4', login_id: 's103', full_name: '정하늘', role: 'staff', branch_id: 'br01', active: false, created_at: iso(now - 120 * DAY), last_sign_in_at: iso(now - 45 * DAY) },
+      { user_id: 'u-mgr2', login_id: 'm201', full_name: '이서연', role: 'manager', branch_id: 'br02', active: true, created_at: iso(now - 70 * DAY), last_sign_in_at: iso(now - DAY) },
+      { user_id: 'u-staff3', login_id: 's201', full_name: '최유나', role: 'staff', branch_id: 'br02', active: true, created_at: iso(now - 30 * DAY), last_sign_in_at: iso(now - 6 * 3600000) },
+    ].map((u) => ({ ...u, email: `${u.login_id}@${LOGIN_DOMAIN}` }));
     const products = CATALOG.map(([sku, name, category, unit, cost, retail, isRetail], i) => ({
       id: `p${i + 1}`, sku, name, brand: null, category, unit,
       cost_price: cost, retail_price: retail, is_retail: isRetail, active: true,
@@ -284,7 +282,7 @@
       unit_cost: products.find((x) => x.id === m.product_id).cost_price,
       memo: '샘플 데이터', reverts_id: null, created_by: m.created_by, created_at: iso(m.created_at),
     }));
-    return { branches, users, invitations, products, inventory, movements, nextId: id, signedIn: false, demoRole: 'manager' };
+    return { branches, users, products, inventory, movements, nextId: id, signedIn: false, meId: PERSONA.manager };
   }
 
   function demoApi() {
@@ -301,7 +299,7 @@
     };
     const delay = (v) => new Promise((r) => setTimeout(() => r(v), 150));
     const clone = (v) => JSON.parse(JSON.stringify(v));
-    const me = () => state.users.find((u) => u.user_id === PERSONA[state.demoRole]);
+    const me = () => state.users.find((u) => u.user_id === state.meId) || state.users.find((u) => u.user_id === PERSONA.manager);
     const product = (id) => state.products.find((p) => p.id === id);
     const inv = (branchId, pid) => state.inventory.find((i) => i.branch_id === branchId && i.product_id === pid);
     const statusOf = (i) => (i.stock === 0 ? 'out' : i.stock <= i.safety_stock ? 'low' : 'ok');
@@ -321,21 +319,20 @@
 
     return {
       mode: 'demo',
-      get demoRole() { return state.demoRole; },
-      setDemoRole(role) { state.demoRole = role; save(); },
+      get demoRole() { return me().role; },
+      setDemoRole(role) { state.meId = PERSONA[role]; save(); },
       async getUser() { return state.signedIn ? { id: me().user_id, email: me().email } : null; },
       onAuthChange() {},
-      // Demo: the ID h001 (or any admin account email) opens the admin view;
-      // anything else opens the branch manager view.
+      // Demo: signs in as the account with that ID (h001 = 전체 관리자). Unknown
+      // IDs open the branch manager view. Passwords are not checked in the demo.
       async signIn(login) {
         const email = toLoginEmail(login);
-        const user = state.users.find((u) => u.email === email && u.active);
-        state.demoRole = user?.role === 'admin' ? 'admin' : user?.role === 'staff' ? 'staff' : 'manager';
+        const user = state.users.find((u) => u.email === email);
+        state.meId = user ? user.user_id : PERSONA.manager;
         state.signedIn = true;
         save();
         return delay();
       },
-      async signUp() { throw new AppError('SIGNUP_FAILED', '데모 모드에서는 가입할 수 없습니다. 로그인한 뒤 화면 위쪽의 "역할 보기"로 역할별 화면을 확인해 주세요.'); },
       async signOut() { state.signedIn = false; save(); },
       async getContext() {
         const profile = clone(me());
@@ -462,41 +459,41 @@
           .map((u) => ({ ...u, branch_name: state.branches.find((b) => b.id === u.branch_id)?.name || null }));
         return delay(clone(rows));
       },
-      async listInvitations(branchId) {
-        const rows = state.invitations.filter((i) => inviteOpen(i)
-          && (isAdmin() || (i.role !== 'admin' && i.branch_id && isManager(i.branch_id)))
-          && (!branchId || i.branch_id === branchId));
-        return delay(clone(rows));
-      },
-      async inviteUser({ email, fullName, branchId, role }) {
-        const e = (email || '').trim().toLowerCase();
-        must(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e), 'INVALID_EMAIL');
-        const branch = role === 'admin' ? null : branchId;
-        if (role === 'admin') must(isAdmin(), 'FORBIDDEN');
-        else {
-          must(branch && isManager(branch), 'FORBIDDEN');
-          must(state.branches.some((b) => b.id === branch && b.active), 'BRANCH_NOT_FOUND');
-        }
-        const existing = state.users.find((u) => u.email.toLowerCase() === e);
-        if (existing) {
-          must(!existing.branch_id && existing.role !== 'admin', 'USER_EXISTS');
-          Object.assign(existing, { branch_id: branch, role, active: true, full_name: trimOrNull(fullName) || existing.full_name });
-          save();
-          return delay('assigned');
-        }
-        state.invitations = state.invitations.filter((i) => !(i.email === e && !i.accepted_at && !inviteOpen(i)));
-        must(!state.invitations.some((i) => i.email === e && inviteOpen(i)), 'INVITE_EXISTS');
-        state.invitations.unshift({ id: `inv${Date.now()}`, email: e, full_name: trimOrNull(fullName), branch_id: branch, role, created_at: new Date().toISOString(), accepted_at: null });
+      async createUser(u) {
+        must(isAdmin(), 'ADMIN_ONLY');
+        const loginId = normLoginId(u.loginId);
+        must(ID_PATTERN.test(loginId), 'INVALID_LOGIN_ID');
+        must(passwordOk(u.password), 'WEAK_PASSWORD');
+        must(['staff', 'manager', 'admin'].includes(u.role), 'INVALID_ROLE');
+        const branch = u.role === 'admin' ? null : u.branchId;
+        must(u.role === 'admin' || state.branches.some((b) => b.id === branch && b.active), 'BRANCH_NOT_FOUND');
+        must(!state.users.some((x) => x.login_id === loginId), 'LOGIN_ID_TAKEN');
+        const user = {
+          user_id: `u${Date.now()}`, login_id: loginId, email: `${loginId}@${LOGIN_DOMAIN}`,
+          full_name: trimOrNull(u.fullName) || loginId, role: u.role, branch_id: branch, active: true,
+          created_at: new Date().toISOString(), last_sign_in_at: null,
+        };
+        state.users.push(user);
         save();
-        return delay('invited');
+        return delay({ userId: user.user_id, loginId });
       },
-      async cancelInvitation(id) {
-        const i = state.invitations.find((x) => x.id === id && !x.accepted_at);
-        must(i, 'INVITE_NOT_FOUND');
-        must(isAdmin() || (i.role !== 'admin' && i.branch_id && isManager(i.branch_id)), 'FORBIDDEN');
-        state.invitations = state.invitations.filter((x) => x.id !== id);
+      async changeLoginId(userId, value) {
+        must(isAdmin(), 'ADMIN_ONLY');
+        const t = state.users.find((u) => u.user_id === userId);
+        must(t, 'USER_NOT_FOUND');
+        const loginId = normLoginId(value);
+        must(ID_PATTERN.test(loginId), 'INVALID_LOGIN_ID');
+        must(!state.users.some((x) => x.login_id === loginId && x.user_id !== userId), 'LOGIN_ID_TAKEN');
+        Object.assign(t, { login_id: loginId, email: `${loginId}@${LOGIN_DOMAIN}` });
         save();
-        return delay();
+        return delay({ userId, loginId });
+      },
+      async setPassword(userId, password) {
+        must(isAdmin(), 'ADMIN_ONLY');
+        must(state.users.some((u) => u.user_id === userId), 'USER_NOT_FOUND');
+        must(passwordOk(password), 'WEAK_PASSWORD');
+        // The demo does not check passwords at sign-in, so nothing is stored.
+        return delay({ userId });
       },
       async updateUser({ userId, fullName, branchId, role, active }) {
         const t = state.users.find((u) => u.user_id === userId);
@@ -516,10 +513,10 @@
         return delay();
       },
       resetDemo() {
-        const role = state.demoRole;
+        const meId = state.meId;
         state = buildDemoState();
         state.signedIn = true;
-        state.demoRole = role;
+        if (state.users.some((u) => u.user_id === meId)) state.meId = meId;
         save();
       },
     };

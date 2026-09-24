@@ -142,38 +142,20 @@ ok((await err(mgr, () => q(`select * from list_users(null)`)))?.includes('FORBID
 ok((await err(mgr, () => q(`select * from list_users($1)`, [b2])))?.includes('FORBIDDEN'), 'manager cannot list another branch');
 ok((await err(staff, () => q(`select * from list_users($1)`, [b1])))?.includes('FORBIDDEN'), 'staff cannot list users');
 
-console.log('invitations');
-ok((await as(mgr, () => one(`select invite_user('Kim@Salon.kr','김디자이너',$1,'staff') r`, [b1]))).r === 'invited', 'manager invites staff to own branch');
-ok((await as(mgr, () => one(`select invite_user('lee@salon.kr',null,$1,'manager') r`, [b1]))).r === 'invited', 'manager invites another manager to own branch');
-ok((await err(mgr, () => q(`select invite_user('x@salon.kr',null,$1,'admin')`, [b1])))?.includes('FORBIDDEN'), 'manager cannot invite an admin');
-ok((await err(mgr, () => q(`select invite_user('x@salon.kr',null,$1,'staff')`, [b2])))?.includes('FORBIDDEN'), 'manager cannot invite to another branch');
-ok((await err(staff, () => q(`select invite_user('x@salon.kr',null,$1,'staff')`, [b1])))?.includes('FORBIDDEN'), 'staff cannot invite');
-ok((await err(mgr, () => q(`select invite_user('kim@salon.kr',null,$1,'staff')`, [b1])))?.includes('INVITE_EXISTS'), 'duplicate open invitation rejected');
-ok((await err(mgr, () => q(`select invite_user('staff@x.kr',null,$1,'staff')`, [b1])))?.includes('USER_EXISTS'), 'inviting an assigned user rejected');
-ok((await err(mgr, () => q(`select invite_user('not-an-email',null,$1,'staff')`, [b1])))?.includes('INVALID_EMAIL'), 'invalid email rejected');
-ok((await as(admin, () => one(`select invite_user('boss@hq.kr','본사',$1,'admin') r`, [b1]))).r === 'invited', 'admin invites an admin');
-ok((await one(`select branch_id from invitations where email='boss@hq.kr'`)).branch_id === null, 'admin invitation has no branch');
-ok((await as(mgr, () => q(`select * from invitations`))).length === 2, 'manager sees only own branch invitations');
-ok((await as(admin, () => q(`select * from invitations`))).length === 3, 'admin sees every invitation');
-ok((await as(staff, () => q(`select * from invitations`))).length === 0, 'staff sees no invitations');
+console.log('login_id');
+ok((await one(`select login_id from profiles where user_id=$1`, [admin])).login_id === 'admin', 'trigger derives login_id from the email');
+const dupLocal = await mk('admin@other.kr');
+ok((await one(`select login_id from profiles where user_id=$1`, [dupLocal])).login_id === null, 'taken login_id is left empty instead of failing sign-up');
+ok((await as(admin, () => q(`select login_id from list_users(null) where user_id=$1`, [staff])))[0].login_id === 'staff', 'list_users returns login_id');
+let dupErr = null; try { await db.query(`update profiles set login_id='ADMIN' where user_id=$1`, [dupLocal]); } catch (e) { dupErr = e.message; }
+ok(dupErr?.includes('profiles_login_id_idx'), 'login_id is unique (case-insensitive)');
+await db.query(`delete from auth.users where id=$1`, [dupLocal]);
+ok((await q(`select to_regclass('public.invitations') t`))[0].t === null, 'invitations table no longer exists');
 
-const kim = await mk('kim@salon.kr');
-const kimP = await one(`select branch_id, role, full_name from profiles where user_id=$1`, [kim]);
-ok(kimP.branch_id === b1 && kimP.role === 'staff' && kimP.full_name === '김디자이너', 'sign-up applies invitation (branch, role, name)');
-ok((await one(`select accepted_by from invitations where email='kim@salon.kr'`)).accepted_by === kim, 'invitation marked accepted');
-ok((await as(kim, () => q(`select * from inventory_view`))).length > 0, 'invited user can read their branch right away');
-const stranger = await mk('stranger@else.kr');
-ok((await one(`select branch_id from profiles where user_id=$1`, [stranger])).branch_id === null, 'sign-up without invitation gets no branch');
-await db.query(`update invitations set created_at = now() - interval '15 days' where email='lee@salon.kr'`);
-const late = await mk('lee@salon.kr');
-ok((await one(`select branch_id from profiles where user_id=$1`, [late])).branch_id === null, 'expired invitation is ignored');
-ok((await as(mgr, () => one(`select invite_user('stranger@else.kr','신규',$1,'staff') r`, [b1]))).r === 'assigned', 'inviting an unassigned account assigns it immediately');
-ok((await one(`select branch_id from profiles where user_id=$1`, [stranger])).branch_id === b1, 'unassigned account now in 1호점');
-
-const inv2 = await as(admin, async () => { await q(`select invite_user('temp@salon.kr',null,$1,'staff')`, [b2]); return (await one(`select id from invitations where email='temp@salon.kr'`)).id; });
-ok((await err(mgr, () => q(`select cancel_invitation($1)`, [inv2])))?.includes('FORBIDDEN'), 'manager cannot cancel another branch invitation');
-await as(other, () => q(`select cancel_invitation($1)`, [inv2]));
-ok(!(await one(`select id from invitations where id=$1`, [inv2])), '2호점 manager cancels own branch invitation');
+// Users that the admin-users Edge Function would create and then assign
+const kim = await mk('kim@hplace.local');
+await db.query(`update profiles set branch_id=$2, role='staff', full_name='김디자이너' where user_id=$1`, [kim, b1]);
+const stranger = await mk('stranger@hplace.local');
 
 console.log('update_user');
 await as(mgr, () => q(`select update_user($1,'김 디자이너',$2,'manager',true)`, [kim, b1]));
@@ -189,14 +171,18 @@ await as(mgr, () => q(`select update_user($1,null,$2,'staff',false)`, [staff, b1
 ok((await as(staff, () => q(`select * from inventory_view`))).length === 0, 'deactivated staff loses all access');
 ok((await err(staff, () => q(`select record_movement($1,$2,'use',1,null)`, [b1, p6n])))?.includes('NOT_BRANCH_MEMBER'), 'deactivated staff cannot record movements');
 await as(mgr, () => q(`select update_user($1,null,$2,'staff',true)`, [staff, b1]));
+await db.query(`update profiles set branch_id=$2 where user_id=$1`, [stranger, b1]);
 await as(mgr, () => q(`select update_user($1,null,null,'staff',true)`, [stranger]));
 ok((await one(`select branch_id from profiles where user_id=$1`, [stranger])).branch_id === null, 'manager releases a user from the branch');
 
+await as(admin, () => q(`select update_user($1,'이서연 점장',$2,'manager',false)`, [other, b3]));
+const edited = await one(`select full_name, branch_id, role, active from profiles where user_id=$1`, [other]);
+ok(edited.full_name === '이서연 점장' && edited.role === 'manager' && edited.active === false, 'admin edits name, role and active of another user');
 await as(admin, () => q(`select update_user($1,null,$2,'manager',true)`, [other, b3]));
 ok((await one(`select branch_id from profiles where user_id=$1`, [other])).branch_id === b3, 'admin moves a manager to another branch');
 ok((await err(admin, () => q(`select update_user($1,null,null,'staff',true)`, [admin])))?.includes('CANNOT_CHANGE_SELF'), 'admin cannot demote self');
-const admin2 = await mk('boss@hq.kr');
-ok((await one(`select role, branch_id from profiles where user_id=$1`, [admin2])).role === 'admin', 'invited admin becomes admin on sign-up');
+const admin2 = await mk('boss@hplace.local');
+await db.query(`update profiles set role='admin' where user_id=$1`, [admin2]);
 await as(admin, () => q(`select update_user($1,null,$2,'staff',true)`, [admin2, b1]));
 ok((await one(`select role from profiles where user_id=$1`, [admin2])).role === 'staff', 'admin demotes another admin while one remains');
 ok((await err(admin2, () => q(`select update_user($1,null,null,'staff',true)`, [admin])))?.includes('FORBIDDEN'), 'demoted admin (now staff) cannot touch the admin');

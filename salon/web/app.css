@@ -93,7 +93,8 @@ tr.is-reversal td { color: var(--fg-muted); }
 .preview { color: var(--fg); }
 .preview strong { font-variant-numeric: tabular-nums; }
 .preview .warn { color: var(--warn); font-weight: 600; }
-.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.form-field { align-content: start; }
 .form-grid .span-2 { grid-column: 1 / -1; }
 .form-field input[type="text"], .form-field input[type="email"], .form-field input[type="password"] { width: 100%; }
 .checks { display: grid; gap: var(--space-2); }
@@ -134,18 +135,12 @@ input:disabled, select:disabled { opacity: 0.55; cursor: not-allowed; }
 .tag-warn { background: var(--warn-soft); color: var(--warn); }
 .you { font-size: 11.5px; font-weight: 700; color: var(--violet-text); margin-left: 6px; }
 
-/* Invitations */
-.invite-list { list-style: none; margin: 0; padding: 0; display: grid; }
-.invite-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: 12px 0; border-bottom: 1px solid var(--border); }
-.invite-list li:last-child { border-bottom: 0; }
-.invite-list .i-mail { font-weight: 600; overflow-wrap: anywhere; }
-.invite-list .i-meta { font-size: 12.5px; color: var(--fg-muted); }
-.invite-empty { color: var(--fg-muted); padding: var(--space-3) 0; }
+/* Password reset section in the user dialog */
+.pw-reset { border-top: 1px solid var(--border); padding-top: var(--space-4); }
+.pw-reset legend { padding-top: var(--space-4); }
 
 @media (max-width: 767px) {
   .role-grid { grid-template-columns: minmax(0, 1fr); }
   .demo-tools { width: 100%; }
   .demo-tools select { flex: 1; min-width: 0; }
-  .invite-list li { grid-template-columns: minmax(0, 1fr) auto; }
-  .invite-list li > .tag { display: none; }
 }
