@@ -5,6 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 const url = (process.env.SUPABASE_URL || '').trim();
 const key = (process.env.SUPABASE_ANON_KEY || '').trim();
+const loginDomain = (process.env.LOGIN_DOMAIN || 'hplace.local').trim().toLowerCase();
+
+if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(loginDomain)) {
+  console.error(`LOGIN_DOMAIN looks wrong: "${loginDomain}". Expected a domain such as hplace.local`);
+  process.exit(1);
+}
 
 if (url && !/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url)) {
   console.error(`SUPABASE_URL looks wrong: "${url}". Expected https://<project-ref>.supabase.co`);
@@ -16,5 +22,5 @@ if (Boolean(url) !== Boolean(key)) {
 }
 
 const out = fileURLToPath(new URL('../web/config.js', import.meta.url));
-writeFileSync(out, `// Generated at build time by scripts/build-config.mjs\nwindow.APP_CONFIG = ${JSON.stringify({ supabaseUrl: url.replace(/\/$/, ''), supabaseAnonKey: key }, null, 2)};\n`);
+writeFileSync(out, `// Generated at build time by scripts/build-config.mjs\nwindow.APP_CONFIG = ${JSON.stringify({ supabaseUrl: url.replace(/\/$/, ''), supabaseAnonKey: key, loginDomain }, null, 2)};\n`);
 console.log(url ? `config.js written for ${url}` : 'config.js written in demo mode (no Supabase settings)');

@@ -65,11 +65,11 @@
         <span class="brand-name">H Place<small>살롱 재고관리</small></span>
       </div>
       <h1>로그인</h1>
-      <p class="demo-note" id="loginDemoNote" hidden>데모 모드입니다. 아무 이메일과 비밀번호로 들어갈 수 있고, 데이터는 이 브라우저에만 저장됩니다.</p>
+      <p class="demo-note" id="loginDemoNote" hidden>데모 모드입니다. 아이디 <strong>h001</strong>로 로그인하면 전체 관리자, 그 밖의 아이디는 지점 관리자로 들어갑니다. 비밀번호는 아무거나 입력하면 되고, 데이터는 이 브라우저에만 저장됩니다.</p>
       <p class="err-box" id="loginError" role="alert" hidden></p>
       <div class="form-field">
-        <label for="loginEmail">이메일</label>
-        <input id="loginEmail" type="email" autocomplete="username" required />
+        <label for="loginEmail">아이디 또는 이메일</label>
+        <input id="loginEmail" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
       </div>
       <div class="form-field">
         <label for="loginPassword">비밀번호</label>

@@ -49,7 +49,7 @@
     const text = (e && (e.message || e.error_description || e.msg)) || String(e);
     const code = Object.keys(MESSAGES).find((k) => text.includes(k));
     if (code) return new AppError(code);
-    if (/invalid login credentials/i.test(text)) return new AppError('LOGIN_FAILED', '이메일 또는 비밀번호가 올바르지 않습니다.');
+    if (/invalid login credentials/i.test(text)) return new AppError('LOGIN_FAILED', '아이디(이메일) 또는 비밀번호가 올바르지 않습니다.');
     if (/email not confirmed/i.test(text)) return new AppError('LOGIN_FAILED', '이메일 인증이 끝나지 않았습니다. 받은편지함의 인증 메일을 확인해 주세요.');
     if (/already registered|already been registered/i.test(text)) return new AppError('SIGNUP_FAILED', '이미 가입된 이메일입니다. 로그인해 주세요.');
     if (/password should be|weak password/i.test(text)) return new AppError('SIGNUP_FAILED', '비밀번호가 너무 짧거나 단순합니다. 8자 이상으로 입력해 주세요.');
@@ -65,6 +65,16 @@
     return new Date(midnight - (days - 1) * DAY).toISOString();
   }
   const INVITE_DAYS = 14;
+
+  // Accepts an ID ("h001") or an email. IDs map to <id>@<loginDomain> so that
+  // Supabase Auth, which signs in by email, can hold ID-style accounts.
+  const LOGIN_DOMAIN = (cfg.loginDomain || 'hplace.local').toLowerCase();
+  const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,29}$/i;
+  function toLoginEmail(input) {
+    const v = String(input || '').trim().toLowerCase();
+    return v.includes('@') ? v : `${v}@${LOGIN_DOMAIN}`;
+  }
+  const isLoginId = (input) => ID_PATTERN.test(String(input || '').trim());
   const inviteOpen = (i) => !i.accepted_at && Date.parse(i.created_at) > Date.now() - INVITE_DAYS * DAY;
 
   // ------------------------------------------------------------------
@@ -90,8 +100,8 @@
       onAuthChange(cb) {
         sb.auth.onAuthStateChange((event, session) => cb(event, session ? session.user : null));
       },
-      async signIn(email, password) {
-        await run(sb.auth.signInWithPassword({ email, password }));
+      async signIn(login, password) {
+        await run(sb.auth.signInWithPassword({ email: toLoginEmail(login), password }));
       },
       // Returns true when the user is signed in right away, false when the
       // project requires email confirmation first.
@@ -160,7 +170,7 @@
   // Demo store (same catalog as supabase/seed.sql, plus a second branch and
   // sample users so every role can be tried)
   // ------------------------------------------------------------------
-  const DEMO_KEY = 'hplace-salon-demo-v2';
+  const DEMO_KEY = 'hplace-salon-demo-v3';
   const PERSONA = { admin: 'u-admin', manager: 'u-mgr1', staff: 'u-staff1' };
 
   const CATALOG = [
@@ -215,7 +225,7 @@
       { id: 'br02', code: 'BR02', name: '2호점', phone: '02-555-0202', address: '서울 마포구 양화로 202', active: true },
     ];
     const users = [
-      { user_id: 'u-admin', email: 'hq@hplace.example', full_name: '본사 관리자', role: 'admin', branch_id: null, active: true, created_at: iso(now - 90 * DAY), last_sign_in_at: iso(now - 2 * 3600000) },
+      { user_id: 'u-admin', email: 'h001@hplace.local', full_name: '본사 관리자', role: 'admin', branch_id: null, active: true, created_at: iso(now - 90 * DAY), last_sign_in_at: iso(now - 2 * 3600000) },
       { user_id: 'u-mgr1', email: 'manager1@hplace.example', full_name: '데모 점장', role: 'manager', branch_id: 'br01', active: true, created_at: iso(now - 80 * DAY), last_sign_in_at: iso(now - 20 * 60000) },
       { user_id: 'u-staff1', email: 'jisu@hplace.example', full_name: '김지수', role: 'staff', branch_id: 'br01', active: true, created_at: iso(now - 60 * DAY), last_sign_in_at: iso(now - 5 * 3600000) },
       { user_id: 'u-staff2', email: 'minjun@hplace.example', full_name: '박민준', role: 'staff', branch_id: 'br01', active: true, created_at: iso(now - 40 * DAY), last_sign_in_at: iso(now - 3 * DAY) },
@@ -315,7 +325,16 @@
       setDemoRole(role) { state.demoRole = role; save(); },
       async getUser() { return state.signedIn ? { id: me().user_id, email: me().email } : null; },
       onAuthChange() {},
-      async signIn() { state.signedIn = true; save(); return delay(); },
+      // Demo: the ID h001 (or any admin account email) opens the admin view;
+      // anything else opens the branch manager view.
+      async signIn(login) {
+        const email = toLoginEmail(login);
+        const user = state.users.find((u) => u.email === email && u.active);
+        state.demoRole = user?.role === 'admin' ? 'admin' : user?.role === 'staff' ? 'staff' : 'manager';
+        state.signedIn = true;
+        save();
+        return delay();
+      },
       async signUp() { throw new AppError('SIGNUP_FAILED', '데모 모드에서는 가입할 수 없습니다. 로그인한 뒤 화면 위쪽의 "역할 보기"로 역할별 화면을 확인해 주세요.'); },
       async signOut() { state.signedIn = false; save(); },
       async getContext() {
@@ -515,6 +534,9 @@
     api.configProblem = configured ? 'Supabase 라이브러리를 불러오지 못해 데모 모드로 실행 중입니다.' : null;
   }
   api.AppError = AppError;
+  api.toLoginEmail = toLoginEmail;
+  api.isLoginId = isLoginId;
+  api.loginDomain = LOGIN_DOMAIN;
   api.toAppError = toAppError;
   window.inventoryApi = api;
 })();
