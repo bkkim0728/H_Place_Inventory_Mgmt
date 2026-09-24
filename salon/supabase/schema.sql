@@ -18,9 +18,10 @@
 --   * Clients never write tables directly. Every change goes through a
 --     security-definer function below that checks the caller's role, so
 --     every stock change is logged in `stock_movements`.
---   * Accounts are created by invitation: an admin/manager invites an email
---     with a branch and role; signing up with that email applies them.
---     Sign-ups without an invitation get no branch and therefore no data.
+--   * Accounts are created by an admin with a login ID and password through
+--     the `admin-users` Edge Function (supabase/functions/admin-users), which
+--     also changes login IDs and resets passwords. Public sign-up stays off.
+--     An account's email is <login_id>@<LOGIN_DOMAIN>.
 --   * Nobody can change their own role, branch or active flag, and the last
 --     active admin cannot be demoted or deactivated.
 -- ============================================================================
@@ -61,31 +62,25 @@ create table if not exists public.profiles (
   user_id     uuid primary key references auth.users(id) on delete cascade,
   branch_id   uuid references public.branches(id) on delete set null,
   email       text,
+  login_id    text,                     -- sign-in ID, e.g. 'h001'
   full_name   text,
   role        public.app_role not null default 'staff',
   active      boolean not null default true,
   created_at  timestamptz not null default now()
 );
-alter table public.profiles add column if not exists email  text;
-alter table public.profiles add column if not exists active boolean not null default true;
+alter table public.profiles add column if not exists email    text;
+alter table public.profiles add column if not exists login_id text;
+alter table public.profiles add column if not exists active   boolean not null default true;
+create unique index if not exists profiles_login_id_idx on public.profiles (lower(login_id));
 create index if not exists profiles_branch_idx on public.profiles (branch_id);
 create index if not exists profiles_email_idx  on public.profiles (lower(email));
 
--- Pending account invitations. Signing up with the email applies branch + role.
-create table if not exists public.invitations (
-  id           uuid primary key default gen_random_uuid(),
-  email        text not null,
-  full_name    text,
-  branch_id    uuid references public.branches(id) on delete cascade,
-  role         public.app_role not null default 'staff',
-  invited_by   uuid references auth.users(id) on delete set null,
-  created_at   timestamptz not null default now(),
-  accepted_at  timestamptz,
-  accepted_by  uuid references auth.users(id) on delete set null,
-  constraint invitations_branch_required check (role = 'admin' or branch_id is not null)
-);
-create unique index if not exists invitations_pending_email_idx
-  on public.invitations (lower(email)) where accepted_at is null;
+-- Invitations were replaced by admin-created accounts; remove them on older installs.
+drop function if exists public.list_users(uuid);  -- return columns changed
+drop function if exists public.invite_user(text, text, uuid, public.app_role);
+drop function if exists public.cancel_invitation(uuid);
+drop function if exists public.invitation_is_open(public.invitations);
+drop table if exists public.invitations;
 
 -- Product catalog is shared by all branches; stock lives in `inventory`.
 create table if not exists public.products (
@@ -166,12 +161,6 @@ as $$
   );
 $$;
 
--- Invitations expire after 14 days.
-create or replace function public.invitation_is_open(i public.invitations)
-returns boolean
-language sql immutable
-as $$ select i.accepted_at is null and i.created_at > now() - interval '14 days' $$;
-
 -- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
@@ -180,7 +169,6 @@ alter table public.profiles        enable row level security;
 alter table public.products        enable row level security;
 alter table public.inventory       enable row level security;
 alter table public.stock_movements enable row level security;
-alter table public.invitations     enable row level security;
 
 drop policy if exists "branches: members read" on public.branches;
 create policy "branches: members read" on public.branches
@@ -203,16 +191,11 @@ drop policy if exists "movements: members read" on public.stock_movements;
 create policy "movements: members read" on public.stock_movements
   for select to authenticated using (public.is_branch_member(branch_id));
 
-drop policy if exists "invitations: admins and branch managers read" on public.invitations;
-create policy "invitations: admins and branch managers read" on public.invitations
-  for select to authenticated
-  using (public.is_admin() or (branch_id is not null and role <> 'admin' and public.is_branch_manager(branch_id)));
-
 -- Reads only; all writes go through the functions below.
 revoke all on public.branches, public.profiles, public.products,
-              public.inventory, public.stock_movements, public.invitations from anon, authenticated;
+              public.inventory, public.stock_movements from anon, authenticated;
 grant select on public.branches, public.profiles, public.products,
-                public.inventory, public.stock_movements, public.invitations to authenticated;
+                public.inventory, public.stock_movements to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Views (security_invoker: the caller's RLS applies)
@@ -562,7 +545,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- list_users: admins pass null for every user (including unassigned sign-ups)
+-- list_users: admins pass null for every user (including unassigned ones)
 -- or a branch id; managers must pass their own branch id.
 -- Errors: FORBIDDEN
 -- ---------------------------------------------------------------------------
@@ -570,6 +553,7 @@ create or replace function public.list_users(p_branch_id uuid default null)
 returns table (
   user_id          uuid,
   email            text,
+  login_id         text,
   full_name        text,
   role             public.app_role,
   branch_id        uuid,
@@ -587,98 +571,13 @@ begin
   end if;
 
   return query
-    select p.user_id, coalesce(p.email, u.email::text), p.full_name, p.role, p.branch_id,
+    select p.user_id, coalesce(p.email, u.email::text), p.login_id, p.full_name, p.role, p.branch_id,
            b.name, p.active, p.created_at, u.last_sign_in_at
       from public.profiles p
       join auth.users u on u.id = p.user_id
       left join public.branches b on b.id = p.branch_id
      where p_branch_id is null or p.branch_id = p_branch_id
      order by b.code nulls first, p.role desc, p.full_name;
-end;
-$$;
-
--- ---------------------------------------------------------------------------
--- invite_user: invite an email to a branch with a role.
---   admin   → any branch, any role ('admin' invites have no branch)
---   manager → own branch, role staff or manager
--- If an unassigned account with that email already exists it is assigned
--- right away ('assigned'); otherwise an invitation is stored ('invited').
--- Errors: INVALID_EMAIL, FORBIDDEN, BRANCH_NOT_FOUND, USER_EXISTS, INVITE_EXISTS
--- ---------------------------------------------------------------------------
-create or replace function public.invite_user(
-  p_email      text,
-  p_full_name  text,
-  p_branch_id  uuid,
-  p_role       public.app_role
-)
-returns text
-language plpgsql security definer set search_path = public
-as $$
-declare
-  v_email  text := lower(btrim(p_email));
-  v_branch uuid := case when p_role = 'admin' then null else p_branch_id end;
-  v_prof   public.profiles;
-begin
-  if v_email is null or v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
-    raise exception 'INVALID_EMAIL' using errcode = '22023';
-  end if;
-  if p_role = 'admin' then
-    if not public.is_admin() then
-      raise exception 'FORBIDDEN' using errcode = '42501';
-    end if;
-  else
-    if v_branch is null or not public.is_branch_manager(v_branch) then
-      raise exception 'FORBIDDEN' using errcode = '42501';
-    end if;
-    if not exists (select 1 from public.branches where id = v_branch and active) then
-      raise exception 'BRANCH_NOT_FOUND' using errcode = 'P0002';
-    end if;
-  end if;
-
-  select * into v_prof from public.profiles where lower(email) = v_email;
-  if found then
-    if v_prof.branch_id is null and v_prof.role <> 'admin' then
-      update public.profiles
-         set branch_id = v_branch, role = p_role, active = true,
-             full_name = coalesce(nullif(btrim(p_full_name), ''), full_name)
-       where user_id = v_prof.user_id;
-      return 'assigned';
-    end if;
-    raise exception 'USER_EXISTS' using errcode = '23505';
-  end if;
-
-  -- Replace an expired invitation for the same email; refuse a live one.
-  delete from public.invitations i
-   where lower(i.email) = v_email and i.accepted_at is null and not public.invitation_is_open(i);
-  begin
-    insert into public.invitations (email, full_name, branch_id, role, invited_by)
-    values (v_email, nullif(btrim(p_full_name), ''), v_branch, p_role, auth.uid());
-  exception when unique_violation then
-    raise exception 'INVITE_EXISTS' using errcode = '23505';
-  end;
-  return 'invited';
-end;
-$$;
-
--- ---------------------------------------------------------------------------
--- cancel_invitation. Errors: INVITE_NOT_FOUND, FORBIDDEN
--- ---------------------------------------------------------------------------
-create or replace function public.cancel_invitation(p_invitation_id uuid)
-returns void
-language plpgsql security definer set search_path = public
-as $$
-declare
-  v_inv public.invitations;
-begin
-  select * into v_inv from public.invitations where id = p_invitation_id and accepted_at is null;
-  if not found then
-    raise exception 'INVITE_NOT_FOUND' using errcode = 'P0002';
-  end if;
-  if not (public.is_admin()
-          or (v_inv.role <> 'admin' and v_inv.branch_id is not null and public.is_branch_manager(v_inv.branch_id))) then
-    raise exception 'FORBIDDEN' using errcode = '42501';
-  end if;
-  delete from public.invitations where id = p_invitation_id;
 end;
 $$;
 
@@ -757,8 +656,6 @@ revoke all on function public.save_product(uuid, uuid, text, text, text, text, t
 revoke all on function public.set_branch_item(uuid, uuid, integer, text) from public, anon;
 revoke all on function public.save_branch(uuid, text, text, text, text, boolean) from public, anon;
 revoke all on function public.list_users(uuid) from public, anon;
-revoke all on function public.invite_user(text, text, uuid, public.app_role) from public, anon;
-revoke all on function public.cancel_invitation(uuid) from public, anon;
 revoke all on function public.update_user(uuid, text, uuid, public.app_role, boolean) from public, anon;
 grant execute on function public.record_movement(uuid, uuid, public.movement_type, integer, text) to authenticated;
 grant execute on function public.revert_movement(bigint) to authenticated;
@@ -766,40 +663,29 @@ grant execute on function public.save_product(uuid, uuid, text, text, text, text
 grant execute on function public.set_branch_item(uuid, uuid, integer, text) to authenticated;
 grant execute on function public.save_branch(uuid, text, text, text, text, boolean) to authenticated;
 grant execute on function public.list_users(uuid) to authenticated;
-grant execute on function public.invite_user(text, text, uuid, public.app_role) to authenticated;
-grant execute on function public.cancel_invitation(uuid) to authenticated;
 grant execute on function public.update_user(uuid, text, uuid, public.app_role, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- New users: apply an open invitation for their email if there is one;
--- otherwise the profile has no branch (no data access until assigned).
+-- New auth users get a profile with no branch (no data access). The
+-- admin-users Edge Function then sets role and branch; accounts added in the
+-- Supabase dashboard are assigned with SQL (see README). login_id is the part
+-- of the email before '@' unless another profile already uses it.
 -- ---------------------------------------------------------------------------
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql security definer set search_path = public
 as $$
 declare
-  v_inv public.invitations;
+  v_login text := lower(split_part(new.email, '@', 1));
 begin
-  select * into v_inv
-    from public.invitations i
-   where lower(i.email) = lower(new.email) and public.invitation_is_open(i)
-   order by i.created_at desc
-   limit 1;
-
-  insert into public.profiles (user_id, email, full_name, branch_id, role)
+  insert into public.profiles (user_id, email, login_id, full_name)
   values (
     new.id,
     lower(new.email),
-    coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), v_inv.full_name, split_part(new.email, '@', 1)),
-    v_inv.branch_id,
-    coalesce(v_inv.role, 'staff')
+    case when exists (select 1 from public.profiles where lower(login_id) = v_login) then null else v_login end,
+    coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), v_login)
   )
   on conflict (user_id) do nothing;
-
-  if v_inv.id is not null then
-    update public.invitations set accepted_at = now(), accepted_by = new.id where id = v_inv.id;
-  end if;
   return new;
 end;
 $$;
@@ -809,8 +695,13 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Backfill emails for profiles created before the email column existed.
+-- Backfill email / login_id for profiles created by older versions.
 update public.profiles p
    set email = lower(u.email)
   from auth.users u
  where u.id = p.user_id and p.email is null;
+update public.profiles p
+   set login_id = lower(split_part(p.email, '@', 1))
+ where p.login_id is null and p.email is not null
+   and not exists (select 1 from public.profiles o
+                    where o.user_id <> p.user_id and lower(o.login_id) = lower(split_part(p.email, '@', 1)));
