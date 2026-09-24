@@ -144,3 +144,14 @@ input:disabled, select:disabled { opacity: 0.55; cursor: not-allowed; }
   .demo-tools { width: 100%; }
   .demo-tools select { flex: 1; min-width: 0; }
 }
+
+/* Categories */
+.order-btns { display: inline-flex; align-items: center; gap: 4px; }
+.order-btns .icon-btn { width: 36px; height: 36px; }
+.order-btns .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.row-actions { display: inline-flex; gap: var(--space-2); justify-content: flex-end; flex-wrap: wrap; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 85%, black); }
+.btn-ghost-danger { background: transparent; border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }
+.btn-ghost-danger:hover { background: var(--danger-soft); }
+.pos { font-variant-numeric: tabular-nums; color: var(--fg-muted); min-width: 1.5em; display: inline-block; }

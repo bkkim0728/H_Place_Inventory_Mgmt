@@ -11,6 +11,11 @@ insert into public.branches (code, name)
 values ('BR01', '1호점')
 on conflict (code) do nothing;
 
+insert into public.categories (name, sort_order) values
+  ('염모제', 10), ('펌제', 20), ('샴푸·트리트먼트', 30), ('클리닉', 40),
+  ('판매용 홈케어', 50), ('소모품', 60), ('도구', 70)
+on conflict (name) do nothing;
+
 insert into public.products (sku, name, category, unit, cost_price, retail_price, is_retail) values
   -- 염모제 · 탈색
   ('CL-6N',    '새치 염모제 6N 80g',            '염모제',          '개',  6800, null,  false),

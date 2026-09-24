@@ -45,10 +45,12 @@
     inventory: '재고 목록',
     movements: '입출고 내역',
     products: '제품 관리',
+    categories: '카테고리 관리',
     users: '사용자 관리',
     branches: '지점 관리',
   };
   const MANAGER_ROUTES = ['products', 'users', 'branches'];
+  const ADMIN_ROUTES = ['categories'];
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
   const typeTag = (t) => `<span class="tag tag-${TYPES[t]?.tag || 'adjust'}">${TYPES[t]?.label || t}</span>`;
@@ -67,12 +69,16 @@
     pd: { q: '' },
     us: { q: '', branch: '' },
     users: [],
+    categories: [],
     range: 14,
     activeIdx: null,
     loading: false,
   };
   const isManager = () => ['manager', 'admin'].includes(state.profile?.role);
   const isAdmin = () => state.profile?.role === 'admin';
+  // Category display order (from 카테고리 관리); unknown names sort last.
+  const catRank = (name) => { const i = state.categories.findIndex((c) => c.name === name); return i === -1 ? 1e6 : i; };
+  const byCategory = (a, b) => catRank(a) - catRank(b) || a.localeCompare(b, 'ko');
   const branchName = (id) => state.branches.find((b) => b.id === id)?.name || '미배정';
   const activeItems = () => state.inventory.filter((i) => i.active);
   const itemById = (id) => state.inventory.find((i) => i.product_id === id);
@@ -221,12 +227,14 @@
     refresh.setAttribute('aria-busy', 'true');
     $('#branchLine').textContent = `${state.branch.name} · 불러오는 중…`;
     try {
-      const [inventory, movements] = await Promise.all([
+      const [inventory, movements, categories] = await Promise.all([
         api.listInventory(state.branch.id),
         api.listMovements(state.branch.id, 30),
+        api.listCategories(),
       ]);
       state.inventory = inventory;
       state.movements = movements;
+      state.categories = categories;
       $('#loadError').hidden = true;
       renderAll();
     } catch (e) {
@@ -254,6 +262,7 @@
     renderMovements();
     renderProducts();
     renderBranches();
+    renderCategories();
     fillMoveItems();
   }
 
@@ -262,7 +271,7 @@
   // ------------------------------------------------------------------
   function applyRoute(moveFocus = true) {
     let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'dashboard';
-    if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager())) route = 'dashboard';
+    if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager()) || (ADMIN_ROUTES.includes(route) && !isAdmin())) route = 'dashboard';
     state.route = route;
     $$('.view').forEach((v) => { v.hidden = v.dataset.view !== route; });
     $$('.nav-link').forEach((a) => {
@@ -274,6 +283,7 @@
     if (route === 'dashboard') renderChart();
     if (route === 'users') loadUsers();
     if (route === 'branches') renderBranches();
+    if (route === 'categories') renderCategories();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
     window.scrollTo(0, 0);
@@ -486,16 +496,20 @@
   // Inventory list
   // ------------------------------------------------------------------
   function fillFilters() {
-    const cats = [...new Set(state.inventory.map((i) => i.category))].sort((a, b) => a.localeCompare(b, 'ko'));
+    const cats = [...new Set(state.inventory.map((i) => i.category))].sort(byCategory);
     const sel = $('#invCat');
     const cur = sel.value;
     sel.innerHTML = '<option value="">전체</option>' + cats.map((c) => `<option>${esc(c)}</option>`).join('');
     sel.value = cats.includes(cur) ? cur : '';
-    $('#categoryList').innerHTML = cats.map((c) => `<option value="${esc(c)}"></option>`).join('');
+    const pc = $('#pCategory');
+    const curP = pc.value;
+    pc.innerHTML = '<option value="">카테고리를 선택하세요</option>' + state.categories.map((c) => `<option>${esc(c.name)}</option>`).join('');
+    pc.value = state.categories.some((c) => c.name === curP) ? curP : '';
   }
 
   function sortVal(i, key) {
     if (key === 'value') return i.stock * i.cost_price;
+    if (key === 'category') return catRank(i.category);
     if (key === 'status') return STATUS[i.status].rank * 1e6 + i.stock / Math.max(i.safety_stock, 1);
     return i[key];
   }
@@ -611,7 +625,7 @@
   function renderProducts() {
     const q = state.pd.q.trim().toLowerCase();
     const rows = state.inventory.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
-      .sort((a, b) => a.category.localeCompare(b.category, 'ko') || a.name.localeCompare(b.name, 'ko'));
+      .sort((a, b) => byCategory(a.category, b.category) || a.name.localeCompare(b.name, 'ko'));
     $('#pdCount').textContent = `${nf.format(rows.length)}개 품목`;
     $('#pdBody').innerHTML = rows.map((i) => `<tr class="${i.active ? '' : 'inactive-row'}">
       <td class="cell-name"><div class="item-name">${esc(i.name)}</div><div class="item-sku">${esc(i.sku)}${i.brand ? ` · ${esc(i.brand)}` : ''}</div></td>
@@ -692,7 +706,7 @@
 
   function fillMoveItems() {
     const items = activeItems();
-    const cats = [...new Set(items.map((i) => i.category))];
+    const cats = [...new Set(items.map((i) => i.category))].sort(byCategory);
     const sel = $('#mItem');
     const cur = sel.value;
     sel.innerHTML = '<option value="">품목을 선택하세요</option>' + cats.map((c) =>
@@ -790,7 +804,9 @@
     $('#pName').value = item?.name || '';
     $('#pSku').value = item?.sku || '';
     $('#pBrand').value = item?.brand || '';
-    $('#pCategory').value = item?.category || '';
+    const pc = $('#pCategory');
+    if (item && !state.categories.some((c) => c.name === item.category)) pc.add(new Option(item.category, item.category));
+    pc.value = item?.category || '';
     $('#pUnit').value = item?.unit || '개';
     $('#pCost').value = item ? item.cost_price : '';
     $('#pRetail').value = item?.retail_price ?? '';
@@ -852,7 +868,7 @@
       fieldError($('#pSku'), '품목 코드는 영문, 숫자, 하이픈(-)만 쓸 수 있습니다.');
       errors.push({ id: 'pSku', msg: '품목 코드 형식을 확인해 주세요.' });
     }
-    need('pCategory', '카테고리');
+    if (!$('#pCategory').value) { fieldError($('#pCategory'), '카테고리를 선택해 주세요.'); errors.push({ id: 'pCategory', msg: '카테고리를 선택해 주세요.' }); }
     need('pUnit', '단위');
     const cost = intField('pCost', '매입가', true);
     const retail = intField('pRetail', '판매가', false);
@@ -1212,6 +1228,139 @@
   });
 
   // ------------------------------------------------------------------
+  // Categories (admin)
+  // ------------------------------------------------------------------
+  function renderCategories() {
+    if (!isAdmin()) return;
+    const counts = {};
+    state.inventory.forEach((i) => { counts[i.category] = (counts[i.category] || 0) + 1; });
+    const list = state.categories;
+    $('#catCount').textContent = `${nf.format(list.length)}개 카테고리`;
+    $('#catBody').innerHTML = list.map((c, i) => {
+      const n = counts[c.name] || 0;
+      return `<tr>
+        <td data-label="순서"><span class="order-btns">
+          <span class="pos">${i + 1}</span>
+          <button type="button" class="icon-btn" data-cat-move="${c.id}" data-dir="-1" aria-label="${esc(c.name)} 위로" ${i === 0 ? 'disabled' : ''}>${svgIcon('i-up')}</button>
+          <button type="button" class="icon-btn" data-cat-move="${c.id}" data-dir="1" aria-label="${esc(c.name)} 아래로" ${i === list.length - 1 ? 'disabled' : ''}>${svgIcon('i-down')}</button>
+        </span></td>
+        <td class="cell-name"><div class="item-name">${esc(c.name)}</div></td>
+        <td class="num" data-label="제품 수">${nf.format(n)}</td>
+        <td class="cell-action"><span class="row-actions">
+          <button type="button" class="btn btn-secondary btn-sm" data-cat-edit="${c.id}" aria-label="${esc(c.name)} 이름 변경">${svgIcon('i-edit')}이름 변경</button>
+          <button type="button" class="btn btn-sm btn-ghost-danger" data-cat-delete="${c.id}" aria-label="${esc(c.name)} 삭제" ${n ? `aria-describedby="catInUse-${c.id}"` : ''}>${svgIcon('i-trash')}삭제</button>
+          ${n ? `<span class="sr-only" id="catInUse-${c.id}">제품 ${n}개가 있어 삭제할 수 없습니다</span>` : ''}
+        </span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function reloadCategories(focusSel) {
+    state.categories = await api.listCategories();
+    fillFilters();
+    fillMoveItems();
+    renderInventory();
+    renderProducts();
+    renderCategories();
+    if (focusSel) { const el = $(focusSel); if (el && !el.disabled) el.focus(); }
+  }
+
+  async function moveCategory(id, dir, button) {
+    const ids = state.categories.map((c) => c.id);
+    const i = ids.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    button.disabled = true;
+    try {
+      await api.reorderCategories(ids);
+      await reloadCategories(`[data-cat-move="${id}"][data-dir="${dir}"]`);
+    } catch (e) {
+      toast(api.toAppError(e).message, { error: true });
+      button.disabled = false;
+    }
+  }
+
+  const categoryDialog = setupDialog($('#categoryDialog'));
+  const categoryForm = $('#categoryForm');
+  let editingCategory = null;
+  function openCategory(c) {
+    editingCategory = c;
+    categoryForm.reset();
+    clearErrors(categoryForm);
+    $('#categoryTitle').textContent = c ? `${c.name} 이름 변경` : '카테고리 추가';
+    $('#cName').value = c?.name || '';
+    $('#cNameHelp').textContent = c ? '이 카테고리의 모든 제품에 새 이름이 바로 반영됩니다.' : '예: 염모제, 두피케어';
+    categoryDialog.open();
+    $('#cName').focus();
+  }
+  categoryForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(categoryForm);
+    const name = $('#cName').value.trim();
+    if (!name) { fieldError($('#cName'), '카테고리 이름을 입력해 주세요.'); return showSummary(categoryForm, [{ id: 'cName', msg: '카테고리 이름을 입력해 주세요.' }]); }
+    if (editingCategory && name === editingCategory.name) { $('#categoryDialog').close(); return; }
+    const btn = $('#categorySubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      await api.saveCategory(editingCategory?.id || null, name);
+      $('#categoryDialog').close();
+      toast(editingCategory ? `"${editingCategory.name}"을(를) "${name}"(으)로 바꿨습니다.` : `"${name}" 카테고리를 추가했습니다.`);
+      if (editingCategory) await loadData(); else await reloadCategories();
+    } catch (ex) {
+      const err = api.toAppError(ex);
+      if (['DUPLICATE_CATEGORY', 'INVALID_CATEGORY'].includes(err.code)) { fieldError($('#cName'), err.message); showSummary(categoryForm, [{ id: 'cName', msg: err.message }]); }
+      else showServerError(categoryForm, err.message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  // Generic confirm dialog (window.confirm is not used so it works everywhere)
+  const confirmDialog = setupDialog($('#confirmDialog'));
+  let confirmAction = null;
+  function askConfirm({ title, text, button = '삭제', run }) {
+    $('#confirmTitle').textContent = title;
+    $('#confirmText').textContent = text;
+    $('#confirmSubmit').textContent = button;
+    $('#confirmError').hidden = true;
+    confirmAction = run;
+    confirmDialog.open();
+    $('#confirmSubmit').focus();
+  }
+  $('#confirmForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#confirmSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      await confirmAction();
+      $('#confirmDialog').close();
+    } catch (ex) {
+      const box = $('#confirmError');
+      box.textContent = api.toAppError(ex).message;
+      box.hidden = false;
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  function deleteCategory(c) {
+    const n = state.inventory.filter((i) => i.category === c.name).length;
+    if (n) {
+      toast(`"${c.name}"에 제품 ${nf.format(n)}개가 있어 삭제할 수 없습니다. 제품 관리에서 카테고리를 먼저 바꿔 주세요.`, { error: true });
+      return;
+    }
+    askConfirm({
+      title: '카테고리 삭제',
+      text: `"${c.name}" 카테고리를 삭제할까요? 이 카테고리에는 제품이 없습니다.`,
+      run: async () => {
+        await api.deleteCategory(c.id);
+        toast(`"${c.name}" 카테고리를 삭제했습니다.`);
+        await reloadCategories('#newCategoryBtn');
+      },
+    });
+  }
+
+  // ------------------------------------------------------------------
   // Global click actions
   // ------------------------------------------------------------------
   document.addEventListener('click', (e) => {
@@ -1223,11 +1372,18 @@
     if (ed) return openProduct(itemById(ed.dataset.edit));
     const eu = e.target.closest('[data-edit-user]');
     if (eu) return openUser(state.users.find((u) => u.user_id === eu.dataset.editUser));
+    const cm = e.target.closest('[data-cat-move]');
+    if (cm) return moveCategory(cm.dataset.catMove, Number(cm.dataset.dir), cm);
+    const ce = e.target.closest('[data-cat-edit]');
+    if (ce) return openCategory(state.categories.find((c) => c.id === ce.dataset.catEdit));
+    const cd = e.target.closest('[data-cat-delete]');
+    if (cd) return deleteCategory(state.categories.find((c) => c.id === cd.dataset.catDelete));
     const eb = e.target.closest('[data-edit-branch]');
     if (eb) return openBranch(state.branches.find((b) => b.id === eb.dataset.editBranch));
   });
   $('#addUserBtn').addEventListener('click', openCreateUser);
   $('#newBranchBtn').addEventListener('click', () => openBranch(null));
+  $('#newCategoryBtn').addEventListener('click', () => openCategory(null));
   $('#newMoveBtn').addEventListener('click', () => openMove());
   $('#newProductBtn').addEventListener('click', () => openProduct(null));
   $('#demoReset').addEventListener('click', async () => {
