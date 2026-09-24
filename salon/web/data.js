@@ -25,6 +25,10 @@
     REVERT_WINDOW_PASSED: '본인이 10분 안에 등록한 기록만 취소할 수 있습니다. 지점 관리자에게 요청해 주세요.',
     INVALID_PRODUCT: '품목 정보를 다시 확인해 주세요.',
     DUPLICATE_SKU: '이미 사용 중인 품목 코드입니다. 다른 코드를 입력해 주세요.',
+    INVALID_CATEGORY: '카테고리 이름을 1~30자로 입력해 주세요.',
+    DUPLICATE_CATEGORY: '이미 있는 카테고리 이름입니다.',
+    CATEGORY_NOT_FOUND: '카테고리를 찾을 수 없습니다. 카테고리 관리에서 확인해 주세요.',
+    CATEGORY_IN_USE: '이 카테고리에 제품이 있어 삭제할 수 없습니다. 제품의 카테고리를 먼저 바꿔 주세요.',
     INVALID_BRANCH: '지점 정보를 확인해 주세요. 지점 코드는 영문 대문자·숫자·하이픈 2~12자입니다.',
     DUPLICATE_BRANCH_CODE: '이미 사용 중인 지점 코드입니다.',
     BRANCH_NOT_FOUND: '지점을 찾을 수 없거나 사용 중지된 지점입니다.',
@@ -115,6 +119,10 @@
         return { profile, branches };
       },
       listBranches: () => run(sb.from('branches').select('id, code, name, phone, address, active').order('code')),
+      listCategories: () => run(sb.from('categories').select('id, name, sort_order').order('sort_order').order('name')),
+      saveCategory: (id, name) => run(sb.rpc('save_category', { p_category_id: id || null, p_name: name })),
+      deleteCategory: (id) => run(sb.rpc('delete_category', { p_category_id: id })),
+      reorderCategories: (ids) => run(sb.rpc('reorder_categories', { p_ids: ids })),
       listInventory: (branchId) =>
         run(sb.from('inventory_view').select('*').eq('branch_id', branchId).order('category').order('name')),
       listMovements: (branchId, days) =>
@@ -173,7 +181,7 @@
   // Demo store (same catalog as supabase/seed.sql, plus a second branch and
   // sample users so every role can be tried)
   // ------------------------------------------------------------------
-  const DEMO_KEY = 'hplace-salon-demo-v4';
+  const DEMO_KEY = 'hplace-salon-demo-v5';
   const PERSONA = { admin: 'u-admin', manager: 'u-mgr1', staff: 'u-staff1' };
 
   const CATALOG = [
@@ -282,7 +290,8 @@
       unit_cost: products.find((x) => x.id === m.product_id).cost_price,
       memo: '샘플 데이터', reverts_id: null, created_by: m.created_by, created_at: iso(m.created_at),
     }));
-    return { branches, users, products, inventory, movements, nextId: id, signedIn: false, meId: PERSONA.manager };
+    const categories = [...new Set(CATALOG.map((c) => c[2]))].map((name, i) => ({ id: `cat${i + 1}`, name, sort_order: (i + 1) * 10 }));
+    return { branches, users, categories, products, inventory, movements, nextId: id, signedIn: false, meId: PERSONA.manager };
   }
 
   function demoApi() {
@@ -338,6 +347,42 @@
         const profile = clone(me());
         const branches = profile.role === 'admin' ? state.branches : state.branches.filter((b) => b.id === profile.branch_id);
         return delay({ profile, branches: clone(branches) });
+      },
+      async listCategories() {
+        return delay(clone([...state.categories].sort((a, b) => a.sort_order - b.sort_order)));
+      },
+      async saveCategory(id, value) {
+        must(isAdmin(), 'ADMIN_ONLY');
+        const name = String(value || '').trim();
+        must(name && name.length <= 30, 'INVALID_CATEGORY');
+        must(!state.categories.some((c) => c.name === name && c.id !== id), 'DUPLICATE_CATEGORY');
+        if (!id) {
+          const c = { id: `cat${Date.now()}`, name, sort_order: Math.max(0, ...state.categories.map((x) => x.sort_order)) + 10 };
+          state.categories.push(c);
+          save();
+          return delay(c.id);
+        }
+        const c = state.categories.find((x) => x.id === id);
+        must(c, 'CATEGORY_NOT_FOUND');
+        state.products.forEach((p) => { if (p.category === c.name) p.category = name; });  // like ON UPDATE CASCADE
+        c.name = name;
+        save();
+        return delay(id);
+      },
+      async deleteCategory(id) {
+        must(isAdmin(), 'ADMIN_ONLY');
+        const c = state.categories.find((x) => x.id === id);
+        must(c, 'CATEGORY_NOT_FOUND');
+        must(!state.products.some((p) => p.category === c.name), 'CATEGORY_IN_USE');
+        state.categories = state.categories.filter((x) => x.id !== id);
+        save();
+        return delay();
+      },
+      async reorderCategories(ids) {
+        must(isAdmin(), 'ADMIN_ONLY');
+        ids.forEach((id, i) => { const c = state.categories.find((x) => x.id === id); if (c) c.sort_order = (i + 1) * 10; });
+        save();
+        return delay();
       },
       async listBranches() {
         return delay(clone(isAdmin() ? state.branches : state.branches.filter((b) => b.id === me().branch_id)));
@@ -406,6 +451,7 @@
         const sku = (p.sku || '').trim().toUpperCase();
         must(sku && p.name.trim() && p.category.trim() && p.unit.trim() && p.costPrice >= 0 && (p.retailPrice ?? 0) >= 0 && p.safetyStock >= 0, 'INVALID_PRODUCT');
         must(!state.products.some((x) => x.sku === sku && x.id !== p.productId), 'DUPLICATE_SKU');
+        must(state.categories.some((c) => c.name === p.category.trim()), 'CATEGORY_NOT_FOUND');
         let prod = p.productId ? product(p.productId) : null;
         must(!p.productId || prod, 'PRODUCT_NOT_FOUND');
         if (!prod) {

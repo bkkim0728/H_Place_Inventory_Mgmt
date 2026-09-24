@@ -82,6 +82,15 @@ drop function if exists public.cancel_invitation(uuid);
 drop function if exists public.invitation_is_open(public.invitations);
 drop table if exists public.invitations;
 
+-- Product categories (shared by all branches). Products reference the name, so
+-- renaming a category updates its products and a category in use can't be deleted.
+create table if not exists public.categories (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null unique,
+  sort_order  integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+
 -- Product catalog is shared by all branches; stock lives in `inventory`.
 create table if not exists public.products (
   id            uuid primary key default gen_random_uuid(),
@@ -96,6 +105,17 @@ create table if not exists public.products (
   active        boolean not null default true,
   created_at    timestamptz not null default now()
 );
+
+-- Older installs: register categories already used by products, then link them.
+insert into public.categories (name, sort_order)
+select c.category, 1000 + row_number() over (order by c.category)
+  from (select distinct category from public.products) c
+on conflict (name) do nothing;
+do $$ begin
+  alter table public.products
+    add constraint products_category_fkey foreign key (category)
+    references public.categories (name) on update cascade on delete restrict;
+exception when duplicate_object then null; end $$;
 
 create table if not exists public.inventory (
   branch_id     uuid not null references public.branches(id) on delete cascade,
@@ -169,6 +189,7 @@ alter table public.profiles        enable row level security;
 alter table public.products        enable row level security;
 alter table public.inventory       enable row level security;
 alter table public.stock_movements enable row level security;
+alter table public.categories      enable row level security;
 
 drop policy if exists "branches: members read" on public.branches;
 create policy "branches: members read" on public.branches
@@ -178,6 +199,10 @@ drop policy if exists "profiles: self and branch colleagues read" on public.prof
 create policy "profiles: self and branch colleagues read" on public.profiles
   for select to authenticated
   using (user_id = auth.uid() or (branch_id is not null and public.is_branch_member(branch_id)));
+
+drop policy if exists "categories: signed-in users read" on public.categories;
+create policy "categories: signed-in users read" on public.categories
+  for select to authenticated using (true);
 
 drop policy if exists "products: signed-in users read" on public.products;
 create policy "products: signed-in users read" on public.products
@@ -192,9 +217,9 @@ create policy "movements: members read" on public.stock_movements
   for select to authenticated using (public.is_branch_member(branch_id));
 
 -- Reads only; all writes go through the functions below.
-revoke all on public.branches, public.profiles, public.products,
+revoke all on public.branches, public.profiles, public.products, public.categories,
               public.inventory, public.stock_movements from anon, authenticated;
-grant select on public.branches, public.profiles, public.products,
+grant select on public.branches, public.profiles, public.products, public.categories,
                 public.inventory, public.stock_movements to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -378,7 +403,8 @@ $$;
 -- save_product: create/update a catalog item (admin only; the catalog is shared
 -- by every branch). A new product gets an inventory row in every branch.
 -- p_branch_id / p_safety_stock / p_location also set that branch's settings.
--- Errors: ADMIN_ONLY, INVALID_PRODUCT, DUPLICATE_SKU, PRODUCT_NOT_FOUND
+-- Errors: ADMIN_ONLY, INVALID_PRODUCT, DUPLICATE_SKU, PRODUCT_NOT_FOUND,
+--         CATEGORY_NOT_FOUND
 -- ---------------------------------------------------------------------------
 create or replace function public.save_product(
   p_branch_id     uuid,
@@ -436,8 +462,11 @@ begin
         raise exception 'PRODUCT_NOT_FOUND' using errcode = 'P0002';
       end if;
     end if;
-  exception when unique_violation then
-    raise exception 'DUPLICATE_SKU' using errcode = '23505';
+  exception
+    when unique_violation then
+      raise exception 'DUPLICATE_SKU' using errcode = '23505';
+    when foreign_key_violation then
+      raise exception 'CATEGORY_NOT_FOUND' using errcode = 'P0002';
   end;
 
   if p_branch_id is not null then
@@ -648,6 +677,86 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Categories (admin only). Renaming cascades to products through the foreign
+-- key; a category that still has products can't be deleted.
+-- Errors: ADMIN_ONLY, INVALID_CATEGORY, DUPLICATE_CATEGORY, CATEGORY_NOT_FOUND,
+--         CATEGORY_IN_USE
+-- ---------------------------------------------------------------------------
+create or replace function public.save_category(p_category_id uuid, p_name text)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_name text := btrim(coalesce(p_name, ''));
+  v_id   uuid;
+begin
+  if not public.is_admin() then
+    raise exception 'ADMIN_ONLY' using errcode = '42501';
+  end if;
+  if v_name = '' or length(v_name) > 30 then
+    raise exception 'INVALID_CATEGORY' using errcode = '22023';
+  end if;
+
+  begin
+    if p_category_id is null then
+      insert into public.categories (name, sort_order)
+      values (v_name, coalesce((select max(sort_order) from public.categories), 0) + 10)
+      returning id into v_id;
+    else
+      update public.categories set name = v_name where id = p_category_id
+      returning id into v_id;
+      if v_id is null then
+        raise exception 'CATEGORY_NOT_FOUND' using errcode = 'P0002';
+      end if;
+    end if;
+  exception when unique_violation then
+    raise exception 'DUPLICATE_CATEGORY' using errcode = '23505';
+  end;
+  return v_id;
+end;
+$$;
+
+create or replace function public.delete_category(p_category_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_name  text;
+  v_count integer;
+begin
+  if not public.is_admin() then
+    raise exception 'ADMIN_ONLY' using errcode = '42501';
+  end if;
+  select name into v_name from public.categories where id = p_category_id;
+  if v_name is null then
+    raise exception 'CATEGORY_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  select count(*) into v_count from public.products where category = v_name;
+  if v_count > 0 then
+    raise exception 'CATEGORY_IN_USE' using errcode = '23503',
+      detail = format('%s products', v_count);
+  end if;
+  delete from public.categories where id = p_category_id;
+end;
+$$;
+
+-- p_ids lists category ids in the new order; ids not listed keep their place after.
+create or replace function public.reorder_categories(p_ids uuid[])
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'ADMIN_ONLY' using errcode = '42501';
+  end if;
+  update public.categories c
+     set sort_order = x.ord * 10
+    from unnest(p_ids) with ordinality as x(id, ord)
+   where c.id = x.id;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Function privileges: signed-in users only (each function checks the role)
 -- ---------------------------------------------------------------------------
 revoke all on function public.record_movement(uuid, uuid, public.movement_type, integer, text) from public, anon;
@@ -655,6 +764,9 @@ revoke all on function public.revert_movement(bigint) from public, anon;
 revoke all on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) from public, anon;
 revoke all on function public.set_branch_item(uuid, uuid, integer, text) from public, anon;
 revoke all on function public.save_branch(uuid, text, text, text, text, boolean) from public, anon;
+revoke all on function public.save_category(uuid, text) from public, anon;
+revoke all on function public.delete_category(uuid) from public, anon;
+revoke all on function public.reorder_categories(uuid[]) from public, anon;
 revoke all on function public.list_users(uuid) from public, anon;
 revoke all on function public.update_user(uuid, text, uuid, public.app_role, boolean) from public, anon;
 grant execute on function public.record_movement(uuid, uuid, public.movement_type, integer, text) to authenticated;
@@ -662,6 +774,9 @@ grant execute on function public.revert_movement(bigint) to authenticated;
 grant execute on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) to authenticated;
 grant execute on function public.set_branch_item(uuid, uuid, integer, text) to authenticated;
 grant execute on function public.save_branch(uuid, text, text, text, text, boolean) to authenticated;
+grant execute on function public.save_category(uuid, text) to authenticated;
+grant execute on function public.delete_category(uuid) to authenticated;
+grant execute on function public.reorder_categories(uuid[]) to authenticated;
 grant execute on function public.list_users(uuid) to authenticated;
 grant execute on function public.update_user(uuid, text, uuid, public.app_role, boolean) to authenticated;
 

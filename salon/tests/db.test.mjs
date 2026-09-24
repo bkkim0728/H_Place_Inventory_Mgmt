@@ -117,6 +117,31 @@ ok((await one(`select safety_stock, location from inventory where branch_id=$1 a
 ok((await err(mgr, () => q(`select set_branch_item($1,$2,7,null)`, [b2, pid])))?.includes('MANAGER_ONLY'), 'manager cannot set another branch item');
 ok((await err(staff, () => q(`select set_branch_item($1,$2,7,null)`, [b1, pid])))?.includes('MANAGER_ONLY'), 'staff cannot set branch item');
 
+console.log('categories');
+ok((await as(staff, () => q(`select name from categories order by sort_order`))).map(r => r.name).join(',') === '염모제,펌제,샴푸·트리트먼트,클리닉,판매용 홈케어,소모품,도구', 'signed-in users read categories in order');
+ok((await err(null, () => q(`select * from categories`)))?.includes('permission denied'), 'anon cannot read categories');
+ok((await err(mgr, () => q(`select save_category(null,'두피케어')`)))?.includes('ADMIN_ONLY'), 'manager cannot add categories');
+const catId = await as(admin, async () => (await one(`select save_category(null,'  두피케어 ') id`)).id);
+ok((await one(`select name, sort_order from categories where id=$1`, [catId])).name === '두피케어', 'admin adds a category (trimmed)');
+ok((await one(`select sort_order from categories where id=$1`, [catId])).sort_order > (await one(`select max(sort_order) m from categories where id<>$1`, [catId])).m, 'new category goes last');
+ok((await err(admin, () => q(`select save_category(null,'펌제')`)))?.includes('DUPLICATE_CATEGORY'), 'duplicate category name rejected');
+ok((await err(admin, () => q(`select save_category(null,'   ')`)))?.includes('INVALID_CATEGORY'), 'blank category rejected');
+ok((await err(admin, () => q(`select save_product($1,null,'X-9','x','', '없는분류','개',100,null,false,0,null)`, [b1])))?.includes('CATEGORY_NOT_FOUND'), 'product must use an existing category');
+const permId = (await one(`select id from categories where name='펌제'`)).id;
+await as(admin, () => q(`select save_category($1,'펌·매직')`, [permId]));
+ok((await one(`select count(*)::int n from products where category='펌·매직'`)).n === 4 && (await one(`select count(*)::int n from products where category='펌제'`)).n === 0, 'renaming a category renames it on its products');
+ok((await as(staff, () => q(`select distinct category from inventory_view where category='펌·매직'`))).length === 1, 'inventory view shows the new category name');
+ok((await err(admin, () => q(`select delete_category($1)`, [permId])))?.includes('CATEGORY_IN_USE'), 'category with products cannot be deleted');
+await as(admin, () => q(`select delete_category($1)`, [catId]));
+ok(!(await one(`select id from categories where id=$1`, [catId])), 'empty category deleted');
+ok((await err(mgr, () => q(`select delete_category($1)`, [permId])))?.includes('ADMIN_ONLY'), 'manager cannot delete categories');
+const ids = (await q(`select id from categories order by sort_order`)).map(r => r.id);
+await as(admin, () => q(`select reorder_categories($1::uuid[])`, [[ids[6], ...ids.slice(0, 6)]]));
+ok((await one(`select name from categories order by sort_order limit 1`)).name === '도구', 'admin reorders categories');
+ok((await err(mgr, () => q(`select reorder_categories($1::uuid[])`, [ids])))?.includes('ADMIN_ONLY'), 'manager cannot reorder');
+ok((await err(staff, () => q(`update categories set name='x'`)))?.includes('permission denied'), 'no direct writes to categories');
+await as(admin, () => q(`select save_category($1,'펌제')`, [permId]));
+
 console.log('branches');
 const b3 = await as(admin, async () => (await one(`select save_branch(null,' br03 ','3호점','02-000-0000','서울',true) id`)).id);
 ok((await one(`select code from branches where id=$1`, [b3])).code === 'BR03', 'admin creates branch (code normalised)');

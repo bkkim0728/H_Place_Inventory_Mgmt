@@ -48,6 +48,8 @@
       <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9 4.5 4h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0Z"/><path d="M5 13v8h14v-8M10 21v-5h4v5"/></symbol>
       <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
       <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     </defs>
   </svg>
@@ -112,6 +114,7 @@
         <p class="nav-section" data-manager-only>관리</p>
         <ul class="nav-list" data-manager-only>
           <li><a href="#/products" class="nav-link" data-route="products"><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>제품 관리</a></li>
+          <li data-admin-only><a href="#/categories" class="nav-link" data-route="categories"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>카테고리 관리</a></li>
           <li><a href="#/users" class="nav-link" data-route="users"><svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>사용자 관리</a></li>
           <li><a href="#/branches" class="nav-link" data-route="branches"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>지점 관리</a></li>
         </ul>
@@ -366,6 +369,29 @@
             </table>
           </div>
         </section>
+        <!-- Categories (admin) -->
+        <section class="view card panel" data-view="categories" hidden aria-labelledby="pageTitle">
+          <div class="toolbar">
+            <p class="note grow">카테고리는 모든 지점이 함께 씁니다. 이름을 바꾸면 그 카테고리의 제품에 바로 반영되고, 순서는 재고 목록과 입출고 등록 창의 표시 순서가 됩니다. 제품이 있는 카테고리는 삭제할 수 없습니다.</p>
+            <button class="btn btn-primary" type="button" id="newCategoryBtn"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>카테고리 추가</button>
+          </div>
+          <p class="muted small result-count" id="catCount" aria-live="polite"></p>
+          <div class="table-wrap">
+            <table class="inv-table" id="catTable">
+              <caption class="sr-only">카테고리 목록 (표시 순서)</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="th-plain">순서</th>
+                  <th scope="col" class="th-plain">카테고리</th>
+                  <th scope="col" class="th-plain num">제품 수</th>
+                  <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
+                </tr>
+              </thead>
+              <tbody id="catBody"></tbody>
+            </table>
+          </div>
+        </section>
+
         <!-- Users (manager+) -->
         <section class="view" data-view="users" hidden aria-labelledby="pageTitle">
           <div class="card panel">
@@ -502,8 +528,8 @@
           </div>
           <div class="form-field">
             <label for="pCategory">카테고리 <span class="req" aria-hidden="true">*</span></label>
-            <input data-catalog id="pCategory" type="text" list="categoryList" maxlength="30" required aria-describedby="pCategoryErr" />
-            <datalist id="categoryList"></datalist>
+            <select data-catalog id="pCategory" required aria-describedby="pCategoryHelp pCategoryErr"></select>
+            <p class="help" id="pCategoryHelp">목록에 없으면 카테고리 관리에서 먼저 추가해 주세요.</p>
             <p class="err" id="pCategoryErr" hidden></p>
           </div>
           <div class="form-field">
@@ -662,6 +688,47 @@
       <div class="modal-foot">
         <button type="button" class="btn btn-secondary" data-close>취소</button>
         <button type="submit" class="btn btn-primary" id="userSubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Category dialog (admin) -->
+  <dialog class="modal" id="categoryDialog" aria-labelledby="categoryTitle">
+    <form id="categoryForm" novalidate>
+      <div class="modal-head">
+        <h2 id="categoryTitle">카테고리 추가</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="categoryErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <div class="form-field">
+          <label for="cName">카테고리 이름 <span class="req" aria-hidden="true">*</span></label>
+          <input id="cName" type="text" maxlength="30" autocomplete="off" aria-describedby="cNameHelp cNameErr" />
+          <p class="help" id="cNameHelp">예: 염모제, 두피케어</p>
+          <p class="err" id="cNameErr" hidden></p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="categorySubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Confirm dialog -->
+  <dialog class="modal" id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmText">
+    <form id="confirmForm" novalidate>
+      <div class="modal-head">
+        <h2 id="confirmTitle">확인</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmText"></p>
+        <p class="err-box" id="confirmError" role="alert" hidden></p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-danger" id="confirmSubmit">삭제</button>
       </div>
     </form>
   </dialog>
