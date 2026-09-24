@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>H Place 재고 관리</title>
+  <meta name="description" content="H Place 재고 현황 대시보드" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try {
+      const t = localStorage.getItem('hp-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+  <!-- SVG icon sprite (Lucide-style, 2px stroke) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></symbol>
+      <symbol id="i-won" viewBox="0 0 24 24"><path d="m4 6 3 12 5-10 5 10 3-12"/><path d="M3 10h18M3 14h18"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+      <symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+      <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+      <symbol id="i-sort" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></symbol>
+      <symbol id="i-up" viewBox="0 0 24 24"><path d="m7 14 5-5 5 5"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="주 메뉴">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-box"/></svg></span>
+        <span class="brand-name">H Place<small>재고 관리</small></span>
+      </div>
+      <nav>
+        <ul class="nav-list">
+          <li><a href="#overview" class="nav-link" aria-current="true"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>대시보드</a></li>
+          <li><a href="#trend" class="nav-link"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>입출고 추이</a></li>
+          <li><a href="#alerts" class="nav-link"><svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>재고 알림<span class="nav-badge" id="navAlertCount" aria-label="알림 0건">0</span></a></li>
+          <li><a href="#inventory" class="nav-link"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>재고 목록</a></li>
+        </ul>
+      </nav>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <div class="main-wrap">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="메뉴 열기" aria-controls="sidebar" aria-expanded="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+        </button>
+        <div class="topbar-title">
+          <h1>재고 현황</h1>
+          <p class="muted" id="asOf">기준일 —</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="themeBtn" type="button" aria-label="다크 모드로 전환">
+            <svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg>
+          </button>
+          <button class="btn btn-primary" id="newMoveBtn" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>입출고 등록</span>
+          </button>
+        </div>
+      </header>
+
+      <main id="main" tabindex="-1">
+        <section id="overview" aria-labelledby="kpi-heading">
+          <h2 id="kpi-heading" class="sr-only">주요 지표</h2>
+          <div class="kpi-grid">
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">전체 품목</span><span class="kpi-icon tone-neutral" aria-hidden="true"><svg class="icon"><use href="#i-box"/></svg></span></div>
+              <p class="kpi-value" id="kpiItems">0</p>
+              <p class="kpi-sub muted" id="kpiItemsSub">총 수량 0개</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">재고 금액</span><span class="kpi-icon tone-accent" aria-hidden="true"><svg class="icon"><use href="#i-won"/></svg></span></div>
+              <p class="kpi-value" id="kpiValue">₩0</p>
+              <p class="kpi-sub muted">단가 × 현재고 합계</p>
+            </article>
+            <button type="button" class="card kpi kpi-action" data-filter="low" aria-describedby="kpiLowHint">
+              <div class="kpi-head"><span class="kpi-label">재고 부족</span><span class="kpi-icon tone-warn" aria-hidden="true"><svg class="icon"><use href="#i-alert"/></svg></span></div>
+              <p class="kpi-value" id="kpiLow">0</p>
+              <p class="kpi-sub muted" id="kpiLowHint">안전재고 이하 · 목록 보기</p>
+            </button>
+            <button type="button" class="card kpi kpi-action" data-filter="out" aria-describedby="kpiOutHint">
+              <div class="kpi-head"><span class="kpi-label">품절</span><span class="kpi-icon tone-danger" aria-hidden="true"><svg class="icon"><use href="#i-x-circle"/></svg></span></div>
+              <p class="kpi-value" id="kpiOut">0</p>
+              <p class="kpi-sub muted" id="kpiOutHint">재고 0개 · 목록 보기</p>
+            </button>
+          </div>
+        </section>
+
+        <div class="split">
+          <section id="trend" class="card panel" aria-labelledby="trend-heading">
+            <div class="panel-head">
+              <div>
+                <h2 id="trend-heading">입출고 추이</h2>
+                <p class="muted small">일별 수량 (개)</p>
+              </div>
+              <div class="segmented" role="group" aria-label="기간 선택">
+                <button type="button" data-range="7" aria-pressed="false">7일</button>
+                <button type="button" data-range="14" aria-pressed="true">14일</button>
+                <button type="button" data-range="30" aria-pressed="false">30일</button>
+              </div>
+            </div>
+            <div class="legend" aria-hidden="true">
+              <span class="legend-item"><span class="swatch swatch-in"></span>입고</span>
+              <span class="legend-item"><span class="swatch swatch-out"></span>출고</span>
+            </div>
+            <div class="chart" id="chart">
+              <svg id="chartSvg" role="img" tabindex="0" aria-describedby="chartHelp"></svg>
+              <div class="chart-tip" id="chartTip" hidden></div>
+            </div>
+            <p id="chartHelp" class="sr-only">좌우 방향키로 날짜별 수치를 확인할 수 있습니다.</p>
+            <details class="data-alt">
+              <summary>데이터 표로 보기</summary>
+              <div class="table-scroll">
+                <table class="mini-table" id="trendTable">
+                  <thead><tr><th scope="col">날짜</th><th scope="col" class="num">입고</th><th scope="col" class="num">출고</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </details>
+          </section>
+
+          <section id="alerts" class="card panel" aria-labelledby="alerts-heading">
+            <div class="panel-head">
+              <div>
+                <h2 id="alerts-heading">재고 알림</h2>
+                <p class="muted small">안전재고 대비 부족 순</p>
+              </div>
+            </div>
+            <ul class="alert-list" id="alertList"></ul>
+          </section>
+        </div>
+
+        <section id="inventory" class="card panel" aria-labelledby="inv-heading">
+          <div class="panel-head">
+            <div>
+              <h2 id="inv-heading">재고 목록</h2>
+              <p class="muted small" id="resultCount" aria-live="polite">0개 품목</p>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="field field-search">
+              <label for="q" class="sr-only">품목명 또는 SKU 검색</label>
+              <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+              <input id="q" type="search" placeholder="품목명, SKU 검색" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="cat">카테고리</label>
+              <select id="cat"><option value="">전체</option></select>
+            </div>
+            <div class="field">
+              <label for="status">상태</label>
+              <select id="status">
+                <option value="">전체</option>
+                <option value="ok">정상</option>
+                <option value="low">부족</option>
+                <option value="out">품절</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="inv-table" id="invTable">
+              <caption class="sr-only">재고 목록. 열 머리글의 버튼으로 정렬할 수 있습니다.</caption>
+              <thead>
+                <tr>
+                  <th scope="col" data-key="name"><button type="button" class="sort-btn">품목<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="category"><button type="button" class="sort-btn">카테고리<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="stock" class="num"><button type="button" class="sort-btn">현재고<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="safety" class="num"><button type="button" class="sort-btn">안전재고<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="price" class="num"><button type="button" class="sort-btn">단가<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="value" class="num"><button type="button" class="sort-btn">재고 금액<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col" data-key="status"><button type="button" class="sort-btn">상태<svg class="icon sort-icon" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+                  <th scope="col"><span class="sr-only">작업</span></th>
+                </tr>
+              </thead>
+              <tbody id="invBody"></tbody>
+            </table>
+            <div class="empty" id="emptyState" hidden>
+              <svg class="icon icon-lg" aria-hidden="true"><use href="#i-search"/></svg>
+              <p><strong>조건에 맞는 품목이 없습니다.</strong></p>
+              <p class="muted small">검색어나 필터를 바꿔 보세요.</p>
+              <button type="button" class="btn btn-secondary" id="clearFilters">필터 초기화</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="modal" id="moveDialog" aria-labelledby="moveTitle">
+    <form id="moveForm" novalidate>
+      <div class="modal-head">
+        <h2 id="moveTitle">입출고 등록</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="errorSummary" tabindex="-1" hidden>
+          <p><strong>입력 내용을 확인해 주세요.</strong></p>
+          <ul></ul>
+        </div>
+
+        <div class="form-field">
+          <label for="fItem">품목 <span class="req" aria-hidden="true">*</span></label>
+          <select id="fItem" required aria-describedby="fItemHelp fItemErr"></select>
+          <p class="help" id="fItemHelp">현재고 —</p>
+          <p class="err" id="fItemErr" hidden></p>
+        </div>
+
+        <fieldset class="form-field">
+          <legend>구분 <span class="req" aria-hidden="true">*</span></legend>
+          <div class="radio-row">
+            <label class="radio"><input type="radio" name="type" value="in" checked /> 입고</label>
+            <label class="radio"><input type="radio" name="type" value="out" /> 출고</label>
+          </div>
+        </fieldset>
+
+        <div class="form-field">
+          <label for="fQty">수량 <span class="req" aria-hidden="true">*</span></label>
+          <input id="fQty" type="number" inputmode="numeric" min="1" step="1" required aria-describedby="fQtyHelp fQtyErr" />
+          <p class="help" id="fQtyHelp">1 이상의 정수. 출고는 현재고를 넘을 수 없습니다.</p>
+          <p class="err" id="fQtyErr" hidden></p>
+        </div>
+
+        <div class="form-field">
+          <label for="fNote">메모 <span class="muted small">(선택)</span></label>
+          <textarea id="fNote" rows="2" maxlength="200"></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="submitBtn">등록</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
