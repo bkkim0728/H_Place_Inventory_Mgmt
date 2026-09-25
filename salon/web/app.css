@@ -494,3 +494,66 @@ a.btn { text-decoration: none; }
   * { color: #000 !important; }
 }
 .rp-head .month-nav { flex-wrap: wrap; min-width: 0; }
+
+/* 매장 레포트: 전주 대비 */
+.delta { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; border-radius: 999px; padding: 2px 8px; line-height: 1.5; }
+.delta:empty { display: none; }
+.delta-pos { color: var(--ok); background: var(--ok-soft); }
+.delta-neg { color: var(--danger); background: var(--danger-soft); }
+.delta-flat { color: var(--fg-muted); background: var(--surface-2); }
+.rp-kpis .kpi-head { gap: var(--space-2); }
+.rp-kpi-main { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: linear-gradient(160deg, var(--accent-soft), transparent 70%), var(--surface); }
+.rp-kpi-main .kpi-value { color: var(--accent); }
+.rp-missing { color: var(--fg-muted); font-weight: 600; }
+.rp-ds-edit { min-height: 24px; padding: 0 2px; font-size: 12.5px; }
+.rp-week { margin-top: var(--space-4); margin-bottom: var(--space-4); }
+.rp-legend { list-style: none; margin: 0; padding: 0; display: flex; gap: var(--space-3); font-size: 12.5px; color: var(--fg-muted); }
+.rp-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.rp-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.lg-this, .rp-bar-this { background: var(--accent); fill: var(--accent); }
+.lg-prev, .rp-bar-prev { background: color-mix(in srgb, var(--violet) 55%, transparent); fill: color-mix(in srgb, var(--violet) 55%, transparent); }
+.rp-week-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--space-5, 24px); align-items: start; }
+.rp-chart { min-height: 240px; }
+.rp-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.rp-chart svg text { fill: var(--fg-muted); font-size: 11.5px; font-family: var(--font); font-variant-numeric: tabular-nums; }
+.rp-chart .rp-x-now { fill: var(--fg); font-weight: 700; }
+.rp-chart .rp-x-dow { font-size: 11px; }
+.rp-chart .rp-x-dow.is-sun { fill: var(--danger); }
+.rp-grid-line { stroke: var(--grid); stroke-width: 1; }
+.rp-bar { transition: opacity var(--dur-fast) ease; }
+.rp-bar.is-missing.rp-bar-this { fill: color-mix(in srgb, var(--accent) 45%, transparent); }
+.rp-bar:hover { opacity: 0.8; }
+.rp-chart svg.is-animated .rp-bar { transform-box: fill-box; transform-origin: 50% 100%; animation: rp-grow 700ms var(--ease-out) both; animation-delay: calc(var(--i) * 55ms); }
+@keyframes rp-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.rp-compare th[scope="row"] { font-weight: 500; text-align: left; }
+.rp-compare .rp-cmp-main th, .rp-compare .rp-cmp-main td:not(.muted) { font-weight: 700; }
+.rp-compare .rp-cmp-main td:nth-child(2) { color: var(--accent); }
+@media (max-width: 1100px) {
+  .rp-week-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .rp-legend { width: 100%; }
+  .rp-kpis .kpi-head { flex-wrap: wrap; }
+  /* keep the comparison a real, compact table on phones */
+  .rp-week .table-wrap { border: 1px solid var(--border); border-radius: var(--radius-sm); }
+  .rp-compare { display: table; width: 100%; }
+  .rp-compare thead { position: static; width: auto; height: auto; overflow: visible; clip: auto; display: table-header-group; }
+  .rp-compare tbody { display: table-row-group; }
+  .rp-compare tr { display: table-row; border: 0; margin: 0; padding: 0; }
+  .rp-compare th, .rp-compare td { display: table-cell; width: auto; padding: 7px 4px; font-size: 11.5px; letter-spacing: -0.01em; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .rp-compare th[scope="row"] { text-align: left; padding-left: 8px; }
+  .rp-compare thead th:first-child { text-align: left; padding-left: 8px; }
+  .rp-compare td:last-child, .rp-compare thead th:last-child { padding-right: 8px; }
+  .rp-week { padding-left: var(--space-3); padding-right: var(--space-3); }
+  .rp-compare td::before { content: none; }
+  .rp-compare .delta { padding: 1px 4px; font-size: 10.5px; }
+}
+@media print {
+  #rpSalesBtn, .rp-ds-edit { display: none !important; }
+  .rp-week-grid { grid-template-columns: 1.2fr 1fr !important; }
+  .rp-bar-this { fill: #555 !important; } .rp-bar-prev { fill: #bbb !important; }
+  .lg-this { background: #555 !important; } .lg-prev { background: #bbb !important; }
+  .rp-chart svg.is-animated .rp-bar { animation: none !important; }
+  .rp-chart svg text { fill: #333 !important; }
+  .rp-grid-line { stroke: #ddd !important; }
+}

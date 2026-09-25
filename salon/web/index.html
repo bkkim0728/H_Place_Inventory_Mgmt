@@ -523,16 +523,61 @@
               <input type="date" id="rpPick" class="rp-pick" />
               <button type="button" class="btn btn-secondary btn-sm" id="rpToday">오늘</button>
             </div>
-            <button type="button" class="btn btn-secondary" id="rpPrint"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>인쇄</button>
+            <div class="row-gap">
+              <button type="button" class="btn btn-primary" id="rpSalesBtn"><svg class="icon" aria-hidden="true"><use href="#i-won"/></svg>시술 매출 입력</button>
+              <button type="button" class="btn btn-secondary" id="rpPrint"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>인쇄</button>
+            </div>
           </div>
           <p class="err-box" id="rpError" hidden></p>
 
-          <div class="kpi-grid">
-            <article class="card kpi"><div class="kpi-head"><span class="kpi-label">판매 금액</span><span class="kpi-icon tone-accent" aria-hidden="true"><svg class="icon"><use href="#i-won"/></svg></span></div><p class="kpi-value" id="rpSales">₩0</p><p class="kpi-sub muted" id="rpSalesSub">—</p></article>
-            <article class="card kpi"><div class="kpi-head"><span class="kpi-label">입고</span><span class="kpi-icon tone-ok" aria-hidden="true"><svg class="icon"><use href="#i-box"/></svg></span></div><p class="kpi-value" id="rpIn">₩0</p><p class="kpi-sub muted" id="rpInSub">—</p></article>
-            <article class="card kpi"><div class="kpi-head"><span class="kpi-label">재료 사용액</span><span class="kpi-icon tone-violet" aria-hidden="true"><svg class="icon"><use href="#i-scissors"/></svg></span></div><p class="kpi-value" id="rpUse">₩0</p><p class="kpi-sub muted" id="rpUseSub">—</p></article>
-            <article class="card kpi"><div class="kpi-head"><span class="kpi-label">근무</span><span class="kpi-icon tone-neutral" aria-hidden="true"><svg class="icon"><use href="#i-users"/></svg></span></div><p class="kpi-value" id="rpWork">0명</p><p class="kpi-sub muted" id="rpWorkSub">—</p></article>
+          <div class="kpi-grid rp-kpis">
+            <article class="card kpi rp-kpi-main">
+              <div class="kpi-head"><span class="kpi-label">총매출</span><span class="delta" id="rpTotalDelta"></span></div>
+              <p class="kpi-value" id="rpTotal">₩0</p>
+              <p class="kpi-sub muted" id="rpTotalSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">시술 매출</span><span class="delta" id="rpServiceDelta"></span></div>
+              <p class="kpi-value" id="rpService">₩0</p>
+              <p class="kpi-sub muted" id="rpServiceSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">제품 판매</span><span class="delta" id="rpSalesDelta"></span></div>
+              <p class="kpi-value" id="rpSales">₩0</p>
+              <p class="kpi-sub muted" id="rpSalesSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">재료 사용액</span><span class="delta" id="rpUseDelta"></span></div>
+              <p class="kpi-value" id="rpUse">₩0</p>
+              <p class="kpi-sub muted" id="rpUseSub">—</p>
+            </article>
           </div>
+
+          <section class="card panel rp-week" aria-labelledby="rpWeekHeading">
+            <div class="panel-head">
+              <div>
+                <h2 id="rpWeekHeading">주간 비교</h2>
+                <p class="muted small" id="rpWeekSub">—</p>
+              </div>
+              <ul class="rp-legend" aria-hidden="true">
+                <li><i class="lg-this"></i>최근 7일</li>
+                <li><i class="lg-prev"></i>이전 7일</li>
+              </ul>
+            </div>
+            <div class="rp-week-grid">
+              <div>
+                <div class="rp-chart" id="rpChart"></div>
+                <p class="muted small rp-foot" id="rpChartNote"></p>
+              </div>
+              <div class="table-wrap">
+                <table class="inv-table rp-table rp-compare">
+                  <caption class="sr-only">최근 7일과 이전 7일 비교</caption>
+                  <thead><tr><th scope="col" class="th-plain">항목</th><th scope="col" class="th-plain num">최근 7일</th><th scope="col" class="th-plain num">이전 7일</th><th scope="col" class="th-plain num">증감</th></tr></thead>
+                  <tbody id="rpCompare"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
 
           <div class="rp-grid">
             <section class="card panel" aria-labelledby="rpTypeHeading">
@@ -1344,6 +1389,41 @@
       <div class="modal-foot">
         <button type="button" class="btn btn-secondary" data-close>취소</button>
         <button type="submit" class="btn btn-primary" id="paySubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Daily service sales dialog -->
+  <dialog class="modal" id="dsDialog" aria-labelledby="dsTitle">
+    <form id="dsForm" novalidate>
+      <div class="modal-head">
+        <h2 id="dsTitle">시술 매출 입력</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="dsErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <p class="muted small">POS 마감 기준 그날의 시술 매출과 시술 건수(고객 수)를 입력합니다. 제품 판매는 입출고 기록에서 자동으로 계산합니다.</p>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="dsSales">시술 매출 <span class="muted small">(원)</span></label>
+            <input id="dsSales" type="text" inputmode="numeric" autocomplete="off" aria-describedby="dsSalesErr" />
+            <p class="err" id="dsSalesErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="dsCount">시술 건수</label>
+            <input id="dsCount" type="number" inputmode="numeric" min="0" step="1" aria-describedby="dsCountErr" />
+            <p class="err" id="dsCountErr" hidden></p>
+          </div>
+          <div class="form-field span-2">
+            <label for="dsMemo">메모 <span class="muted small">(선택)</span></label>
+            <input id="dsMemo" type="text" maxlength="100" placeholder="예: 비 오는 날, 웨딩 예약 2건" />
+          </div>
+        </div>
+        <p class="help" id="dsAvg" aria-live="polite"></p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="dsSubmit">저장</button>
       </div>
     </form>
   </dialog>
