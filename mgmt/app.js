@@ -38,7 +38,6 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const nf = new Intl.NumberFormat('ko-KR');
   const won = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW', maximumFractionDigits: 0 });
-  const wonCompact = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW', notation: 'compact', maximumFractionDigits: 1 });
   const dayFmt = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' });
   const fullFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -103,7 +102,7 @@
     $('#kpiItems').textContent = nf.format(ITEMS.length);
     $('#kpiItemsSub').textContent = `총 수량 ${nf.format(totalQty)}개`;
     const v = $('#kpiValue');
-    v.textContent = wonCompact.format(totalVal);
+    v.textContent = won.format(totalVal);
     v.title = won.format(totalVal);
     $('#kpiLow').textContent = nf.format(low);
     $('#kpiOut').textContent = nf.format(out);

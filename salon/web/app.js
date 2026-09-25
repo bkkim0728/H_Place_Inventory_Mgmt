@@ -11,7 +11,6 @@
   const TZ = 'Asia/Seoul';
   const nf = new Intl.NumberFormat('ko-KR');
   const won = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW', maximumFractionDigits: 0 });
-  const wonCompact = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW', notation: 'compact', maximumFractionDigits: 1 });
   const dayFmt = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', timeZone: TZ });
   const fullFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', timeZone: TZ });
   const timeFmt = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ });
@@ -347,10 +346,8 @@
 
     $('#kpiItems').textContent = nf.format(items.length);
     $('#kpiItemsSub').textContent = `업소용 ${nf.format(items.length - retail)} · 판매용 ${nf.format(retail)}`;
-    const v = $('#kpiValue');
-    v.textContent = wonCompact.format(value);
-    v.title = won.format(value);
-    $('#kpiUse').textContent = `최근 7일 출고 ${wonCompact.format(outValue)}`;
+    $('#kpiValue').textContent = won.format(value);
+    $('#kpiUse').textContent = `최근 7일 출고 ${won.format(outValue)}`;
     $('#kpiLow').textContent = nf.format(low);
     $('#kpiOut').textContent = nf.format(out);
     const nb = $('#navAlertCount');
@@ -2464,7 +2461,7 @@
     $('#catDetailSub').textContent = `${state.branch.name} 기준 · ${fullFmt.format(new Date())}`;
     $('#catDetailStats').innerHTML = `
       <div><dt>제품</dt><dd>${nf.format(active.length)}개</dd></div>
-      <div><dt>재고 금액</dt><dd title="${won.format(value)}">${wonCompact.format(value)}</dd></div>
+      <div><dt>재고 금액</dt><dd>${won.format(value)}</dd></div>
       <div class="${low ? 'warn' : ''}"><dt>재고 부족</dt><dd>${nf.format(low)}</dd></div>
       <div class="${out ? 'out' : ''}"><dt>품절</dt><dd>${nf.format(out)}</dd></div>`;
     $('#catDetailEmpty').hidden = items.length > 0;

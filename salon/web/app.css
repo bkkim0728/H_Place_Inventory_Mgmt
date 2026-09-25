@@ -432,3 +432,8 @@ a.btn { text-decoration: none; }
   .mv-range-row .field { flex: 1; }
   .mv-range input[type="date"] { width: 100%; }
 }
+
+/* Exact amounts can be long (₩123,456,789): keep them inside the card on phones */
+@media (max-width: 767px) {
+  .kpi-grid .kpi-value { font-size: 18px; letter-spacing: -0.02em; white-space: nowrap; }
+}
