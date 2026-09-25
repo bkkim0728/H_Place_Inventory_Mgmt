@@ -129,15 +129,33 @@ create table if not exists public.inventory (
 );
 -- 이 지점에서 사용 (a branch can stop using a product without affecting others)
 alter table public.inventory add column if not exists in_use boolean not null default true;
--- 지점별 매입가·단위·판매가: own_prices = true → this branch uses its own three
--- values; false → the product's (shared) values.
+-- 지점별 제품 정보: own_prices = true → this branch uses its own 품목명·브랜드·
+-- 카테고리·단위·매입가·판매가·고객 판매용; false → the product's (shared) values.
 alter table public.inventory add column if not exists own_prices boolean not null default false;
 alter table public.inventory add column if not exists unit text;
 alter table public.inventory add column if not exists cost_price integer;
 alter table public.inventory add column if not exists retail_price integer;
+alter table public.inventory add column if not exists name text;
+alter table public.inventory add column if not exists brand text;
+alter table public.inventory add column if not exists category text;
+alter table public.inventory add column if not exists is_retail boolean;
+-- rows made when only prices were per branch: take the rest from the product
+update public.inventory i
+   set name = p.name, brand = p.brand, category = p.category, is_retail = p.is_retail
+  from public.products p
+ where p.id = i.product_id and i.own_prices and i.name is null;
 do $$ begin
   alter table public.inventory add constraint inventory_own_prices_chk check (
     not own_prices or (unit is not null and cost_price is not null and cost_price >= 0 and coalesce(retail_price, 0) >= 0));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.inventory add constraint inventory_own_info_chk check (
+    not own_prices or (name is not null and category is not null and is_retail is not null));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.inventory
+    add constraint inventory_category_fkey foreign key (category)
+    references public.categories (name) on update cascade on delete restrict;
 exception when duplicate_object then null; end $$;
 
 create table if not exists public.stock_movements (
@@ -284,17 +302,21 @@ create or replace view public.inventory_view with (security_invoker = true) as
 select
   i.branch_id,
   p.id            as product_id,
-  p.sku, p.name, p.brand, p.category,
+  p.sku,
+  case when i.own_prices then i.name else p.name end as name,
+  case when i.own_prices then i.brand else p.brand end as brand,
+  case when i.own_prices then i.category else p.category end as category,
   case when i.own_prices then i.unit else p.unit end as unit,
   case when i.own_prices then i.cost_price else p.cost_price end as cost_price,
   case when i.own_prices then i.retail_price else p.retail_price end as retail_price,
-  p.is_retail, p.active,
+  case when i.own_prices then i.is_retail else p.is_retail end as is_retail, p.active,
   i.stock, i.safety_stock, i.location, i.updated_at,
   case when i.stock = 0 then 'out'
        when i.stock <= i.safety_stock then 'low'
        else 'ok' end as status,
   i.in_use,
-  i.own_prices, p.unit as base_unit, p.cost_price as base_cost_price, p.retail_price as base_retail_price
+  i.own_prices, p.unit as base_unit, p.cost_price as base_cost_price, p.retail_price as base_retail_price,
+  p.name as base_name, p.brand as base_brand, p.category as base_category, p.is_retail as base_is_retail
 from public.inventory i
 join public.products p on p.id = i.product_id;
 
@@ -312,7 +334,7 @@ create or replace view public.movement_view with (security_invoker = true) as
 select
   m.id, m.branch_id, m.product_id, m.type, m.quantity, m.stock_after,
   m.unit_cost, m.memo, m.reverts_id, m.created_by, m.created_at,
-  p.name as product_name, p.sku,
+  case when inv.own_prices then inv.name else p.name end as product_name, p.sku,
   case when inv.own_prices then inv.unit else p.unit end as unit,
   pr.full_name as created_by_name,
   exists (select 1 from public.stock_movements r where r.reverts_id = m.id) as reverted,
@@ -529,7 +551,7 @@ create or replace function public.save_product(
   p_safety_stock  integer,
   p_location      text,
   p_active        boolean default true,
-  p_price_scope   text default null   -- 매입가·단위·판매가: 'branch' (p_branch_id only) or 'all' (admin)
+  p_price_scope   text default null   -- 품목명·브랜드·카테고리·단위·가격·고객 판매용: 'branch' (p_branch_id only) or 'all' (admin)
 )
 returns uuid
 language plpgsql security definer set search_path = public
@@ -541,7 +563,7 @@ begin
   -- New products: admins, or a branch manager (registered for every branch).
   -- Changing an existing product: admins change everything; a branch manager
   -- may change everything but the code and the catalog-wide 사용 flag.
-  -- 매입가·단위·판매가 can differ per branch (p_price_scope, see below).
+  -- Everything but the code and 사용 can differ per branch (p_price_scope, see below).
   if p_product_id is null or not public.is_admin() then
     if not (public.is_admin() or (p_branch_id is not null and public.is_branch_manager(p_branch_id))) then
       raise exception 'MANAGER_ONLY' using errcode = '42501';
@@ -581,19 +603,13 @@ begin
       select b.id, v_id from public.branches b
       on conflict do nothing;
     elsif not public.is_admin() then
-      update public.products
-         set name = btrim(p_name), brand = nullif(btrim(p_brand), ''), category = btrim(p_category),
-             is_retail = coalesce(p_is_retail, false)
-       where id = p_product_id
-      returning id into v_id;
+      select id into v_id from public.products where id = p_product_id;
       if v_id is null then
         raise exception 'PRODUCT_NOT_FOUND' using errcode = 'P0002';
       end if;
     else
       update public.products
-         set sku = upper(btrim(p_sku)), name = btrim(p_name), brand = nullif(btrim(p_brand), ''),
-             category = btrim(p_category),
-             is_retail = coalesce(p_is_retail, false), active = coalesce(p_active, true)
+         set sku = upper(btrim(p_sku)), active = coalesce(p_active, true)
        where id = p_product_id
       returning id into v_id;
       if v_id is null then
@@ -602,10 +618,13 @@ begin
       if v_scope = 'all' then
         -- same values everywhere: set the shared ones and drop every branch's own
         update public.products
-           set unit = btrim(p_unit), cost_price = coalesce(p_cost_price, 0), retail_price = p_retail_price
+           set name = btrim(p_name), brand = nullif(btrim(p_brand), ''), category = btrim(p_category),
+               is_retail = coalesce(p_is_retail, false),
+               unit = btrim(p_unit), cost_price = coalesce(p_cost_price, 0), retail_price = p_retail_price
          where id = v_id;
         update public.inventory
-           set own_prices = false, unit = null, cost_price = null, retail_price = null
+           set own_prices = false, unit = null, cost_price = null, retail_price = null,
+               name = null, brand = null, category = null, is_retail = null
          where product_id = v_id and own_prices;
       end if;
     end if;
@@ -615,11 +634,17 @@ begin
       -- Own values only when they differ from the shared ones
       update public.inventory i
          set own_prices = x.own,
+             name = case when x.own then btrim(p_name) end,
+             brand = case when x.own then nullif(btrim(p_brand), '') end,
+             category = case when x.own then btrim(p_category) end,
+             is_retail = case when x.own then coalesce(p_is_retail, false) end,
              unit = case when x.own then btrim(p_unit) end,
              cost_price = case when x.own then coalesce(p_cost_price, 0) end,
              retail_price = case when x.own then p_retail_price end,
              updated_at = now()
-        from (select not (p.unit = btrim(p_unit) and p.cost_price = coalesce(p_cost_price, 0)
+        from (select not (p.name = btrim(p_name) and p.brand is not distinct from nullif(btrim(p_brand), '')
+                          and p.category = btrim(p_category) and p.is_retail = coalesce(p_is_retail, false)
+                          and p.unit = btrim(p_unit) and p.cost_price = coalesce(p_cost_price, 0)
                           and p.retail_price is not distinct from p_retail_price) as own
                 from public.products p where p.id = v_id) x
        where i.branch_id = p_branch_id and i.product_id = v_id;
@@ -917,7 +942,9 @@ begin
   if v_name is null then
     raise exception 'CATEGORY_NOT_FOUND' using errcode = 'P0002';
   end if;
-  select count(*) into v_count from public.products where category = v_name;
+  select (select count(*) from public.products where category = v_name)
+       + (select count(*) from public.inventory where own_prices and category = v_name)
+    into v_count;
   if v_count > 0 then
     raise exception 'CATEGORY_IN_USE' using errcode = '23503',
       detail = format('%s products', v_count);

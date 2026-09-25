@@ -564,5 +564,5 @@ a.btn { text-decoration: none; }
 .scope-set[hidden] { display: none; }
 .price-scope .help { margin: 0; }
 .price-scope .link-btn { margin-top: 4px; align-self: flex-start; justify-self: start; }
-.own-price { display: inline-block; margin-top: 3px; padding: 0 6px; border-radius: 999px; font-weight: 700; font-size: 11px; background: var(--accent-soft); color: var(--fg); }
+.own-price { display: inline-block; margin: 0 0 0 6px; vertical-align: 2px; padding: 0 6px; border-radius: 999px; font-weight: 700; font-size: 11px; background: var(--accent-soft); color: var(--fg); }
 .base-price { font-size: 11.5px; }
