@@ -1054,3 +1054,7 @@ update public.profiles p
  where p.login_id is null and p.email is not null
    and not exists (select 1 from public.profiles o
                     where o.user_id <> p.user_id and lower(o.login_id) = lower(split_part(p.email, '@', 1)));
+
+-- Ask the Supabase API (PostgREST) to reload its schema cache right away, so
+-- new tables and functions are usable without waiting.
+notify pgrst, 'reload schema';
