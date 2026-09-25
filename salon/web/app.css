@@ -110,7 +110,6 @@ tr.is-reversal td { color: var(--fg-muted); }
   .toolbar .btn { width: 100%; }
   .memo { max-width: none; }
   .branch-select { max-width: 120px; }
-  #refreshBtn { display: none; }
 }
 
 /* Navigation sections */
@@ -437,3 +436,4 @@ a.btn { text-decoration: none; }
 @media (max-width: 767px) {
   .kpi-grid .kpi-value { font-size: 18px; letter-spacing: -0.02em; white-space: nowrap; }
 }
+#refreshBtn[aria-busy="true"] .icon { animation: spin 0.8s linear infinite; }

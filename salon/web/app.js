@@ -283,7 +283,35 @@
       $('#branchLine').textContent = `${state.branch.name} · ${fullFmt.format(new Date())}`;
     }
   }
-  $('#refreshBtn').addEventListener('click', loadData);
+  // 새로고침: the branch's stock data plus whatever the current page shows
+  async function refreshAll() {
+    const btn = $('#refreshBtn');
+    if (btn.dataset.busy) return;
+    btn.dataset.busy = '1';
+    try {
+      await loadData();
+      btn.setAttribute('aria-busy', 'true');
+      const r = state.route;
+      if (r === 'workboard') await loadWorkboard();
+      else if (r === 'schedule') await loadSchedule();
+      else if (r === 'staff') await loadStaff();
+      else if (r === 'payroll') await loadPayroll();
+      else if (r === 'users') await loadUsers();
+      else if (r === 'branches') {
+        state.branches = await api.listBranches();
+        state.branch = state.branches.find((b) => b.id === state.branch.id) || state.branch;
+        fillBranchSelect();
+        renderBranches();
+        await loadBranchManagers();
+      }
+    } catch (e) {
+      toast(api.toAppError(e).message, { error: true });
+    } finally {
+      delete btn.dataset.busy;
+      btn.removeAttribute('aria-busy');
+    }
+  }
+  $('#refreshBtn').addEventListener('click', refreshAll);
 
   function renderAll() {
     renderKpis();
