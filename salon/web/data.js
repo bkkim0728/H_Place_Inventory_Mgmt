@@ -225,8 +225,12 @@
       saveCategory: (id, name) => run(sb.rpc('save_category', { p_category_id: id || null, p_name: name })),
       deleteCategory: (id) => run(sb.rpc('delete_category', { p_category_id: id })),
       reorderCategories: (ids) => run(sb.rpc('reorder_categories', { p_ids: ids })),
-      listInventory: (branchId) =>
-        run(sb.from('inventory_view').select('*').eq('branch_id', branchId).order('category').order('name')),
+      // active = usable here: on in the catalog (catalog_active) and 사용 중 at this branch (in_use)
+      listInventory: async (branchId) =>
+        (await run(sb.from('inventory_view').select('*').eq('branch_id', branchId).order('category').order('name')))
+          .map((r) => ({ ...r, catalog_active: r.active, in_use: r.in_use !== false, active: r.active && r.in_use !== false })),
+      setItemInUse: (branchId, productId, inUse) =>
+        run(sb.rpc('set_item_in_use', { p_branch_id: branchId, p_product_id: productId, p_in_use: inUse })),
       listMovements: (branchId, days) =>
         run(sb.from('movement_view').select('*').eq('branch_id', branchId)
           .gte('created_at', sinceIso(days))
@@ -741,6 +745,15 @@
       async loginPhotos() {
         return state.branches.filter((b) => b.active !== false && b.photo_url).map((b) => ({ id: b.id, name: b.name, url: b.photo_url }));
       },
+      async setItemInUse(branchId, productId, inUse) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        const row = inv(branchId, productId);
+        must(row, 'PRODUCT_NOT_FOUND');
+        row.in_use = inUse !== false;
+        row.updated_at = new Date().toISOString();
+        save();
+        return delay();
+      },
       async listInventory(branchId) {
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');
         const rows = state.inventory.filter((i) => i.branch_id === branchId).map((i) => {
@@ -748,7 +761,8 @@
           return {
             branch_id: i.branch_id, product_id: p.id, sku: p.sku, name: p.name, brand: p.brand,
             category: p.category, unit: p.unit, cost_price: p.cost_price, retail_price: p.retail_price,
-            is_retail: p.is_retail, active: p.active, stock: i.stock, safety_stock: i.safety_stock,
+            is_retail: p.is_retail, catalog_active: p.active, in_use: i.in_use !== false, active: p.active && i.in_use !== false,
+            stock: i.stock, safety_stock: i.safety_stock,
             location: i.location, updated_at: i.updated_at, status: statusOf(i),
           };
         });

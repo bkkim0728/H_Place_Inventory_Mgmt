@@ -127,6 +127,8 @@ create table if not exists public.inventory (
   updated_at    timestamptz not null default now(),
   primary key (branch_id, product_id)
 );
+-- 이 지점에서 사용 (a branch can stop using a product without affecting others)
+alter table public.inventory add column if not exists in_use boolean not null default true;
 
 create table if not exists public.stock_movements (
   id           bigint generated always as identity primary key,
@@ -277,7 +279,8 @@ select
   i.stock, i.safety_stock, i.location, i.updated_at,
   case when i.stock = 0 then 'out'
        when i.stock <= i.safety_stock then 'low'
-       else 'ok' end as status
+       else 'ok' end as status,
+  i.in_use
 from public.inventory i
 join public.products p on p.id = i.product_id;
 
@@ -604,6 +607,30 @@ begin
         updated_at   = now();
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- set_item_in_use: 사용 중 on/off for one branch (anyone at that branch).
+-- The catalog-wide 사용 flag on products stays with admins (save_product).
+-- Errors: NOT_BRANCH_MEMBER, PRODUCT_NOT_FOUND
+-- ---------------------------------------------------------------------------
+create or replace function public.set_item_in_use(p_branch_id uuid, p_product_id uuid, p_in_use boolean)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if p_branch_id is null or not public.is_branch_member(p_branch_id) then
+    raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501';
+  end if;
+  update public.inventory
+     set in_use = coalesce(p_in_use, true), updated_at = now()
+   where branch_id = p_branch_id and product_id = p_product_id;
+  if not found then
+    raise exception 'PRODUCT_NOT_FOUND' using errcode = 'P0002';
+  end if;
+end;
+$$;
+revoke all on function public.set_item_in_use(uuid, uuid, boolean) from public, anon;
+grant execute on function public.set_item_in_use(uuid, uuid, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- save_branch: admins create/update any branch; a branch manager may update
