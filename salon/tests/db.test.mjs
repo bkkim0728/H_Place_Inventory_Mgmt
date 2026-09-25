@@ -396,6 +396,8 @@ ok((await one(`select count(*)::int n from staff where position in ('director','
 const ss = (await sv(mgr, base(null, b1, { name: '수석', position: 'senior_stylist' }))).id;
 ok((await one(`select position from staff where id=$1`, [ss])).position === 'senior_stylist', 'new titles accepted');
 ok((await err(mgr, () => sv(mgr, base(null, b1, { position: 'director' }))))?.includes('INVALID_STAFF'), 'old titles rejected');
+const stf = (await sv(mgr, base(null, b1, { name: '신입 스태프', position: 'staff', services: ['cut', 'color'] }))).id;
+ok((await one(`select services from staff where id=$1`, [stf])).services.length === 0, '스태프 is saved without 담당 시술');
 ok((await as(mgr, () => q(`select name from staff_month_report($1,$2)`, [b1, month])))[0].name !== undefined, 'report orders by the new titles');
 
 console.log('지점별 사용 중');

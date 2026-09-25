@@ -142,7 +142,7 @@ cross join (values
   ('정다은', 'deputy',   '010-1234-0002', current_date - 1650, array['cut','color','clinic'],        array[1, 4]::smallint[], 40.0, 10.0, '서울-2018-04521', current_date + 18),
   ('김도윤', 'designer', '010-1234-0003', current_date - 820,  array['cut','perm','styling'],        array[2]::smallint[],   35.0,  8.0, '경기-2020-11873', current_date + 95),
   ('이하린', 'designer', '010-1234-0004', current_date - 400,  array['color','clinic','scalp'],      array[3]::smallint[],   35.0,  8.0, '서울-2022-07765', current_date - 12),
-  ('박지후', 'staff',    '010-1234-0005', current_date - 150,  array['styling','scalp'],             array[1]::smallint[],   null,  5.0, null,              current_date + 240),
+  ('박지후', 'staff',    '010-1234-0005', current_date - 150,  array[]::text[],                      array[1]::smallint[],   null,  5.0, null,              current_date + 240),
   ('최유진', 'staff',    '010-1234-0006', current_date - 300,  array[]::text[],                      array[0]::smallint[],   null,  3.0, null,              null)
 ) as v(name, position, phone, hired_on, services, days_off, inc_s, inc_r, license, cert)
 where b.code = 'BR01'

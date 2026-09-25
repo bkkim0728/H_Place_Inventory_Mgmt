@@ -1792,6 +1792,13 @@
   $('#sServices').innerHTML = Object.entries(SERVICES).map(([k, v]) => `<label class="radio"><input type="checkbox" name="sSvc" value="${k}" /> ${v}</label>`).join('');
   $('#sDays').innerHTML = WEEK.map((d) => `<label class="radio day-chip"><input type="checkbox" name="sDay" value="${d}" /> ${DOW[d]}</label>`).join('');
   // 퇴사일 is always shown; it can be filled in only when 퇴사 is chosen.
+  // 스태프 has no 담당 시술: the choices are cleared and locked
+  const syncServices = () => {
+    const isStaff = $('#sPosition').value === 'staff';
+    $$('input[name="sSvc"]').forEach((c) => { if (isStaff) c.checked = false; c.disabled = isStaff; });
+    $('#sServicesHelp').hidden = !isStaff;
+  };
+  $('#sPosition').addEventListener('change', syncServices);
   const syncLeftField = () => {
     const left = staffForm.elements.sStatus.value === 'left';
     $('#sLeftOn').disabled = !left;
@@ -1855,6 +1862,7 @@
     $('#sLeave').value = x?.annual_leave_days ?? '';
     $('#staffDelete').hidden = !x;
     syncLeftField();
+    syncServices();
     setStaffPhotoDraft(null);
     staffDialog.open();
     $('#sName').focus();
@@ -1895,7 +1903,7 @@
       const id = await api.saveStaff({
         id: editingStaff?.id || null, branch_id: branchId, name,
         position: $('#sPosition').value, phone: $('#sPhone').value, hired_on: hired || null, status, left_on: left || null,
-        services: $$('input[name="sSvc"]:checked').map((c) => c.value),
+        services: $('#sPosition').value === 'staff' ? [] : $$('input[name="sSvc"]:checked').map((c) => c.value),
         days_off: $$('input[name="sDay"]:checked').map((c) => Number(c.value)),
         incentive_service: incS, incentive_retail: incR,
         license_no: $('#sLicense').value, health_cert_expires: $('#sCert').value || null, memo: $('#sMemo').value,
