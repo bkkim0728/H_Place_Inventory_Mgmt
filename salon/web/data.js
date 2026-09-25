@@ -279,7 +279,7 @@
   // Demo store (same catalog as supabase/seed.sql, plus a second branch and
   // sample users so every role can be tried)
   // ------------------------------------------------------------------
-  const DEMO_KEY = 'hplace-salon-demo-v6';
+  const DEMO_KEY = 'hplace-salon-demo-v7';
   const PERSONA = { admin: 'u-admin', manager: 'u-mgr1', staff: 'u-staff1' };
 
   const CATALOG = [
@@ -333,15 +333,15 @@
       incentive_service: s, incentive_retail: r, license_no: license, health_cert_expires: cert == null ? null : d(cert), memo,
     });
     return [
-      row('st1', 'br01', '한서윤', 'director', '010-1234-0001', 2900, ['color', 'cut', 'perm', 'updo'], [1], 45, 10, '서울-2015-01234', 200, '웨딩·업스타일 예약은 원장님 직접'),
-      row('st2', 'br01', '정다은', 'chief', '010-1234-0002', 1650, ['clinic', 'color', 'cut'], [1, 4], 40, 10, '서울-2018-04521', 18),
-      row('st3', 'br01', '김도윤', 'designer', '010-1234-0003', 820, ['cut', 'perm', 'styling'], [2], 35, 8, '경기-2020-11873', 95),
+      row('st1', 'br01', '한서윤', 'head_director', '010-1234-0001', 2900, ['color', 'cut', 'perm', 'updo'], [1], 45, 10, '서울-2015-01234', 200, '웨딩·업스타일 예약은 원장님 직접'),
+      row('st2', 'br01', '정다은', 'deputy', '010-1234-0002', 1650, ['clinic', 'color', 'cut'], [1, 4], 40, 10, '서울-2018-04521', 18),
+      row('st3', 'br01', '김도윤', 'stylist', '010-1234-0003', 820, ['cut', 'perm', 'styling'], [2], 35, 8, '경기-2020-11873', 95),
       row('st4', 'br01', '이하린', 'designer', '010-1234-0004', 400, ['clinic', 'color', 'scalp'], [3], 35, 8, '서울-2022-07765', -12),
-      row('st5', 'br01', '박지후', 'intern', '010-1234-0005', 150, ['scalp', 'styling'], [1], null, 5, null, 240, '디자이너 승급 평가 예정'),
-      row('st6', 'br01', '최유진', 'desk', '010-1234-0006', 300, [], [0], null, 3, null, null),
+      row('st5', 'br01', '박지후', 'staff', '010-1234-0005', 150, ['scalp', 'styling'], [1], null, 5, null, 240, '디자이너 승급 평가 예정'),
+      row('st6', 'br01', '최유진', 'staff', '010-1234-0006', 300, [], [0], null, 3, null, null),
       { ...row('st7', 'br01', '오세라', 'designer', '010-1234-0007', 1300, ['cut', 'perm'], [5], 35, 8, '서울-2019-02210', -200), status: 'left', left_on: d(-60) },
-      row('st8', 'br02', '이서연', 'chief', '010-2345-0001', 1500, ['color', 'cut', 'perm'], [2], 40, 10, '서울-2017-09911', 150),
-      row('st9', 'br02', '윤태오', 'designer', '010-2345-0002', 600, ['cut', 'styling'], [4], 35, 8, '인천-2021-03321', 7),
+      row('st8', 'br02', '이서연', 'deputy', '010-2345-0001', 1500, ['color', 'cut', 'perm'], [2], 40, 10, '서울-2017-09911', 150),
+      row('st9', 'br02', '윤태오', 'senior_stylist', '010-2345-0002', 600, ['cut', 'styling'], [4], 35, 8, '인천-2021-03321', 7),
       { ...row('st10', 'br02', '강민서', 'designer', '010-2345-0003', 500, ['clinic', 'color'], [1], 35, 8, '서울-2022-01188', 300), status: 'leave' },
     ];
   }
@@ -412,7 +412,7 @@
     const categories = [...new Set(CATALOG.map((c) => c[2]))].map((name, i) => ({ id: `cat${i + 1}`, name, sort_order: (i + 1) * 10 }));
     // 담당 디자이너 on sample 시술 사용·판매, and 판매가 on sample sales
     const staff = buildDemoStaff();
-    const designersOf = (b) => staff.filter((x) => x.branch_id === b && x.status === 'active' && ['director', 'chief', 'designer'].includes(x.position));
+    const designersOf = (b) => staff.filter((x) => x.branch_id === b && x.status === 'active' && x.position !== 'staff');
     movements.forEach((m) => {
       if (m.type !== 'use' && m.type !== 'sale') return;
       const ds = designersOf(m.branch_id);
@@ -551,7 +551,7 @@
         const rate = (v) => v == null || (v >= 0 && v <= 100);
         const status = x.status || 'active';
         must(x.annual_leave_days == null || (x.annual_leave_days >= 0 && x.annual_leave_days <= 60), 'INVALID_STAFF');
-        must(name && name.length <= 30 && ['director', 'chief', 'designer', 'intern', 'desk'].includes(x.position)
+        must(name && name.length <= 30 && ['head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff'].includes(x.position)
           && ['active', 'leave', 'left'].includes(status)
           && (x.services || []).every((v) => ['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo'].includes(v))
           && (x.days_off || []).every((v) => Number.isInteger(v) && v >= 0 && v <= 6)
@@ -605,7 +605,7 @@
           if (mv.type === 'use') a.mat += -mv.quantity * (mv.unit_cost || 0);
           agg.set(mv.staff_id, a);
         });
-        const rank = { director: 0, chief: 1, designer: 2, intern: 3, desk: 4 };
+        const rank = { head_director: 0, chief_deputy: 1, deputy: 2, senior_stylist: 3, stylist: 4, designer: 5, staff: 6 };
         const rows = state.staff.filter((s) => s.branch_id === branchId).map((s) => {
           const sm = state.staffMonthly.find((x) => x.staff_id === s.id && x.month === m0);
           const a = agg.get(s.id);

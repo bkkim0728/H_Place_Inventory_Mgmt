@@ -370,5 +370,17 @@ await db.query(`insert into stock_movements(branch_id,product_id,type,quantity,s
 const prevRow = (await rep(mgr, prevMonth)).find(r => r.staff_id === des);
 ok(Number(prevRow.retail_sales) >= 10000, 'month boundaries follow Korea time');
 
+console.log('직급 rename');
+await db.exec(`alter table staff drop constraint staff_position_chk`);
+const oldPos = (await one(`insert into staff(branch_id,name,position) values($1,'옛 원장','director') returning id`, [b1])).id;
+await db.query(`insert into staff(branch_id,name,position) values($1,'옛 데스크','desk')`, [b1]);
+await db.exec(readFileSync(root + 'schema.sql', 'utf8'));
+ok((await one(`select position from staff where id=$1`, [oldPos])).position === 'head_director', 're-running schema.sql converts 원장 → 대표원장');
+ok((await one(`select count(*)::int n from staff where position in ('director','chief','intern','desk')`)).n === 0, 'no old position values remain');
+const ss = (await sv(mgr, base(null, b1, { name: '수석', position: 'senior_stylist' }))).id;
+ok((await one(`select position from staff where id=$1`, [ss])).position === 'senior_stylist', 'new titles accepted');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { position: 'director' }))))?.includes('INVALID_STAFF'), 'old titles rejected');
+ok((await as(mgr, () => q(`select name from staff_month_report($1,$2)`, [b1, month])))[0].name !== undefined, 'report orders by the new titles');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
