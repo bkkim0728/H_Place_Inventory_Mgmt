@@ -119,6 +119,7 @@
       <nav>
         <ul class="nav-list">
           <li><a href="#/dashboard" class="nav-link" data-route="dashboard"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>대시보드</a></li>
+          <li><a href="#/workboard" class="nav-link" data-route="workboard"><svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>근무 현황</a></li>
           <li><a href="#/inventory" class="nav-link" data-route="inventory"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>재고 목록<span class="nav-badge" id="navAlertCount" data-zero="true">0</span></a></li>
           <li><a href="#/movements" class="nav-link" data-route="movements"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>입출고 내역</a></li>
           <li><a href="#/schedule" class="nav-link" data-route="schedule"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg>근무표</a></li>
@@ -490,6 +491,46 @@
               </div>
             </div>
           </div>
+        </section>
+
+        <section class="view" data-view="workboard" hidden aria-labelledby="pageTitle">
+          <section class="card panel" aria-labelledby="wbWeekHeading">
+            <div class="panel-head">
+              <div>
+                <h2 id="wbWeekHeading">주간 근무 현황</h2>
+                <p class="muted small">정기 휴무와 근무표(연차·반차·병가·교육·추가 휴무·대체 근무)를 합친 실제 근무 · 날짜를 누르면 그날 스케줄을 봅니다</p>
+              </div>
+              <a href="#/schedule" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg>월별 근무표</a>
+            </div>
+            <div class="month-nav wb-nav">
+              <button type="button" class="icon-btn" id="wbPrev" aria-label="이전 주"><svg class="icon" aria-hidden="true"><use href="#i-chev-left"/></svg></button>
+              <p class="wb-range" id="wbRange" aria-live="polite">—</p>
+              <button type="button" class="icon-btn" id="wbNext" aria-label="다음 주"><svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></button>
+              <button type="button" class="btn btn-secondary btn-sm" id="wbThis">이번 주</button>
+            </div>
+            <p class="err-box" id="wbError" hidden></p>
+            <ol class="roster wb-week" id="wbWeek"></ol>
+          </section>
+
+          <section class="card panel" aria-labelledby="wbDayHeading">
+            <div class="panel-head">
+              <div>
+                <h2 id="wbDayHeading">근무 스케줄</h2>
+                <p class="muted small" id="wbDaySub">—</p>
+              </div>
+              <a href="#/schedule" class="btn btn-secondary btn-sm" data-manager-only><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg>근무표에서 수정</a>
+            </div>
+            <div class="wb-day">
+              <section aria-labelledby="wbOnHeading">
+                <h3 class="wb-col-title" id="wbOnHeading">근무 <span id="wbOnCount"></span></h3>
+                <ul class="wb-list" id="wbOn"></ul>
+              </section>
+              <section aria-labelledby="wbOffHeading">
+                <h3 class="wb-col-title" id="wbOffHeading">휴무·부재 <span id="wbOffCount"></span></h3>
+                <ul class="wb-list" id="wbOff"></ul>
+              </section>
+            </div>
+          </section>
         </section>
 
         <section class="view" data-view="schedule" hidden aria-labelledby="pageTitle">

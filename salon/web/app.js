@@ -42,6 +42,7 @@
   };
   const ROUTES = {
     dashboard: '대시보드',
+    workboard: '근무 현황',
     inventory: '재고 목록',
     movements: '입출고 내역',
     schedule: '근무표',
@@ -235,6 +236,7 @@
     loadData();
     if (state.route === 'users') loadUsers();
     if (state.route === 'staff') loadStaff();
+    if (state.route === 'workboard') loadWorkboard();
     if (state.route === 'schedule') loadSchedule();
     if (state.route === 'payroll') loadPayroll();
   });
@@ -318,6 +320,7 @@
     if (route === 'users') loadUsers();
     if (route === 'branches') { renderBranches(); loadBranchManagers(); }
     if (route === 'staff') loadStaff();
+    if (route === 'workboard') loadWorkboard();
     if (route === 'schedule') loadSchedule();
     if (route === 'payroll') loadPayroll();
     if (route === 'categories') renderCategories();
@@ -1951,6 +1954,111 @@
   });
 
   // ------------------------------------------------------------------
+  // 근무 현황: this week's real attendance (regular days off + 근무표) and
+  // one day's schedule. Everyone at the branch can see it.
+  // ------------------------------------------------------------------
+  const addDays = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+  const weekStartOf = (day) => addDays(day, -((dowOf(day) + 6) % 7));  // Monday
+  const mdText = (day) => `${Number(day.slice(5, 7))}월 ${Number(day.slice(8))}일`;
+  state.wb = { start: weekStartOf(todayKey()), day: todayKey(), people: [], rows: [] };
+
+  async function loadWorkboard() {
+    if (!state.branch) return;
+    const box = $('#wbError');
+    try {
+      const [people, rows] = await Promise.all([
+        isManager() ? api.listStaff(state.branch.id) : api.listStaffNames(state.branch.id),
+        api.listSchedule(state.branch.id, state.wb.start, addDays(state.wb.start, 6)),
+      ]);
+      state.wb.people = people;
+      state.wb.rows = rows;
+      box.hidden = true;
+    } catch (e) {
+      state.wb.people = [];
+      state.wb.rows = [];
+      box.textContent = api.toAppError(e).message;
+      box.hidden = false;
+    }
+    renderWorkboard();
+  }
+
+  // Everyone who could work that week (휴직 excluded), ordered by 직급
+  function wbPeople(days) {
+    const sched = new Map(state.wb.rows.map((r) => [`${r.staff_id}|${r.day}`, r]));
+    const people = state.wb.people
+      .filter((x) => x.status !== 'leave' && days.some((d) => dayState(x, d, sched) !== 'na'))
+      .sort((a, b) => POS_RANK[a.position] - POS_RANK[b.position] || a.name.localeCompare(b.name, 'ko'));
+    return { people, sched };
+  }
+  const offReason = (st) => (st === 'reg' ? '정기 휴무' : KIND[st]?.label || '');
+
+  function renderWorkboard() {
+    const today = todayKey();
+    const days = Array.from({ length: 7 }, (_, i) => addDays(state.wb.start, i));
+    if (!days.includes(state.wb.day)) state.wb.day = days.includes(today) ? today : days[0];
+    const { people, sched } = wbPeople(days);
+    $('#wbRange').textContent = `${state.wb.start.slice(0, 4)}년 ${mdText(days[0])} – ${mdText(days[6])}`;
+    $('#wbThis').disabled = days.includes(today);
+
+    $('#wbWeek').innerHTML = days.map((d) => {
+      const states = people.map((x) => ({ x, st: dayState(x, d, sched) })).filter((o) => o.st !== 'na');
+      // People present that day (반차 counts as present, noted separately)
+      const working = states.filter((o) => workValue(o.st) > 0).length;
+      const des = states.filter((o) => DESIGNER_POS.includes(o.x.position) && workValue(o.st) > 0).length;
+      const halves = states.filter((o) => o.st === 'half').length;
+      const hasDes = states.some((o) => DESIGNER_POS.includes(o.x.position));
+      const gap = hasDes && des === 0;
+      const away = states.filter((o) => workValue(o.st) < 1);
+      const w = dowOf(d);
+      return `<li class="roster-day${d === today ? ' is-today' : ''}${gap ? ' is-gap' : ''}${d === state.wb.day ? ' is-selected' : ''}">
+        <button type="button" class="wb-pick" data-wb-day="${d}" aria-pressed="${d === state.wb.day}" aria-label="${mdText(d)} ${DOW[w]}요일 근무 스케줄 보기">
+          <span class="roster-head"><strong class="${w === 0 ? 'is-sun' : w === 6 ? 'is-sat' : ''}">${DOW[w]} <span class="wb-date">${Number(d.slice(8))}</span></strong>${d === today ? '<span class="roster-today">오늘</span>' : ''}</span>
+          <span class="roster-count"><span class="roster-num">${nf.format(working)}</span>명 근무</span>
+          <span class="roster-des">${gap ? '<span class="tag tag-off">시술 인원 없음</span>' : `시술 ${nf.format(des)}명`}${halves ? ` · 반차 ${nf.format(halves)}` : ''}</span>
+          <span class="roster-off">${away.length ? away.map((o) => `<span class="off-name wb-off-${o.st}" title="${esc(offReason(o.st))}">${esc(o.x.name)}<small>${o.st === 'half' ? '반' : o.st === 'reg' ? '' : KIND[o.st].short}</small></span>`).join('') : '<span class="muted">휴무 없음</span>'}</span>
+        </button>
+      </li>`;
+    }).join('');
+
+    // Selected day
+    const d = state.wb.day;
+    const w = dowOf(d);
+    const list = people.map((x) => ({ x, st: dayState(x, d, sched), e: sched.get(`${x.id}|${d}`) })).filter((o) => o.st !== 'na');
+    const on = list.filter((o) => workValue(o.st) > 0);
+    const off = list.filter((o) => workValue(o.st) === 0);
+    const des = on.filter((o) => DESIGNER_POS.includes(o.x.position)).length;
+    const halves = on.filter((o) => o.st === 'half').length;
+    $('#wbDayHeading').textContent = `${mdText(d)} (${DOW[w]}) 근무 스케줄${d === today ? ' · 오늘' : ''}`;
+    $('#wbDaySub').textContent = `근무 ${nf.format(on.length)}명${halves ? `(반차 ${nf.format(halves)})` : ''} · 시술 ${nf.format(des)}명 · 휴무·부재 ${nf.format(off.length)}명`;
+    $('#wbOnCount').textContent = `${nf.format(on.length)}명`;
+    $('#wbOffCount').textContent = `${nf.format(off.length)}명`;
+    const item = (o) => {
+      const chip = o.st === '' ? '<span class="tag wb-chip wb-chip-on">근무</span>'
+        : o.st === 'work' ? '<span class="tag wb-chip wb-chip-work">대체 근무</span>'
+        : o.st === 'half' ? '<span class="tag wb-chip wb-chip-half">반차</span>'
+        : `<span class="tag wb-chip wb-chip-${o.st}">${esc(offReason(o.st))}</span>`;
+      const svc = o.x.services && o.x.services.length ? `<span class="wb-svc">${Object.keys(SERVICES).filter((k) => o.x.services.includes(k)).map((k) => SERVICES[k]).join(' · ')}</span>` : '';
+      return `<li class="wb-item">
+        ${staffAvatar(o.x)}
+        <div class="wb-who"><div class="item-name">${esc(o.x.name)}<span class="tag pos-tag pos-${o.x.position}">${POSITIONS[o.x.position] || ''}</span></div>${svc}${o.e?.memo ? `<div class="st-memo">${esc(o.e.memo)}</div>` : ''}</div>
+        ${chip}
+      </li>`;
+    };
+    $('#wbOn').innerHTML = on.length ? on.map(item).join('') : '<li class="wb-empty muted">근무하는 직원이 없습니다.</li>';
+    $('#wbOff').innerHTML = off.length ? off.map(item).join('') : '<li class="wb-empty muted">모두 근무합니다.</li>';
+    if (!people.length) $('#wbOn').innerHTML = `<li class="wb-empty muted">등록된 직원이 없습니다.${isManager() ? ' 직원 관리에서 직원을 먼저 등록해 주세요.' : ''}</li>`;
+  }
+
+  const wbGo = (n) => {
+    state.wb.start = n === 0 ? weekStartOf(todayKey()) : addDays(state.wb.start, 7 * n);
+    state.wb.day = n === 0 ? todayKey() : state.wb.start;
+    loadWorkboard();
+  };
+  $('#wbPrev').addEventListener('click', () => wbGo(-1));
+  $('#wbNext').addEventListener('click', () => wbGo(1));
+  $('#wbThis').addEventListener('click', () => wbGo(0));
+
+  // ------------------------------------------------------------------
   // 실적·정산 (managers; admins reopen a confirmed month)
   // ------------------------------------------------------------------
   state.pay = { month: todayKey().slice(0, 7), rows: [] };
@@ -2323,6 +2431,8 @@
     if (ce) return openCategory(state.categories.find((c) => c.id === ce.dataset.catEdit));
     const cd = e.target.closest('[data-cat-delete]');
     if (cd) return deleteCategory(state.categories.find((c) => c.id === cd.dataset.catDelete));
+    const wd = e.target.closest('[data-wb-day]');
+    if (wd) { state.wb.day = wd.dataset.wbDay; renderWorkboard(); const again = $(`[data-wb-day="${state.wb.day}"]`); if (again) again.focus(); return; }
     const sc = e.target.closest('[data-sch]');
     if (sc) { const [sid, day] = sc.dataset.sch.split('|'); return openScheduleDay(sid, day, sc); }
     const pe = e.target.closest('[data-pay-edit]');
