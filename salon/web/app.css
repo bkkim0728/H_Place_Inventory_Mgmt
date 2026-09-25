@@ -557,3 +557,12 @@ a.btn { text-decoration: none; }
   .rp-chart svg text { fill: #333 !important; }
   .rp-grid-line { stroke: #ddd !important; }
 }
+
+/* 제품: 지점별 단위·매입가·판매가 */
+.scope-set { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin: 0 0 var(--space-2); min-width: 0; }
+.scope-set legend { font-size: 14px; font-weight: 600; padding: 0 4px; }
+.scope-set[hidden] { display: none; }
+.price-scope .help { margin: 0; }
+.price-scope .link-btn { margin-top: 4px; align-self: flex-start; justify-self: start; }
+.own-price { display: inline-block; margin-top: 3px; padding: 0 6px; border-radius: 999px; font-weight: 700; font-size: 11px; background: var(--accent-soft); color: var(--fg); }
+.base-price { font-size: 11.5px; }

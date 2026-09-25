@@ -900,7 +900,7 @@
   // ------------------------------------------------------------------
   function renderProducts() {
     $('#pdNote').textContent = isManager()
-      ? '제품 목록은 모든 지점이 함께 씁니다. 새 제품을 등록하고, 제품 이름·브랜드·카테고리·단위·가격·고객 판매용을 고칠 수 있습니다(모든 지점에 함께 반영). 품목 코드는 전체 관리자가 바꿉니다. "이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서만 숨겨집니다.'
+      ? '제품 목록은 모든 지점이 함께 씁니다. 품목명·브랜드·카테고리·고객 판매용은 모든 지점에 함께 반영되고, 단위·매입가·판매가는 지점마다 따로 정할 수 있습니다("지점 가격" 표시). 품목 코드는 전체 관리자가 바꿉니다. "이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서만 숨겨집니다.'
       : '"이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서 숨겨집니다. 다른 지점에는 영향이 없습니다. 제품 등록과 설정은 지점 관리자에게 요청해 주세요.';
     const q = state.pd.q.trim().toLowerCase();
     const rows = state.inventory.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
@@ -909,9 +909,9 @@
     $('#pdBody').innerHTML = rows.map((i) => `<tr class="${i.active ? '' : 'inactive-row'}">
       <td class="cell-name"><div class="item-name">${esc(i.name)}</div><div class="item-sku">${esc(i.sku)}${i.brand ? ` · ${esc(i.brand)}` : ''}</div></td>
       <td data-label="카테고리">${esc(i.category)}</td>
-      <td data-label="단위">${esc(i.unit)}</td>
-      <td class="num" data-label="매입가">${won.format(i.cost_price)}</td>
-      <td class="num" data-label="판매가">${i.retail_price != null ? won.format(i.retail_price) : '—'}</td>
+      <td data-label="단위">${esc(i.unit)}${i.own_prices ? `<small class="sub-num own-price" title="공통 값: ${esc(baseText(i))}">지점 가격</small>` : ''}</td>
+      <td class="num" data-label="매입가">${won.format(i.cost_price)}${i.own_prices && i.cost_price !== i.base_cost_price ? `<small class="sub-num base-price">공통 ${won.format(i.base_cost_price)}</small>` : ''}</td>
+      <td class="num" data-label="판매가">${i.retail_price != null ? won.format(i.retail_price) : '—'}${i.own_prices && i.retail_price !== i.base_retail_price ? `<small class="sub-num base-price">공통 ${i.base_retail_price != null ? won.format(i.base_retail_price) : '없음'}</small>` : ''}</td>
       <td class="num" data-label="안전재고">${nf.format(i.safety_stock)}</td>
       <td data-label="보관 위치">${esc(i.location || '—')}</td>
       <td data-label="이 지점 사용">${i.catalog_active === false
@@ -1139,7 +1139,14 @@
     $('#pLocation').value = item?.location || '';
     $('#pRetailFlag').checked = Boolean(item?.is_retail);
     $('#pActive').checked = item ? item.catalog_active !== false : true;
-    // Managers register new products; changing an existing one is admin-only.
+    // 단위·매입가·판매가: shared on a new product; per branch afterwards
+    priceItem = item;
+    $('#pScopeSet').hidden = !(item && isAdmin());
+    if (item && isAdmin()) {
+      $('#pScopeBranch').textContent = `이 지점만 (${state.branch.name})`;
+      productForm.elements.pScope.value = item.own_prices ? 'branch' : 'all';
+    }
+    updatePriceHelp();
     const catalogLocked = !isAdmin() && Boolean(item);
     // Managers may change everything but the code and 사용 (shared by all branches)
     $$('[data-catalog]', productForm).forEach((el) => { el.disabled = catalogLocked && !el.hasAttribute('data-manager-edit'); });
@@ -1164,6 +1171,27 @@
   }
 
   let activeScope = 'catalog';
+  let priceItem = null;
+
+  const priceScope = () => (!priceItem ? 'all' : isAdmin() ? productForm.elements.pScope.value || 'all' : 'branch');
+  const baseText = (i) => `${i.base_unit} · 매입가 ${won.format(i.base_cost_price)} · 판매가 ${i.base_retail_price != null ? won.format(i.base_retail_price) : '없음'}`;
+  function updatePriceHelp() {
+    const i = priceItem;
+    const help = $('#pPriceHelp');
+    if (!i) help.textContent = '단위·매입가·판매가는 모든 지점에 같은 값으로 등록됩니다. 등록한 뒤 지점마다 따로 바꿀 수 있습니다.';
+    else if (priceScope() === 'all') help.textContent = `단위·매입가·판매가를 모든 지점에 같은 값으로 저장합니다. 지금 공통 값: ${baseText(i)}`;
+    else help.textContent = `단위·매입가·판매가는 ${state.branch.name}에만 적용됩니다. 공통 값(다른 지점 기본): ${baseText(i)}${i.own_prices ? ' · 지금 이 지점 가격을 쓰는 중' : ''}`;
+    $('#pPriceReset').hidden = !(i && i.own_prices && priceScope() === 'branch');
+  }
+  productForm.addEventListener('change', (e) => { if (e.target.name === 'pScope') updatePriceHelp(); });
+  $('#pPriceReset').addEventListener('click', () => {
+    const i = priceItem;
+    $('#pUnit').value = i.base_unit;
+    $('#pCost').value = i.base_cost_price;
+    $('#pRetail').value = i.base_retail_price ?? '';
+    $('#pPriceHelp').textContent = `공통 값을 채웠습니다. 저장하면 ${state.branch.name}도 공통 값(${baseText(i)})을 씁니다.`;
+    $('#pUnit').focus();
+  });
 
   function previewSku() {
     const cat = $('#pCategory').value;
@@ -1212,6 +1240,7 @@
         category: $('#pCategory').value, unit: $('#pUnit').value, costPrice: cost, retailPrice: retail,
         isRetail: $('#pRetailFlag').checked, safetyStock: safety, location: $('#pLocation').value,
         active: activeScope === 'branch' ? itemById(editingId).catalog_active !== false : $('#pActive').checked,
+        priceScope: priceScope(),
       });
       if (activeScope === 'branch' && !$('#pActive').disabled && $('#pActive').checked !== (itemById(editingId).in_use !== false)) {
         await api.setItemInUse(state.branch.id, editingId, $('#pActive').checked);

@@ -287,6 +287,7 @@
           p_brand: p.brand || null, p_category: p.category, p_unit: p.unit,
           p_cost_price: p.costPrice, p_retail_price: p.retailPrice, p_is_retail: p.isRetail,
           p_safety_stock: p.safetyStock, p_location: p.location || null, p_active: p.active,
+          p_price_scope: p.priceScope || null,
         })),
       setBranchItem: (branchId, productId, safetyStock, location) =>
         run(sb.rpc('set_branch_item', { p_branch_id: branchId, p_product_id: productId, p_safety_stock: safetyStock, p_location: location || null })),
@@ -529,6 +530,10 @@
     const clone = (v) => JSON.parse(JSON.stringify(v));
     const me = () => state.users.find((u) => u.user_id === state.meId) || state.users.find((u) => u.user_id === PERSONA.manager);
     const product = (id) => state.products.find((p) => p.id === id);
+    // A branch's own 매입가·단위·판매가 when it has them (inventory.own_prices)
+    const priced = (row, p) => (row && row.own_prices
+      ? { unit: row.unit, cost_price: row.cost_price, retail_price: row.retail_price ?? null }
+      : { unit: p.unit, cost_price: p.cost_price, retail_price: p.retail_price ?? null });
     const inv = (branchId, pid) => state.inventory.find((i) => i.branch_id === branchId && i.product_id === pid);
     const statusOf = (i) => (i.stock === 0 ? 'out' : i.stock <= i.safety_stock ? 'low' : 'ok');
     const trimOrNull = (v) => (v == null ? null : String(v).trim() || null);
@@ -819,9 +824,11 @@
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');
         const rows = state.inventory.filter((i) => i.branch_id === branchId).map((i) => {
           const p = product(i.product_id);
+          const v = priced(i, p);
           return {
             branch_id: i.branch_id, product_id: p.id, sku: p.sku, name: p.name, brand: p.brand,
-            category: p.category, unit: p.unit, cost_price: p.cost_price, retail_price: p.retail_price,
+            category: p.category, unit: v.unit, cost_price: v.cost_price, retail_price: v.retail_price,
+            own_prices: Boolean(i.own_prices), base_unit: p.unit, base_cost_price: p.cost_price, base_retail_price: p.retail_price,
             is_retail: p.is_retail, catalog_active: p.active, in_use: i.in_use !== false, active: p.active && i.in_use !== false,
             stock: i.stock, safety_stock: i.safety_stock,
             location: i.location, updated_at: i.updated_at, status: statusOf(i),
@@ -844,7 +851,7 @@
             const p = product(m.product_id);
             const u = state.users.find((x) => x.user_id === m.created_by);
             const st = m.staff_id ? state.staff.find((x) => x.id === m.staff_id) : null;
-            return { ...m, product_name: p.name, sku: p.sku, unit: p.unit, created_by_name: u ? u.full_name : null, reverted: reverted.has(m.id), staff_name: st ? st.name : null };
+            return { ...m, product_name: p.name, sku: p.sku, unit: priced(inv(m.branch_id, m.product_id), p).unit, created_by_name: u ? u.full_name : null, reverted: reverted.has(m.id), staff_name: st ? st.name : null };
           })
           .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : b.id - a.id));
         return delay(clone(rows));
@@ -864,9 +871,10 @@
         must(delta !== 0, 'NO_CHANGE');
         row.stock = after;
         row.updated_at = new Date().toISOString();
+        const v = priced(row, p);
         const m = insertMovement({
-          branch_id: branchId, product_id: productId, type, quantity: delta, stock_after: after, unit_cost: p.cost_price,
-          unit_price: type === 'sale' ? p.retail_price : null, staff_id: staffId || null, memo: trimOrNull(memo),
+          branch_id: branchId, product_id: productId, type, quantity: delta, stock_after: after, unit_cost: v.cost_price,
+          unit_price: type === 'sale' ? v.retail_price : null, staff_id: staffId || null, memo: trimOrNull(memo),
         });
         save();
         return delay(clone(m));
@@ -892,15 +900,26 @@
         // Admin: everything. Branch manager: new products, and on existing ones the
         // everything but the code and 사용 (mirrors save_product in schema.sql).
         must(isAdmin() || (branchId && isManager(branchId)), 'MANAGER_ONLY');
+        // 매입가·단위·판매가: new → shared; manager → their branch; admin → p.priceScope
+        const scope = !p.productId ? 'all' : !isAdmin() ? 'branch' : !branchId ? 'all' : (p.priceScope || 'all');
+        must(['all', 'branch'].includes(scope), 'INVALID_PRODUCT');
+        const setBranchPrices = (prod) => {
+          let row = inv(branchId, prod.id);
+          if (!row) { row = { branch_id: branchId, product_id: prod.id, stock: 0, safety_stock: 0, location: null }; state.inventory.push(row); }
+          const own = !(prod.unit === p.unit.trim() && prod.cost_price === p.costPrice && (prod.retail_price ?? null) === (p.retailPrice ?? null));
+          Object.assign(row, own
+            ? { own_prices: true, unit: p.unit.trim(), cost_price: p.costPrice, retail_price: p.retailPrice ?? null }
+            : { own_prices: false, unit: null, cost_price: null, retail_price: null });
+        };
         if (p.productId && !isAdmin()) {
           const prod = product(p.productId);
           must(prod, 'PRODUCT_NOT_FOUND');
           must(p.name.trim() && p.category.trim() && p.unit.trim() && p.costPrice >= 0 && (p.retailPrice ?? 0) >= 0 && p.safetyStock >= 0, 'INVALID_PRODUCT');
           must(state.categories.some((c) => c.name === p.category.trim()), 'CATEGORY_NOT_FOUND');
           Object.assign(prod, {
-            name: p.name.trim(), brand: trimOrNull(p.brand), category: p.category.trim(), unit: p.unit.trim(),
-            cost_price: p.costPrice, retail_price: p.retailPrice, is_retail: p.isRetail,
+            name: p.name.trim(), brand: trimOrNull(p.brand), category: p.category.trim(), is_retail: p.isRetail,
           });
+          setBranchPrices(prod);
           await this.setBranchItem(branchId, prod.id, p.safetyStock, p.location);
           save();
           return delay(prod.id);
@@ -917,9 +936,13 @@
           state.branches.forEach((b) => state.inventory.push({ branch_id: b.id, product_id: prod.id, stock: 0, safety_stock: 0, location: null, updated_at: new Date().toISOString() }));
         }
         Object.assign(prod, {
-          sku, name: p.name.trim(), brand: trimOrNull(p.brand), category: p.category.trim(), unit: p.unit.trim(),
-          cost_price: p.costPrice, retail_price: p.retailPrice, is_retail: p.isRetail, active: p.active,
+          sku, name: p.name.trim(), brand: trimOrNull(p.brand), category: p.category.trim(), is_retail: p.isRetail, active: p.active,
         });
+        if (scope === 'all') {
+          Object.assign(prod, { unit: p.unit.trim(), cost_price: p.costPrice, retail_price: p.retailPrice ?? null });
+          state.inventory.filter((i) => i.product_id === prod.id && i.own_prices)
+            .forEach((i) => Object.assign(i, { own_prices: false, unit: null, cost_price: null, retail_price: null }));
+        } else setBranchPrices(prod);
         if (branchId) await this.setBranchItem(branchId, prod.id, p.safetyStock, p.location);
         save();
         return delay(prod.id);
