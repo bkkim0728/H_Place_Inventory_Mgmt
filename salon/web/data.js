@@ -59,6 +59,15 @@
     PHOTO_UPLOAD_FAILED: '사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.',
   };
 
+  // Next product code for a category (mirrors next_sku() in schema.sql): 클리닉 → CN-004
+  const SKU_PREFIX = { '염모제': 'CL', '펌제': 'PM', '샴푸·트리트먼트': 'SH', '클리닉': 'CN', '판매용 홈케어': 'RT', '소모품': 'SP', '도구': 'TL' };
+  function nextSku(category, skus) {
+    const pre = SKU_PREFIX[String(category || '').trim()] || 'P';
+    const re = new RegExp(`^${pre}-(\\d+)$`);
+    const max = skus.reduce((m, s) => { const x = re.exec(s || ''); return x ? Math.max(m, Number(x[1])) : m; }, 0);
+    return `${pre}-${String(max + 1).padStart(3, '0')}`;
+  }
+
   class AppError extends Error {
     constructor(code, message) {
       super(message || MESSAGES[code] || code);
@@ -122,6 +131,7 @@
 
     return {
       mode: 'supabase',
+      nextSku,
       async getUser() {
         const { data } = await sb.auth.getSession();
         return data.session ? data.session.user : null;
@@ -487,6 +497,7 @@
 
     return {
       mode: 'demo',
+      nextSku,
       get demoRole() { return me().role; },
       setDemoRole(role) { state.meId = PERSONA[role]; save(); },
       async getUser() { return state.signedIn ? { id: me().user_id, email: me().email } : null; },
@@ -801,7 +812,7 @@
         // New: admin or the branch's manager. Existing (shared catalog): admin only.
         if (p.productId) must(isAdmin(), 'ADMIN_ONLY');
         else must(isAdmin() || (branchId && isManager(branchId)), 'MANAGER_ONLY');
-        const sku = (p.sku || '').trim().toUpperCase();
+        const sku = (p.sku || '').trim().toUpperCase() || (!p.productId && p.category ? nextSku(p.category, state.products.map((x) => x.sku)) : '');
         must(sku && p.name.trim() && p.category.trim() && p.unit.trim() && p.costPrice >= 0 && (p.retailPrice ?? 0) >= 0 && p.safetyStock >= 0, 'INVALID_PRODUCT');
         must(!state.products.some((x) => x.sku === sku && x.id !== p.productId), 'DUPLICATE_SKU');
         must(state.categories.some((c) => c.name === p.category.trim()), 'CATEGORY_NOT_FOUND');

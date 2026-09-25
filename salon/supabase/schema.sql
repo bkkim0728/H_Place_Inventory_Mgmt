@@ -463,6 +463,28 @@ $$;
 
 
 -- ---------------------------------------------------------------------------
+-- next_sku: the next free product code for a category, e.g. 클리닉 → CN-004.
+-- Prefixes follow the sample catalog; other categories use P-.
+-- ---------------------------------------------------------------------------
+create or replace function public.next_sku(p_category text)
+returns text
+language sql stable security definer set search_path = public
+as $$
+  with pre as (
+    select case btrim(p_category)
+      when '염모제' then 'CL' when '펌제' then 'PM' when '샴푸·트리트먼트' then 'SH'
+      when '클리닉' then 'CN' when '판매용 홈케어' then 'RT' when '소모품' then 'SP'
+      when '도구' then 'TL' else 'P' end as p
+  )
+  select pre.p || '-' || lpad((coalesce(max(substring(pr.sku from '^' || pre.p || '-([0-9]+)$')::integer), 0) + 1)::text, 3, '0')
+  from pre
+  left join public.products pr on pr.sku ~ ('^' || pre.p || '-[0-9]+$')
+  group by pre.p;
+$$;
+revoke all on function public.next_sku(text) from public, anon;
+grant execute on function public.next_sku(text) to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- save_product: create/update a catalog item (admin only; the catalog is shared
 -- by every branch). A new product gets an inventory row in every branch.
 -- p_branch_id / p_safety_stock / p_location also set that branch's settings.
@@ -472,7 +494,7 @@ $$;
 create or replace function public.save_product(
   p_branch_id     uuid,
   p_product_id    uuid,          -- null → create
-  p_sku           text,
+  p_sku           text,          -- blank on create → next code for the category
   p_name          text,
   p_brand         text,
   p_category      text,
@@ -498,6 +520,11 @@ begin
     end if;
   elsif not public.is_admin() then
     raise exception 'ADMIN_ONLY' using errcode = '42501';
+  end if;
+  -- A new product without a code gets the next one for its category.
+  if p_product_id is null and coalesce(btrim(p_sku), '') = '' and coalesce(btrim(p_category), '') <> '' then
+    perform pg_advisory_xact_lock(hashtext('public.next_sku'));  -- one code at a time
+    p_sku := public.next_sku(p_category);
   end if;
   if coalesce(btrim(p_sku), '') = '' or coalesce(btrim(p_name), '') = ''
      or coalesce(btrim(p_category), '') = '' or coalesce(btrim(p_unit), '') = ''
