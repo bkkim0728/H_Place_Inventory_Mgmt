@@ -166,7 +166,7 @@ create table if not exists public.staff (
   memo                 text,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now(),
-  constraint staff_position_chk check (position in ('director', 'chief', 'designer', 'intern', 'desk')),
+  constraint staff_position_chk check (position in ('head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff')),
   constraint staff_status_chk check (status in ('active', 'leave', 'left')),
   constraint staff_services_chk check (services <@ array['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo']::text[]),
   constraint staff_days_chk check (days_off <@ array[0, 1, 2, 3, 4, 5, 6]::smallint[]),
@@ -175,6 +175,13 @@ create table if not exists public.staff (
 );
 create index if not exists staff_branch_idx on public.staff (branch_id);
 alter table public.staff add column if not exists photo_path text;  -- file in the private staff-photos bucket
+-- 직급 renamed (원장→대표원장, 실장→부원장, 인턴·데스크→스태프); converts older rows
+alter table public.staff drop constraint if exists staff_position_chk;
+update public.staff set position = case position
+    when 'director' then 'head_director' when 'chief' then 'deputy'
+    when 'intern' then 'staff' when 'desk' then 'staff' else position end
+ where position in ('director', 'chief', 'intern', 'desk');
+alter table public.staff add constraint staff_position_chk check (position in ('head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff'));
 alter table public.staff add column if not exists annual_leave_days numeric(4,1);  -- 연차 일수 override (null = 자동 계산)
 
 -- Designer who did the 시술 / made the sale, and the 판매가 at the time of a sale
@@ -857,7 +864,8 @@ $$;
 -- ---------------------------------------------------------------------------
 -- Staff (직원 관리): everyone who works at a branch, with or without an app
 -- account. Holds pay rates, so only admins and the branch's manager can see it.
---   position  director 원장 · chief 실장 · designer 디자이너 · intern 인턴 · desk 데스크
+--   position  head_director 대표원장 · chief_deputy 수석 부원장 · deputy 부원장 ·
+--             senior_stylist 수석 스타일리스트 · stylist 스타일리스트 · designer 디자이너 · staff 스태프
 --   status    active 재직 · leave 휴직 · left 퇴사 (records are kept, not deleted)
 --   services  cut · perm · color · clinic · scalp · styling · updo
 --   days_off  regular weekly days off, 0 = Sunday … 6 = Saturday
@@ -915,7 +923,7 @@ begin
     end if;
   end if;
   if coalesce(btrim(p_name), '') = '' or length(btrim(p_name)) > 30
-     or coalesce(p_position, '') not in ('director', 'chief', 'designer', 'intern', 'desk')
+     or coalesce(p_position, '') not in ('head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff')
      or v_status not in ('active', 'leave', 'left')
      or not coalesce(p_services, '{}') <@ array['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo']::text[]
      or not coalesce(p_days_off, '{}') <@ array[0, 1, 2, 3, 4, 5, 6]
@@ -1219,7 +1227,7 @@ begin
          (round(b.ss * coalesce(b.rs, 0) / 100) + round(b.rsales * coalesce(b.rr, 0) / 100) + b.adj)::bigint,
          v_confirmed
   from base b
-  order by case b.position when 'director' then 0 when 'chief' then 1 when 'designer' then 2 when 'intern' then 3 else 4 end, b.name;
+  order by case b.position when 'head_director' then 0 when 'chief_deputy' then 1 when 'deputy' then 2 when 'senior_stylist' then 3 when 'stylist' then 4 when 'designer' then 5 else 6 end, b.name;
 end;
 $$;
 

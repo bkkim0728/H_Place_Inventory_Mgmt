@@ -894,7 +894,7 @@
 
   // 담당 디자이너: current staff of the branch, designers first; remembers the last pick.
   function fillMoveStaff() {
-    const rank = { director: 0, chief: 1, designer: 2, intern: 3, desk: 4 };
+    const rank = { head_director: 0, chief_deputy: 1, deputy: 2, senior_stylist: 3, stylist: 4, designer: 5, staff: 6 };
     const list = (state.staffNames || []).filter((x) => x.status === 'active')
       .sort((a, b) => rank[a.position] - rank[b.position] || a.name.localeCompare(b.name, 'ko'));
     $('#mStaff').innerHTML = '<option value="">선택 안 함</option>'
@@ -1487,9 +1487,9 @@
   // ------------------------------------------------------------------
   // Staff (직원 관리 · admin and the branch's manager)
   // ------------------------------------------------------------------
-  const POSITIONS = { director: '원장', chief: '실장', designer: '디자이너', intern: '인턴', desk: '데스크' };
-  const POS_RANK = { director: 0, chief: 1, designer: 2, intern: 3, desk: 4 };
-  const DESIGNER_POS = ['director', 'chief', 'designer'];  // take their own clients
+  const POSITIONS = { head_director: '대표원장', chief_deputy: '수석 부원장', deputy: '부원장', senior_stylist: '수석 스타일리스트', stylist: '스타일리스트', designer: '디자이너', staff: '스태프' };
+  const POS_RANK = { head_director: 0, chief_deputy: 1, deputy: 2, senior_stylist: 3, stylist: 4, designer: 5, staff: 6 };
+  const DESIGNER_POS = ['head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer'];  // take their own clients (스태프 assists)
   const SERVICES = { cut: '컷', perm: '펌', color: '염색', clinic: '클리닉', scalp: '두피 케어', styling: '드라이·스타일링', updo: '업스타일' };
   const WEEK = [1, 2, 3, 4, 5, 6, 0];  // 월 … 일
   const DOW = ['일', '월', '화', '수', '목', '금', '토'];
@@ -1559,7 +1559,7 @@
     $('#stKpiActiveSub').textContent = `휴직 ${nf.format(all.filter((x) => x.status === 'leave').length)}명 · 퇴사 ${nf.format(all.filter((x) => x.status === 'left').length)}명`;
     const designers = active.filter((x) => DESIGNER_POS.includes(x.position));
     $('#stKpiDesigners').textContent = `${nf.format(designers.length)}명`;
-    $('#stKpiDesignersSub').textContent = `원장·실장 포함 · 인턴 ${nf.format(active.filter((x) => x.position === 'intern').length)}명`;
+    $('#stKpiDesignersSub').textContent = `스태프 제외 · 스태프 ${nf.format(active.filter((x) => x.position === 'staff').length)}명`;
     const offToday = active.filter((x) => isOff(x, dow));
     $('#stKpiToday').textContent = `${nf.format(active.length - offToday.length)}명`;
     $('#stKpiTodaySub').innerHTML = `${DOW[dow]}요일 · ${offToday.length ? `휴무 ${nameList(offToday)}` : '휴무 없음'}`;
@@ -1574,7 +1574,7 @@
       return `<li class="roster-day${d === dow ? ' is-today' : ''}${gap ? ' is-gap' : ''}">
         <div class="roster-head"><strong>${DOW[d]}</strong>${d === dow ? '<span class="roster-today">오늘</span>' : ''}</div>
         <p class="roster-count"><span class="roster-num">${nf.format(working)}</span>명 근무</p>
-        <p class="roster-des">${gap ? '<span class="tag tag-off">디자이너 없음</span>' : `디자이너 ${nf.format(des)}명`}</p>
+        <p class="roster-des">${gap ? '<span class="tag tag-off">시술 인원 없음</span>' : `시술 ${nf.format(des)}명`}</p>
         <p class="roster-off">${off.length ? `<span class="sr-only">휴무: </span>${off.map((x) => `<span class="off-name">${staffAvatar(x, 'st-avatar-xs')}${esc(x.name)}</span>`).join('')}` : '<span class="muted">휴무 없음</span>'}</p>
       </li>`;
     }).join('');
@@ -1832,7 +1832,7 @@
     const n = daysIn(ym), days = Array.from({ length: n }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
     const today = todayKey();
     const sched = new Map(state.sch.rows.map((r) => [`${r.staff_id}|${r.day}`, r]));
-    const rank = { director: 0, chief: 1, designer: 2, intern: 3, desk: 4 };
+    const rank = { head_director: 0, chief_deputy: 1, deputy: 2, senior_stylist: 3, stylist: 4, designer: 5, staff: 6 };
     const people = (state.sch.people || [])
       .filter((x) => x.status !== 'leave' && days.some((d) => dayState(x, d, sched) !== 'na') && (x.status !== 'left' || (x.left_on && x.left_on >= days[0])))
       .sort((a, b) => rank[a.position] - rank[b.position] || a.name.localeCompare(b.name, 'ko'));
@@ -1864,9 +1864,9 @@
     const countRow = (label, list, warn) => `<tr class="sch-foot"><th scope="row" class="sch-name">${label}</th>${days.map((d) => {
       const c = list.reduce((a, x) => a + workValue(dayState(x, d, sched)), 0);
       const gap = warn && designers.length > 0 && c === 0;
-      return `<td class="${gap ? 'is-gap' : ''}">${gap ? '<span class="sr-only">디자이너 없음 </span>' : ''}${nf.format(c)}</td>`;
+      return `<td class="${gap ? 'is-gap' : ''}">${gap ? '<span class="sr-only">시술 인원 없음 </span>' : ''}${nf.format(c)}</td>`;
     }).join('')}<td></td></tr>`;
-    $('#schTable').innerHTML = head + `<tbody>${body}</tbody><tfoot>${countRow('근무 인원', people, false)}${countRow('디자이너', designers, true)}</tfoot>`;
+    $('#schTable').innerHTML = head + `<tbody>${body}</tbody><tfoot>${countRow('근무 인원', people, false)}${countRow('시술 인원', designers, true)}</tfoot>`;
 
     // Leave summary (managers)
     if (!isManager()) return;
