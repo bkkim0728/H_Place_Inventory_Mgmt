@@ -109,8 +109,12 @@ const oldMv = (await one(`select id from stock_movements where branch_id=$1 and 
 ok((await err(staff, () => q(`select revert_movement($1)`, [oldMv])))?.includes('REVERT_WINDOW_PASSED'), 'staff cannot revert old/other entries');
 
 console.log('catalog (admin) and branch item settings (manager)');
-ok((await err(mgr, () => q(`select save_product($1,null,'X-1','테스트','', '소모품','개',100,null,false,2,null)`, [b1])))?.includes('ADMIN_ONLY'), 'manager cannot create catalog products');
-ok((await err(staff, () => q(`select save_product($1,null,'X-1','테스트','', '소모품','개',100,null,false,2,null)`, [b1])))?.includes('ADMIN_ONLY'), 'staff cannot create catalog products');
+const mgrPid = await as(mgr, async () => (await one(`select save_product($1,null,'mg-1','지점 등록 제품','', '소모품','개',100,null,false,2,'창고') id`, [b1])).id);
+ok((await one(`select count(*)::int n from inventory where product_id=$1`, [mgrPid])).n === (await one(`select count(*)::int n from branches`)).n, 'manager registers a new product (stock rows for every branch)');
+ok((await one(`select safety_stock, location from inventory where product_id=$1 and branch_id=$2`, [mgrPid, b1])).location === '창고', 'the registering branch gets its safety stock and location');
+ok((await err(mgr, () => q(`select save_product($1,$2,'MG-1','이름 변경','', '소모품','개',200,null,false,2,null)`, [b1, mgrPid])))?.includes('ADMIN_ONLY'), 'manager cannot change an existing catalog product');
+ok((await err(other, () => q(`select save_product($1,null,'X-1','테스트','', '소모품','개',100,null,false,2,null)`, [b1])))?.includes('MANAGER_ONLY'), 'manager cannot register for another branch');
+ok((await err(staff, () => q(`select save_product($1,null,'X-1','테스트','', '소모품','개',100,null,false,2,null)`, [b1])))?.includes('MANAGER_ONLY'), 'staff cannot register products');
 const pid = await as(admin, async () => (await one(`select save_product($1,null,' tst-1 ','테스트 샴푸','브랜드','샴푸·트리트먼트','병',12000,null,false,3,'창고') id`, [b1])).id);
 const created = await one(`select p.sku, i.safety_stock, i.stock, i.location from products p join inventory i on i.product_id=p.id and i.branch_id=$2 where p.id=$1`, [pid, b1]);
 ok(created.sku === 'TST-1' && created.safety_stock === 3 && created.stock === 0 && created.location === '창고', 'admin creates product with 1호점 settings');

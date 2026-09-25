@@ -798,7 +798,9 @@
         return delay(clone(m));
       },
       async saveProduct(branchId, p) {
-        must(isAdmin(), 'ADMIN_ONLY');
+        // New: admin or the branch's manager. Existing (shared catalog): admin only.
+        if (p.productId) must(isAdmin(), 'ADMIN_ONLY');
+        else must(isAdmin() || (branchId && isManager(branchId)), 'MANAGER_ONLY');
         const sku = (p.sku || '').trim().toUpperCase();
         must(sku && p.name.trim() && p.category.trim() && p.unit.trim() && p.costPrice >= 0 && (p.retailPrice ?? 0) >= 0 && p.safetyStock >= 0, 'INVALID_PRODUCT');
         must(!state.products.some((x) => x.sku === sku && x.id !== p.productId), 'DUPLICATE_SKU');
