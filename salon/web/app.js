@@ -41,7 +41,7 @@
     out: { label: '품절', icon: 'i-x-circle', rank: 0 },
   };
   const ROUTES = {
-    dashboard: '대시보드',
+    dashboard: '재고 현황',
     workboard: '근무 현황',
     inventory: '재고 목록',
     movements: '입출고 내역',
