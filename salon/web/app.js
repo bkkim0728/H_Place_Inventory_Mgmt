@@ -333,6 +333,7 @@
     renderMovements();
     if (state.route === 'sales') loadSales();  // new or cancelled sales
     renderProducts();
+    if (state.route === 'products' && state.pc?.tab === 'compare') loadPriceCompare();
     renderBranches();
     renderCategories();
     fillMoveItems();
@@ -1202,6 +1203,146 @@
   });
   let pdTimer = 0;
   $('#pdQ').addEventListener('input', (e) => { clearTimeout(pdTimer); pdTimer = setTimeout(() => { state.pd.q = e.target.value; renderProducts(); }, 150); });
+
+  // ------------------------------------------------------------------
+  // 지점별 가격 비교 (admin): one product per row, one branch per column
+  // ------------------------------------------------------------------
+  state.pc = { tab: 'list', metric: 'cost_price', q: '', cat: '', only: true, branches: [], items: [], loading: false };
+
+  async function loadPriceCompare() {
+    if (!isAdmin()) return;
+    const c = state.pc;
+    c.loading = true;
+    renderPriceCompare();
+    try {
+      const branches = state.branches.filter((b) => b.active !== false);
+      const lists = await Promise.all(branches.map((b) => api.listInventory(b.id)));
+      const byId = new Map();
+      lists.forEach((rows, bi) => rows.forEach((r) => {
+        const p = byId.get(r.product_id) || {
+          id: r.product_id, sku: r.sku, name: r.base_name ?? r.name, category: r.base_category ?? r.category,
+          unit: r.base_unit ?? r.unit, base: { cost_price: r.base_cost_price ?? r.cost_price, retail_price: r.base_retail_price ?? r.retail_price },
+          catalog_active: r.catalog_active !== false, at: new Array(branches.length).fill(null),
+        };
+        p.at[bi] = { cost_price: r.cost_price, retail_price: r.retail_price ?? null, own: Boolean(r.own_prices), in_use: r.in_use !== false, name: r.name, unit: r.unit };
+        byId.set(r.product_id, p);
+      }));
+      c.branches = branches;
+      c.items = [...byId.values()];
+      $('#pcError').hidden = true;
+    } catch (ex) {
+      c.items = [];
+      $('#pcError').textContent = api.toAppError(ex).message;
+      $('#pcError').hidden = false;
+    }
+    c.loading = false;
+    const cats = [...new Set(c.items.map((p) => p.category))].sort(byCategory);
+    $('#pcCat').innerHTML = '<option value="">전체</option>' + cats.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    $('#pcCat').value = cats.includes(c.cat) ? c.cat : '';
+    c.cat = $('#pcCat').value;
+    renderPriceCompare();
+  }
+
+  // Values of one metric across branches (null = no price / not stocked)
+  const pcValues = (p, m) => p.at.map((a) => (a ? a[m] ?? null : undefined));
+  const pcDiffers = (p, m) => { const v = pcValues(p, m).filter((x) => x !== undefined); return new Set(v.map(String)).size > 1 || v.some((x) => x !== (p.base[m] ?? null)); };
+
+  function renderPriceCompare() {
+    const c = state.pc, m = c.metric, label = m === 'cost_price' ? '매입가' : '판매가';
+    const all = c.items.filter((p) => p.catalog_active);
+    const q = c.q.trim().toLowerCase();
+    const diffCost = all.filter((p) => pcDiffers(p, 'cost_price')).length;
+    const diffRetail = all.filter((p) => pcDiffers(p, 'retail_price')).length;
+    const ownCells = all.reduce((a, p) => a + p.at.filter((x) => x?.own).length, 0);
+    $('#pcSummary').innerHTML = c.loading ? '<span class="muted">모든 지점 가격을 불러오는 중…</span>' : `
+      <div class="pc-stat"><span>비교 품목</span><strong>${nf.format(all.length)}개</strong><small>${nf.format(c.branches.length)}개 지점</small></div>
+      <div class="pc-stat${diffCost ? ' is-hot' : ''}"><span>매입가가 다른 제품</span><strong>${nf.format(diffCost)}개</strong><small>${all.length ? pct1.format((diffCost / all.length) * 100) : '0.0'}%</small></div>
+      <div class="pc-stat${diffRetail ? ' is-hot' : ''}"><span>판매가가 다른 제품</span><strong>${nf.format(diffRetail)}개</strong><small>${all.length ? pct1.format((diffRetail / all.length) * 100) : '0.0'}%</small></div>
+      <div class="pc-stat"><span>지점 설정 사용</span><strong>${nf.format(ownCells)}건</strong><small>공통 값과 다르게 정한 지점·제품</small></div>`;
+
+    const rows = all.filter((p) => (!q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
+        && (!c.cat || p.category === c.cat) && (!c.only || pcDiffers(p, m)))
+      .sort((a, b) => byCategory(a.category, b.category) || a.name.localeCompare(b.name, 'ko'));
+
+    $('#pcHead').innerHTML = `<tr>
+      <th scope="col" class="th-plain pc-sticky">품목</th>
+      <th scope="col" class="th-plain num">공통 ${label}</th>
+      ${c.branches.map((b) => `<th scope="col" class="th-plain num">${esc(b.name)}</th>`).join('')}
+      <th scope="col" class="th-plain num">지점 간 차이</th>
+    </tr>`;
+    $('#pcBody').innerHTML = rows.map((p) => {
+      const base = p.base[m] ?? null;
+      const vals = pcValues(p, m).filter((v) => v != null);
+      const lo = vals.length ? Math.min(...vals) : null, hi = vals.length ? Math.max(...vals) : null;
+      const renamed = p.at.some((a) => a && a.own && a.name !== p.name);
+      const cells = p.at.map((a, bi) => {
+        const bn = esc(c.branches[bi].name);
+        if (!a) return `<td class="num muted" data-label="${bn}">—</td>`;
+        const v = a[m] ?? null;
+        const dir = v == null || base == null ? (v === base ? '' : 'chg') : v > base ? 'up' : v < base ? 'down' : '';
+        const mark = dir === 'up' ? '<span class="pc-up" aria-label="공통보다 높음">▲</span>' : dir === 'down' ? '<span class="pc-down" aria-label="공통보다 낮음">▼</span>' : '';
+        const tip = [a.own ? `지점 설정${a.name !== p.name ? ` · 이름 "${a.name}"` : ''}${a.unit !== p.unit ? ` · 단위 ${a.unit}` : ''}` : '공통 값 사용', a.in_use ? '' : '이 지점에서 사용 안 함'].filter(Boolean).join(' · ');
+        return `<td class="num pc-cell${dir ? ` pc-${dir}-cell` : ''}${a.in_use ? '' : ' pc-off'}" data-label="${bn}" title="${esc(tip)}">${mark}${v == null ? '<span class="muted">—</span>' : won.format(v)}</td>`;
+      }).join('');
+      const spread = lo != null && hi > lo
+        ? `<strong>${won.format(hi - lo)}</strong><small>${lo ? `${pct1.format(((hi - lo) / lo) * 100)}%` : ''}</small>` : '<span class="muted">같음</span>';
+      return `<tr>
+        <th scope="row" class="cell-name pc-sticky"><div class="item-name">${esc(p.name)}${renamed ? '<span class="own-price" title="지점에서 이름을 바꾼 곳이 있습니다">이름 다름</span>' : ''}</div><div class="item-sku">${esc(p.sku)} · ${esc(p.category)} · ${esc(p.unit)}</div></th>
+        <td class="num pc-base" data-label="공통 ${label}">${base == null ? '<span class="muted">—</span>' : won.format(base)}</td>
+        ${cells}
+        <td class="num pc-spread" data-label="지점 간 차이">${spread}</td>
+      </tr>`;
+    }).join('');
+    const none = !c.loading && rows.length === 0;
+    const wrap = $('.pc-wrap');
+    wrap.classList.toggle('is-wide', $('#pcTable').scrollWidth > wrap.clientWidth + 1);
+    $('#pcEmpty').hidden = !none;
+    $('#pcTable').hidden = none;
+    $('#pcEmptyText').textContent = q || c.cat ? '조건에 맞는 제품이 없습니다.' : c.only ? `모든 지점의 ${label}가 공통 값과 같습니다.` : '제품이 없습니다.';
+  }
+
+  $('[data-view="products"]').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-pd-tab]');
+    if (t) {
+      state.pc.tab = t.dataset.pdTab;
+      $$('[data-pd-tab]').forEach((x) => x.setAttribute('aria-pressed', String(x === t)));
+      $('#pdCompare').hidden = state.pc.tab !== 'compare';
+      $('#pdList').hidden = state.pc.tab === 'compare';
+      if (state.pc.tab === 'compare') loadPriceCompare();
+      return;
+    }
+    const mb = e.target.closest('[data-pc-metric]');
+    if (mb) {
+      state.pc.metric = mb.dataset.pcMetric;
+      $$('[data-pc-metric]').forEach((x) => x.setAttribute('aria-pressed', String(x === mb)));
+      renderPriceCompare();
+    }
+  });
+  let pcTimer = 0;
+  $('#pcQ').addEventListener('input', (e) => { clearTimeout(pcTimer); pcTimer = setTimeout(() => { state.pc.q = e.target.value; renderPriceCompare(); }, 150); });
+  $('#pcCat').addEventListener('change', (e) => { state.pc.cat = e.target.value; renderPriceCompare(); });
+  $('#pcOnly').addEventListener('change', (e) => { state.pc.only = e.target.checked; renderPriceCompare(); });
+  $('#pcXlsx').addEventListener('click', () => {
+    const c = state.pc;
+    const items = c.items.filter((p) => p.catalog_active).sort((a, b) => byCategory(a.category, b.category) || a.name.localeCompare(b.name, 'ko'));
+    if (!items.length) { toast('내려받을 제품이 없습니다.', { error: true }); return; }
+    const cols = [{ header: '품목', width: 28 }, { header: '품목 코드', width: 11 }, { header: '카테고리', width: 13 }, { header: '구분', width: 8 }, { header: '공통', width: 11, type: 'number' }];
+    c.branches.forEach((b) => cols.push({ header: b.name, width: 11, type: 'number' }));
+    cols.push({ header: '지점 간 차이', width: 12, type: 'number' });
+    const out = [];
+    items.forEach((p) => ['cost_price', 'retail_price'].forEach((m) => {
+      const vals = pcValues(p, m).filter((v) => v != null);
+      out.push([p.name, p.sku, p.category, m === 'cost_price' ? '매입가' : '판매가', p.base[m] ?? '',
+        ...pcValues(p, m).map((v) => (v == null ? '' : v)), vals.length ? Math.max(...vals) - Math.min(...vals) : '']);
+    }));
+    const blob = window.makeXlsx({ sheetName: '지점별 가격 비교', columns: cols, rows: out });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `지점별가격비교_${todayKey()}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast(`${nf.format(items.length)}개 제품의 지점별 매입가·판매가를 엑셀 파일로 내려받았습니다.`);
+  });
 
   // ------------------------------------------------------------------
   // Dialog helpers

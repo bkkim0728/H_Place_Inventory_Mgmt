@@ -627,6 +627,57 @@
 
         <!-- Products (manager) -->
         <section class="view card panel" data-view="products" hidden aria-labelledby="pageTitle">
+          <div class="pd-tabs" data-admin-only>
+            <div class="segmented" role="group" aria-label="보기 선택">
+              <button type="button" data-pd-tab="list" aria-pressed="true">제품 목록</button>
+              <button type="button" data-pd-tab="compare" aria-pressed="false">지점별 가격 비교</button>
+            </div>
+          </div>
+
+          <!-- 지점별 가격 비교 (admin) -->
+          <div id="pdCompare" hidden>
+            <div class="toolbar">
+              <div class="field field-search">
+                <label for="pcQ" class="sr-only">품목 검색</label>
+                <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+                <input id="pcQ" type="search" placeholder="품목명, 코드 검색" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="pcCat">카테고리</label>
+                <select id="pcCat"><option value="">전체</option></select>
+              </div>
+              <div class="field">
+                <span class="field-label" id="pcMetricLabel">비교 항목</span>
+                <div class="segmented" role="group" aria-labelledby="pcMetricLabel">
+                  <button type="button" data-pc-metric="cost_price" aria-pressed="true">매입가</button>
+                  <button type="button" data-pc-metric="retail_price" aria-pressed="false">판매가</button>
+                </div>
+              </div>
+              <label class="check pc-only"><input type="checkbox" id="pcOnly" checked /> 가격이 다른 제품만</label>
+              <button class="btn btn-secondary" type="button" id="pcXlsx"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>엑셀</button>
+            </div>
+            <div class="pc-summary" id="pcSummary" aria-live="polite"></div>
+            <p class="err-box" id="pcError" hidden></p>
+            <ul class="pc-legend" aria-label="표 읽는 법">
+              <li><span class="pc-up">▲</span> 공통 값보다 높음</li>
+              <li><span class="pc-down">▼</span> 공통 값보다 낮음</li>
+              <li><span class="muted">—</span> 판매가 없음</li>
+              <li><span class="pc-off-sample">회색</span> 그 지점에서 사용 안 함</li>
+            </ul>
+            <div class="table-wrap pc-wrap">
+              <table class="inv-table pc-table" id="pcTable">
+                <caption class="sr-only">제품별 지점 가격 비교</caption>
+                <thead id="pcHead"></thead>
+                <tbody id="pcBody"></tbody>
+              </table>
+              <div class="empty" id="pcEmpty" hidden>
+                <svg class="icon icon-lg" aria-hidden="true"><use href="#i-tag"/></svg>
+                <p><strong id="pcEmptyText">모든 지점의 가격이 같습니다.</strong></p>
+              </div>
+            </div>
+          </div>
+
+          <div id="pdList">
           <div class="toolbar">
             <div class="field field-search">
               <label for="pdQ" class="sr-only">품목 검색</label>
@@ -655,6 +706,7 @@
               </thead>
               <tbody id="pdBody"></tbody>
             </table>
+          </div>
           </div>
         </section>
         <!-- Categories (admin) -->
@@ -1282,6 +1334,13 @@
               <div class="man-body">
                 <ol class="man-steps"><li><b>직원 관리</b>의 <b>지점</b>에서 <b>전체 지점</b>을 고르면 모든 지점 직원이 한 목록에 나옵니다. 이름 옆에 소속 지점이 표시됩니다.</li><li><b>지점별 인원</b> 표에서 재직·시술 인원·스태프·오늘 근무·휴직·퇴사·보건증 확인·평균 근속을 비교하고, 위 막대로 직급 분포를 봅니다.</li><li>지점명을 누르면 그 지점 직원만 보고, 주간 근무 현황도 볼 수 있습니다.</li><li>직원을 다른 지점으로 보내려면 <b>수정</b> → <b>소속 지점</b>을 바꾸고 저장합니다.</li></ol><p class="man-tip"><strong>참고</strong> 이미 등록된 입출고·근무 기록은 원래 지점에 그대로 남습니다.</p>
                 <a href="#/staff" class="btn btn-secondary btn-sm man-go">직원 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-pricecmp" data-admin-only>
+              <summary><span class="man-q">지점별 매입가·판매가 비교하기</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>제품 관리</b> 위쪽에서 <b>지점별 가격 비교</b>를 누릅니다.</li><li><b>비교 항목</b>에서 <b>매입가</b> 또는 <b>판매가</b>를 고릅니다. 제품마다 공통 값과 지점별 값이 한 줄에 나옵니다.</li><li>공통 값보다 높으면 <b>▲</b>, 낮으면 <b>▼</b>로 표시되고, 오른쪽 <b>지점 간 차이</b>에 최고가와 최저가의 차이가 나옵니다.</li><li><b>가격이 다른 제품만</b>을 끄면 모든 제품을 봅니다. <b>엑셀</b>로 모든 제품의 지점별 매입가·판매가를 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 가격을 맞추려면 제품 목록에서 그 제품을 <b>수정</b> → 적용 범위 <b>모든 지점 같은 값</b>으로 저장하세요.</p>
+                <a href="#/products" class="btn btn-secondary btn-sm man-go">제품 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>
             <details class="man-item" id="man-users" data-admin-only>
