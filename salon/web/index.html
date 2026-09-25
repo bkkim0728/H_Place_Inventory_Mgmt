@@ -132,7 +132,7 @@
         </ul>
         <p class="nav-section">관리</p>
         <ul class="nav-list">
-          <li data-admin-only><a href="#/hq" class="nav-link" data-route="hq"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>본사 대시보드</a></li>
+          <li data-admin-only><a href="#/hq" class="nav-link" data-route="hq"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>전체현황</a></li>
           <li data-manager-only><a href="#/report" class="nav-link" data-route="report"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg>매장 레포트</a></li>
           <li><a href="#/products" class="nav-link" data-route="products"><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>제품 관리</a></li>
           <li data-admin-only><a href="#/categories" class="nav-link" data-route="categories"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>카테고리 관리</a></li>
@@ -312,7 +312,7 @@
           </div>
         </section>
 
-        <!-- 본사 대시보드 (admin): every branch at once -->
+        <!-- 전체현황 (admin): every branch at once -->
         <section class="view" data-view="hq" hidden aria-labelledby="pageTitle">
           <div class="card panel hq-head">
             <div>
@@ -1254,10 +1254,10 @@
           <section class="card panel man-group" id="man-admin" aria-labelledby="man-admin-h" data-admin-only>
             <h2 class="rp-title man-group-title" id="man-admin-h"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>전체 관리자 업무</h2>
             <details class="man-item" id="man-hq" data-admin-only>
-              <summary><span class="man-q">본사 대시보드로 전체 지점 한눈에 보기</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
+              <summary><span class="man-q">전체현황으로 전체 지점 한눈에 보기</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
               <div class="man-body">
-                <ol class="man-steps"><li><b>본사 대시보드</b>에서 기간(최근 7일, 최근 30일, 이번 달, 지난달)을 고릅니다.</li><li>위쪽 카드에서 전체 총매출·시술 매출·제품 판매·재료비율과 <b>이전 기간 대비</b> 증감, 재고 금액·재고 경고·오늘 근무·시술 매출 입력률을 확인합니다.</li><li><b>일별 총매출 · 지점별</b> 그래프에 마우스를 올리면 그날 지점별 금액이 보입니다.</li><li><b>지점별 성과</b> 표에서 매출 비중, 객단가, 재료비율, 재고, 근무를 비교합니다. 지점명을 누르면 그 지점의 매장 레포트로 이동합니다.</li><li><b>확인이 필요한 항목</b>(품절, 매출 미입력, 보건증 만료, 매출 급감 등)을 눌러 해당 화면으로 바로 갑니다. <b>엑셀</b>로 지점별 성과를 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출은 각 지점이 매장 레포트에서 입력한 값으로 계산합니다. 입력률이 낮으면 총매출이 실제보다 적게 보입니다.</p>
-                <a href="#/hq" class="btn btn-secondary btn-sm man-go">본사 대시보드(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+                <ol class="man-steps"><li><b>전체현황</b>에서 기간(최근 7일, 최근 30일, 이번 달, 지난달)을 고릅니다.</li><li>위쪽 카드에서 전체 총매출·시술 매출·제품 판매·재료비율과 <b>이전 기간 대비</b> 증감, 재고 금액·재고 경고·오늘 근무·시술 매출 입력률을 확인합니다.</li><li><b>일별 총매출 · 지점별</b> 그래프에 마우스를 올리면 그날 지점별 금액이 보입니다.</li><li><b>지점별 성과</b> 표에서 매출 비중, 객단가, 재료비율, 재고, 근무를 비교합니다. 지점명을 누르면 그 지점의 매장 레포트로 이동합니다.</li><li><b>확인이 필요한 항목</b>(품절, 매출 미입력, 보건증 만료, 매출 급감 등)을 눌러 해당 화면으로 바로 갑니다. <b>엑셀</b>로 지점별 성과를 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출은 각 지점이 매장 레포트에서 입력한 값으로 계산합니다. 입력률이 낮으면 총매출이 실제보다 적게 보입니다.</p>
+                <a href="#/hq" class="btn btn-secondary btn-sm man-go">전체현황으로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>
             <details class="man-item" id="man-allstaff" data-admin-only>
