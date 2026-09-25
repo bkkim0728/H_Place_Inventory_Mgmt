@@ -200,13 +200,15 @@
                   <button type="button" data-range="30" aria-pressed="false">30일</button>
                 </div>
               </div>
-              <div class="legend" aria-hidden="true">
-                <span class="legend-item"><span class="swatch swatch-in"></span>입고</span>
-                <span class="legend-item"><span class="swatch swatch-out"></span>출고</span>
-              </div>
+              <dl class="trend-summary">
+                <div class="ts-item"><dt><span class="swatch swatch-in" aria-hidden="true"></span>입고</dt><dd id="sumIn">0</dd></div>
+                <div class="ts-item"><dt><span class="swatch swatch-out" aria-hidden="true"></span>출고</dt><dd id="sumOut">0</dd></div>
+                <div class="ts-item ts-net"><dt>순증감</dt><dd id="sumNet">0</dd></div>
+                <p class="ts-range muted" id="sumRange">최근 14일 합계</p>
+              </dl>
               <div class="chart" id="chart">
                 <svg id="chartSvg" role="img" tabindex="0" aria-describedby="chartHelp"></svg>
-                <div class="chart-tip" id="chartTip" hidden></div>
+                <div class="chart-tip" id="chartTip" aria-hidden="true"></div>
               </div>
               <p id="chartHelp" class="sr-only">좌우 방향키로 날짜별 수치를 확인할 수 있습니다.</p>
             </section>
