@@ -834,6 +834,7 @@ create table if not exists public.staff (
                                     and coalesce(incentive_retail, 0) between 0 and 100)
 );
 create index if not exists staff_branch_idx on public.staff (branch_id);
+alter table public.staff add column if not exists photo_path text;  -- file in the private staff-photos bucket
 
 alter table public.staff enable row level security;
 drop policy if exists "staff: managers read" on public.staff;
@@ -922,12 +923,15 @@ end;
 $$;
 
 -- delete_staff: for records entered by mistake (people who leave are marked 퇴사).
+-- Returns the photo path (if any) so the app can delete the file.
+drop function if exists public.delete_staff(uuid);  -- older version returned void
 create or replace function public.delete_staff(p_id uuid)
-returns void
+returns text
 language plpgsql security definer set search_path = public
 as $$
 declare
   v_branch uuid;
+  v_path   text;
 begin
   select branch_id into v_branch from public.staff where id = p_id;
   if not found then
@@ -936,7 +940,36 @@ begin
   if not public.is_branch_manager(v_branch) then
     raise exception 'FORBIDDEN' using errcode = '42501';
   end if;
-  delete from public.staff where id = p_id;
+  delete from public.staff where id = p_id returning photo_path into v_path;
+  return v_path;
+end;
+$$;
+
+-- set_staff_photo: records a photo uploaded to staff-photos under
+-- "<branch id>/<staff id>/<file>" and returns the previous path for cleanup.
+-- Pass null to remove. Admins, or the manager of the staff member's branch.
+-- Errors: FORBIDDEN, INVALID_PHOTO, STAFF_NOT_FOUND
+create or replace function public.set_staff_photo(p_staff_id uuid, p_path text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_branch uuid;
+  v_old    text;
+begin
+  select branch_id, photo_path into v_branch, v_old from public.staff where id = p_staff_id for update;
+  if not found then
+    raise exception 'STAFF_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if not public.is_branch_manager(v_branch) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if p_path is not null
+     and p_path !~ ('^' || v_branch::text || '/' || p_staff_id::text || '/[A-Za-z0-9._-]{1,80}$') then
+    raise exception 'INVALID_PHOTO' using errcode = '22023';
+  end if;
+  update public.staff set photo_path = p_path, updated_at = now() where id = p_staff_id;
+  return v_old;
 end;
 $$;
 
@@ -944,6 +977,8 @@ revoke all on function public.save_staff(uuid, uuid, text, text, text, date, tex
 revoke all on function public.delete_staff(uuid) from public, anon;
 grant execute on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text) to authenticated;
 grant execute on function public.delete_staff(uuid) to authenticated;
+revoke all on function public.set_staff_photo(uuid, text) from public, anon;
+grant execute on function public.set_staff_photo(uuid, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Function privileges: signed-in users only (each function checks the role)
@@ -1054,6 +1089,36 @@ update public.profiles p
  where p.login_id is null and p.email is not null
    and not exists (select 1 from public.profiles o
                     where o.user_id <> p.user_id and lower(o.login_id) = lower(split_part(p.email, '@', 1)));
+
+-- Private bucket for staff photos (personal data): no public URLs. The app
+-- shows them through short-lived signed links. Reading, uploading and deleting
+-- are limited to admins and the manager of the branch in the first folder.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('staff-photos', 'staff-photos', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = excluded.public, file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "staff photos: managers read" on storage.objects;
+create policy "staff photos: managers read" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'staff-photos'
+         and public.photo_branch_id(name) is not null
+         and public.is_branch_manager(public.photo_branch_id(name)));
+
+drop policy if exists "staff photos: managers upload" on storage.objects;
+create policy "staff photos: managers upload" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'staff-photos'
+              and public.photo_branch_id(name) is not null
+              and public.is_branch_manager(public.photo_branch_id(name)));
+
+drop policy if exists "staff photos: managers delete" on storage.objects;
+create policy "staff photos: managers delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'staff-photos'
+         and public.photo_branch_id(name) is not null
+         and public.is_branch_manager(public.photo_branch_id(name)));
 
 -- Ask the Supabase API (PostgREST) to reload its schema cache right away, so
 -- new tables and functions are usable without waiting.

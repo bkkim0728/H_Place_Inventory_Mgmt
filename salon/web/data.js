@@ -98,6 +98,7 @@
       auth: { persistSession: true, autoRefreshToken: true },
     });
     const photos = sb.storage.from('branch-photos');
+    const staffPhotos = sb.storage.from('staff-photos');
     const photoUrl = (path) => (path ? photos.getPublicUrl(path).data.publicUrl : null);
     // Branches are read with select('*') so sign-in still works on a database
     // set up before photo_path existed (the photo feature then asks for setup).
@@ -134,7 +135,33 @@
       // Active branch managers (지점 담당자); RLS limits managers to their own branch.
       listBranchManagers: () =>
         run(sb.from('profiles').select('branch_id, full_name, login_id').eq('role', 'manager').eq('active', true).not('branch_id', 'is', null).order('full_name')),
-      listStaff: (branchId) => run(sb.from('staff').select('*').eq('branch_id', branchId).order('name')),
+      // Staff photos are private: rows get a signed link valid for an hour.
+      async listStaff(branchId) {
+        const rows = await run(sb.from('staff').select('*').eq('branch_id', branchId).order('name'));
+        const paths = rows.map((r) => r.photo_path).filter(Boolean);
+        if (paths.length) {
+          const { data } = await staffPhotos.createSignedUrls(paths, 3600);
+          const urls = new Map((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
+          rows.forEach((r) => { r.photo_url = urls.get(r.photo_path) || null; });
+        }
+        return rows;
+      },
+      async setStaffPhoto(x, blob) {
+        const path = `${x.branch_id}/${x.id}/${Date.now().toString(36)}.jpg`;
+        await run(staffPhotos.upload(path, blob, { contentType: blob.type, upsert: false }));
+        let old;
+        try {
+          old = await run(sb.rpc('set_staff_photo', { p_staff_id: x.id, p_path: path }));
+        } catch (e) {
+          await staffPhotos.remove([path]).catch(() => {});
+          throw e;
+        }
+        if (old && old !== path) await staffPhotos.remove([old]).catch(() => {});
+      },
+      async removeStaffPhoto(x) {
+        const old = await run(sb.rpc('set_staff_photo', { p_staff_id: x.id, p_path: null }));
+        if (old) await staffPhotos.remove([old]).catch(() => {});
+      },
       saveStaff: (x) =>
         run(sb.rpc('save_staff', {
           p_id: x.id || null, p_branch_id: x.branch_id, p_name: x.name, p_position: x.position, p_phone: x.phone || null,
@@ -142,7 +169,10 @@
           p_days_off: x.days_off || [], p_incentive_service: x.incentive_service ?? null, p_incentive_retail: x.incentive_retail ?? null,
           p_license_no: x.license_no || null, p_health_cert_expires: x.health_cert_expires || null, p_memo: x.memo || null,
         })),
-      deleteStaff: (id) => run(sb.rpc('delete_staff', { p_id: id })),
+      async deleteStaff(id) {
+        const path = await run(sb.rpc('delete_staff', { p_id: id }));
+        if (path) await staffPhotos.remove([path]).catch(() => {});
+      },
       listBranches: async () => (await run(sb.from('branches').select('*').order('code'))).map(withPhoto),
       // Uploads a new photo, points the branch at it, then deletes the old file.
       async setBranchPhoto(branchId, blob) {
@@ -488,6 +518,28 @@
         if (row) Object.assign(row, next); else state.staff.push(next);
         save();
         return delay(next.id);
+      },
+      async setStaffPhoto(x, blob) {
+        const row = state.staff.find((r) => r.id === x.id);
+        must(row, 'STAFF_NOT_FOUND');
+        must(isManager(row.branch_id), 'FORBIDDEN');
+        must(/^image\/(jpeg|png|webp)$/.test(blob.type) && blob.size <= 5242880, 'INVALID_PHOTO');
+        row.photo_url = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new AppError('PHOTO_UPLOAD_FAILED'));
+          r.readAsDataURL(blob);
+        });
+        save();
+        return delay();
+      },
+      async removeStaffPhoto(x) {
+        const row = state.staff.find((r) => r.id === x.id);
+        must(row, 'STAFF_NOT_FOUND');
+        must(isManager(row.branch_id), 'FORBIDDEN');
+        delete row.photo_url;
+        save();
+        return delay();
       },
       async deleteStaff(id) {
         const row = state.staff.find((r) => r.id === id);
