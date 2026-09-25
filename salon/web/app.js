@@ -2024,7 +2024,7 @@
       const w = dowOf(d);
       return `<th scope="col" class="sch-day${w === 0 ? ' is-sun' : w === 6 ? ' is-sat' : ''}${d === today ? ' is-today' : ''}"><span>${Number(d.slice(8))}</span><small>${DOW[w]}</small></th>`;
     }).join('')}<th scope="col" class="sch-sum">근무일</th></tr></thead>`;
-    const body = people.map((x) => {
+    const personRow = (x) => {
       let worked = 0;
       const cells = days.map((d) => {
         const st = dayState(x, d, sched);
@@ -2039,14 +2039,21 @@
           : `<td><span class="${cls}" title="${esc(title)}"><span class="sr-only">${esc(label)}</span><span aria-hidden="true">${text}</span></span></td>`;
       }).join('');
       return `<tr><th scope="row" class="sch-name"><span class="sch-person">${esc(x.name)}<small>${POSITIONS[x.position] || ''}</small></span></th>${cells}<td class="sch-sum">${nf.format(worked)}일</td></tr>`;
-    }).join('');
+    };
+    // Two groups: 시술 인원 (take clients) and 스태프 (assist)
     const designers = people.filter((x) => DESIGNER_POS.includes(x.position));
+    const assistants = people.filter((x) => !DESIGNER_POS.includes(x.position));
+    const group = (title, list) => (list.length
+      ? `<tbody><tr class="sch-group"><th scope="rowgroup" colspan="${days.length + 2}"><span>${title} <small>${nf.format(list.length)}명</small></span></th></tr>${list.map(personRow).join('')}</tbody>`
+      : '');
+    const body = group('시술 인원', designers) + group('스태프', assistants);
     const countRow = (label, list, warn) => `<tr class="sch-foot"><th scope="row" class="sch-name">${label}</th>${days.map((d) => {
-      const c = list.reduce((a, x) => a + workValue(dayState(x, d, sched)), 0);
+      const c = list.filter((x) => workValue(dayState(x, d, sched)) > 0).length;  // people present (반차 included)
       const gap = warn && designers.length > 0 && c === 0;
       return `<td class="${gap ? 'is-gap' : ''}">${gap ? '<span class="sr-only">시술 인원 없음 </span>' : ''}${nf.format(c)}</td>`;
     }).join('')}<td></td></tr>`;
-    $('#schTable').innerHTML = head + `<tbody>${body}</tbody><tfoot>${countRow('근무 인원', people, false)}${countRow('시술 인원', designers, true)}</tfoot>`;
+    $('#schTable').innerHTML = head + body
+      + `<tfoot>${countRow('전체 근무', people, false)}${countRow('시술 인원', designers, true)}${assistants.length ? countRow('스태프', assistants, false) : ''}</tfoot>`;
 
     // Leave summary (managers)
     if (!isManager()) return;

@@ -437,3 +437,12 @@ a.btn { text-decoration: none; }
   .kpi-grid .kpi-value { font-size: 18px; letter-spacing: -0.02em; white-space: nowrap; }
 }
 #refreshBtn[aria-busy="true"] .icon { animation: spin 0.8s linear infinite; }
+
+/* 근무표: 시술 인원 / 스태프 groups */
+.sch-group th { padding: 0 !important; text-align: left; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.sch-group th > span {
+  position: sticky; left: 0; display: inline-block; padding: 6px var(--space-3);
+  font-size: 12.5px; font-weight: 700; color: var(--fg);
+}
+.sch-group small { font-weight: 600; color: var(--fg-muted); margin-left: 4px; }
+.sch-foot:first-child th, .sch-foot:first-child td { border-top: 2px solid var(--border-strong); }
