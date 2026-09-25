@@ -927,6 +927,19 @@
       <div class="modal-body">
         <div class="error-summary" id="staffErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
         <div class="form-grid">
+          <div class="form-field span-2">
+            <span class="field-label" id="sPhotoLabel">직원 사진 <span class="muted small">(선택)</span></span>
+            <div class="st-photo-row">
+              <div class="st-photo-preview is-empty" id="sPhotoPreview" role="img" aria-labelledby="sPhotoLabel"></div>
+              <div class="photo-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="sPhotoPick" aria-describedby="sPhotoHelp sPhotoFileErr">사진 선택</button>
+                <button type="button" class="btn btn-ghost-danger btn-sm" id="sPhotoRemove" hidden>사진 삭제</button>
+                <input type="file" id="sPhotoFile" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" class="sr-only" tabindex="-1" aria-hidden="true" />
+              </div>
+            </div>
+            <p class="help" id="sPhotoHelp">얼굴이 가운데 오도록 정사각형으로 잘라 저장합니다. 전체 관리자와 이 지점 관리자만 볼 수 있습니다.</p>
+            <p class="err" id="sPhotoFileErr" hidden></p>
+          </div>
           <div class="form-field">
             <label for="sName">이름 <span class="req" aria-hidden="true">*</span></label>
             <input id="sName" type="text" maxlength="30" autocomplete="off" aria-describedby="sNameErr" />

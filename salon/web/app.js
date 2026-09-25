@@ -1369,7 +1369,8 @@
 
   // Longest side at most 1920px, re-encoded as JPEG (~200-500 KB): quick to
   // load on the sign-in screen and small enough for the free storage tier.
-  async function preparePhoto(file) {
+  // square: centre-crop to a square (staff portraits).
+  async function preparePhoto(file, { max = 1920, square = false } = {}) {
     if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) throw new Error('이미지 파일만 올릴 수 있습니다.');
     if (file.size > 30 * 1024 * 1024) throw new Error('30MB 이하의 사진을 선택해 주세요.');
     const src = URL.createObjectURL(file);
@@ -1377,11 +1378,14 @@
       const img = new Image();
       img.src = src;
       try { await img.decode(); } catch (e) { throw new Error('이 사진 형식을 읽을 수 없습니다. JPG나 PNG 사진으로 올려 주세요.'); }
-      const scale = Math.min(1, 1920 / Math.max(img.naturalWidth, img.naturalHeight));
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const sw = square ? side : img.naturalWidth, sh = square ? side : img.naturalHeight;
+      const sx = (img.naturalWidth - sw) / 2, sy = square ? Math.max(0, (img.naturalHeight - sh) / 3) : 0;  // faces sit high
+      const scale = Math.min(1, max / Math.max(sw, sh));
       const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.naturalWidth * scale);
-      canvas.height = Math.round(img.naturalHeight * scale);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.width = Math.round(sw * scale);
+      canvas.height = Math.round(sh * scale);
+      canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.82));
       if (!blob) throw new Error('사진을 처리하지 못했습니다. 다른 사진으로 시도해 주세요.');
       return blob;
@@ -1488,6 +1492,9 @@
   const daysText = (days) => (days && days.length ? WEEK.filter((d) => days.includes(d)).map((d) => DOW[d]).join('·') : '없음');
   const rateText = (v) => (v == null ? '—' : `${Number(v)}%`);
   const nameList = (xs) => xs.map((x) => esc(x.name)).join(', ');
+  const staffAvatar = (x, cls = '') => (x.photo_url
+    ? `<img class="st-avatar ${cls}" src="${esc(x.photo_url)}" alt="" loading="lazy" />`
+    : `<span class="st-avatar st-avatar-empty pos-${x.position} ${cls}" aria-hidden="true">${esc((x.name || '?').slice(0, 1))}</span>`);
 
   async function loadStaff() {
     if (!isManager() || !state.branch) return;
@@ -1541,7 +1548,7 @@
         <div class="roster-head"><strong>${DOW[d]}</strong>${d === dow ? '<span class="roster-today">오늘</span>' : ''}</div>
         <p class="roster-count"><span class="roster-num">${nf.format(working)}</span>명 근무</p>
         <p class="roster-des">${gap ? '<span class="tag tag-off">디자이너 없음</span>' : `디자이너 ${nf.format(des)}명`}</p>
-        <p class="roster-off">${off.length ? `<span class="sr-only">휴무: </span>${off.map((x) => `<span class="off-name">${esc(x.name)}</span>`).join('')}` : '<span class="muted">휴무 없음</span>'}</p>
+        <p class="roster-off">${off.length ? `<span class="sr-only">휴무: </span>${off.map((x) => `<span class="off-name">${staffAvatar(x, 'st-avatar-xs')}${esc(x.name)}</span>`).join('')}` : '<span class="muted">휴무 없음</span>'}</p>
       </li>`;
     }).join('');
 
@@ -1564,8 +1571,8 @@
       const svc = (x.services || []).length
         ? `<div class="svc-chips">${Object.keys(SERVICES).filter((k) => x.services.includes(k)).map((k) => `<span class="svc-chip">${SERVICES[k]}</span>`).join('')}</div>` : '<span class="muted">—</span>';
       return `<tr class="${x.status === 'left' ? 'inactive-row' : ''}">
-        <td class="cell-name"><div class="item-name">${esc(x.name)}<span class="tag pos-tag pos-${x.position}">${POSITIONS[x.position]}</span></div>
-          <div class="item-sku">${esc(x.phone || '연락처 없음')}</div>${x.memo ? `<div class="st-memo">${esc(x.memo)}</div>` : ''}</td>
+        <td class="cell-name"><div class="st-cell">${staffAvatar(x)}<div><div class="item-name">${esc(x.name)}<span class="tag pos-tag pos-${x.position}">${POSITIONS[x.position]}</span></div>
+          <div class="item-sku">${esc(x.phone || '연락처 없음')}</div>${x.memo ? `<div class="st-memo">${esc(x.memo)}</div>` : ''}</div></div></td>
         <td data-label="담당 시술">${svc}</td>
         <td data-label="정기 휴무">${daysText(x.days_off)}</td>
         <td data-label="입사·근속" class="when">${x.hired_on ? `${dateText(x.hired_on)}<small>${tenure(x.hired_on, x.status === 'left' ? x.left_on : null)}</small>` : '<span class="muted">—</span>'}</td>
@@ -1600,6 +1607,41 @@
   const syncLeftField = () => { $('#sLeftField').hidden = staffForm.elements.sStatus.value !== 'left'; };
   $$('input[name="sStatus"]').forEach((r) => r.addEventListener('change', syncLeftField));
 
+  // Portrait: square-cropped to 480px JPEG in the browser, uploaded on save.
+  let staffPhotoDraft = null;  // null = unchanged, { blob, url } = new, 'remove'
+  function setStaffPhotoDraft(draft) {
+    if (staffPhotoDraft?.url) URL.revokeObjectURL(staffPhotoDraft.url);
+    staffPhotoDraft = draft;
+    const current = draft === 'remove' ? null : draft?.url || editingStaff?.photo_url || null;
+    const box = $('#sPhotoPreview');
+    box.style.backgroundImage = current ? `url("${current.replace(/"/g, '%22')}")` : '';
+    box.classList.toggle('is-empty', !current);
+    box.textContent = current ? '' : ($('#sName').value.trim() || '?').slice(0, 1);
+    $('#sPhotoRemove').hidden = !current;
+    $('#sPhotoPick').textContent = current ? '사진 바꾸기' : '사진 선택';
+    $('#sPhotoFile').value = '';
+    $('#sPhotoFileErr').hidden = true;
+  }
+  $('#sPhotoFile').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const pick = $('#sPhotoPick');
+    pick.setAttribute('aria-busy', 'true');
+    try {
+      const blob = await preparePhoto(file, { max: 480, square: true });
+      setStaffPhotoDraft({ blob, url: URL.createObjectURL(blob) });
+    } catch (ex) {
+      $('#sPhotoFile').value = '';
+      fieldError($('#sPhotoFile'), ex.message);
+      pick.focus();
+    } finally {
+      pick.removeAttribute('aria-busy');
+    }
+  });
+  $('#sPhotoPick').addEventListener('click', () => $('#sPhotoFile').click());
+  $('#sPhotoRemove').addEventListener('click', () => { setStaffPhotoDraft('remove'); $('#sPhotoPick').focus(); });
+  $('#sName').addEventListener('input', () => { if ($('#sPhotoPreview').classList.contains('is-empty')) $('#sPhotoPreview').textContent = ($('#sName').value.trim() || '?').slice(0, 1); });
+
   function openStaff(x) {
     editingStaff = x;
     staffForm.reset();
@@ -1620,6 +1662,7 @@
     $('#sMemo').value = x?.memo || '';
     $('#staffDelete').hidden = !x;
     syncLeftField();
+    setStaffPhotoDraft(null);
     staffDialog.open();
     $('#sName').focus();
   }
@@ -1649,16 +1692,25 @@
     const btn = $('#staffSubmit');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
-      await api.saveStaff({
-        id: editingStaff?.id || null, branch_id: editingStaff?.branch_id || state.branch.id, name,
+      const branchId = editingStaff?.branch_id || state.branch.id;
+      const id = await api.saveStaff({
+        id: editingStaff?.id || null, branch_id: branchId, name,
         position: $('#sPosition').value, phone: $('#sPhone').value, hired_on: hired || null, status, left_on: left || null,
         services: $$('input[name="sSvc"]:checked').map((c) => c.value),
         days_off: $$('input[name="sDay"]:checked').map((c) => Number(c.value)),
         incentive_service: incS, incentive_retail: incR,
         license_no: $('#sLicense').value, health_cert_expires: $('#sCert').value || null, memo: $('#sMemo').value,
       });
+      let photoError = null;
+      try {
+        if (staffPhotoDraft === 'remove') await api.removeStaffPhoto({ id, branch_id: branchId });
+        else if (staffPhotoDraft?.blob) await api.setStaffPhoto({ id, branch_id: branchId }, staffPhotoDraft.blob);
+      } catch (px) { photoError = api.toAppError(px).message; }
       $('#staffDialog').close();
-      toast(editingStaff ? `${name} 정보를 저장했습니다.` : `${name} 님을 ${state.branch.name} 직원으로 추가했습니다.`);
+      setStaffPhotoDraft(null);
+      const saved = editingStaff ? `${name} 정보를 저장했습니다.` : `${name} 님을 ${state.branch.name} 직원으로 추가했습니다.`;
+      if (photoError) toast(`${saved} 사진은 올리지 못했습니다: ${photoError}`, { error: true });
+      else toast(saved);
       await loadStaff();
     } catch (ex) {
       showServerError(staffForm, api.toAppError(ex).message);

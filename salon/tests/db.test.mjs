@@ -285,5 +285,20 @@ ok((await one(`select count(*)::int n from staff where id=$1`, [st1])).n === 0, 
 ok((await err(mgr, () => q(`select delete_staff($1)`, [st1])))?.includes('STAFF_NOT_FOUND'), 'deleting twice → STAFF_NOT_FOUND');
 ok((await err(null, () => q(`select * from staff`)))?.includes('permission denied'), 'anon cannot read staff');
 
+console.log('staff photos');
+ok((await one(`select public from storage.buckets where id='staff-photos'`)).public === false, 'staff-photos bucket is private');
+const stP = (await sv(mgr, base(null, b1, { name: '사진 직원' }))).id;
+const sp = `${b1}/${stP}/a.jpg`;
+await as(mgr, () => q(`insert into storage.objects(bucket_id,name) values('staff-photos',$1)`, [sp]));
+ok((await as(mgr, () => q(`select name from storage.objects where bucket_id='staff-photos'`))).length === 1, 'manager uploads and reads own branch staff photo');
+ok((await as(staff, () => q(`select name from storage.objects where bucket_id='staff-photos'`))).length === 0, 'staff role cannot read staff photos');
+ok((await as(other, () => q(`select name from storage.objects where bucket_id='staff-photos'`))).length === 0, 'other branch manager cannot read them');
+ok((await err(staff, () => q(`insert into storage.objects(bucket_id,name) values('staff-photos',$1)`, [`${b1}/${stP}/b.jpg`])))?.includes('row-level security'), 'staff role cannot upload staff photos');
+ok((await as(mgr, () => one(`select set_staff_photo($1,$2) old`, [stP, sp]))).old === null, 'set_staff_photo records the path');
+ok((await err(mgr, () => q(`select set_staff_photo($1,$2)`, [stP, `${b1}/other/a.jpg`])))?.includes('INVALID_PHOTO'), 'photo must be in the staff member folder');
+ok((await err(other, () => q(`select set_staff_photo($1,$2)`, [stP, null])))?.includes('FORBIDDEN'), 'other branch manager cannot change the photo');
+ok((await err(staff, () => q(`select set_staff_photo($1,$2)`, [stP, null])))?.includes('FORBIDDEN'), 'staff role cannot change the photo');
+ok((await as(mgr, () => one(`select delete_staff($1) p`, [stP]))).p === sp, 'delete_staff returns the photo path for cleanup');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
