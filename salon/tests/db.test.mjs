@@ -411,5 +411,19 @@ await as(mgr, () => q(`select set_item_in_use($1,$2,true)`, [b1, pUse]));
 ok((await one(`select in_use from inventory where branch_id=$1 and product_id=$2`, [b1, pUse])).in_use === true, 'manager turns it back on');
 ok((await err(null, () => q(`select set_item_in_use($1,$2,false)`, [b1, pUse])))?.includes('permission denied'), 'anon cannot change it');
 
+console.log('일일 시술 매출');
+const today = (await one(`select (now() at time zone 'Asia/Seoul')::date::text d`)).d;
+await as(mgr, () => q(`select save_daily_sales($1,$2,1850000,27,'비 오는 날')`, [b1, today]));
+ok(Number((await one(`select service_sales from daily_sales where branch_id=$1 and day=$2`, [b1, today])).service_sales) === 1850000, 'manager saves the daily 시술 매출');
+await as(mgr, () => q(`select save_daily_sales($1,$2,2100000,30,null)`, [b1, today]));
+ok((await one(`select service_count, memo from daily_sales where branch_id=$1 and day=$2`, [b1, today])).service_count === 30, 'saving again replaces the day');
+ok((await as(staff, () => q(`select * from daily_sales`))).length === 0, 'staff role cannot read daily sales');
+ok((await err(staff, () => q(`select save_daily_sales($1,$2,1,1,null)`, [b1, today])))?.includes('FORBIDDEN'), 'staff role cannot save daily sales');
+ok((await err(other, () => q(`select save_daily_sales($1,$2,1,1,null)`, [b1, today])))?.includes('FORBIDDEN'), 'other branch manager cannot save');
+ok((await err(mgr, () => q(`select save_daily_sales($1,$2,-5,1,null)`, [b1, today])))?.includes('INVALID_AMOUNT'), 'negative sales rejected');
+ok((await err(mgr, () => q(`select save_daily_sales($1,($2::date + 1),1,1,null)`, [b1, today])))?.includes('INVALID_AMOUNT'), 'future days rejected');
+await as(mgr, () => q(`select save_daily_sales($1,$2,0,0,' ')`, [b1, today]));
+ok((await one(`select count(*)::int n from daily_sales where branch_id=$1 and day=$2`, [b1, today])).n === 0, 'all zero clears the day');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

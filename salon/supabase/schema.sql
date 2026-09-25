@@ -1358,6 +1358,56 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- 일일 시술 매출 (daily closing from the POS) for 매장 레포트; managers only.
+-- ---------------------------------------------------------------------------
+create table if not exists public.daily_sales (
+  branch_id      uuid not null references public.branches(id) on delete cascade,
+  day            date not null,
+  service_sales  bigint not null default 0,
+  service_count  integer not null default 0,
+  memo           text,
+  updated_by     uuid references auth.users(id) on delete set null,
+  updated_at     timestamptz not null default now(),
+  primary key (branch_id, day),
+  constraint daily_sales_amounts_chk check (service_sales >= 0 and service_count >= 0)
+);
+alter table public.daily_sales enable row level security;
+drop policy if exists "daily_sales: managers read" on public.daily_sales;
+create policy "daily_sales: managers read" on public.daily_sales
+  for select to authenticated using (public.is_branch_manager(branch_id));
+revoke all on public.daily_sales from anon, authenticated;
+grant select on public.daily_sales to authenticated;
+
+-- save_daily_sales: all zero and no memo clears the day. Errors: FORBIDDEN, INVALID_AMOUNT
+create or replace function public.save_daily_sales(
+  p_branch_id uuid, p_day date, p_service_sales bigint, p_service_count integer, p_memo text
+)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if p_branch_id is null or not public.is_branch_manager(p_branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if p_day is null or coalesce(p_service_sales, 0) < 0 or coalesce(p_service_sales, 0) > 10000000000
+     or coalesce(p_service_count, 0) < 0 or p_day > (now() at time zone 'Asia/Seoul')::date then
+    raise exception 'INVALID_AMOUNT' using errcode = '22023';
+  end if;
+  if coalesce(p_service_sales, 0) = 0 and coalesce(p_service_count, 0) = 0 and nullif(btrim(p_memo), '') is null then
+    delete from public.daily_sales where branch_id = p_branch_id and day = p_day;
+    return;
+  end if;
+  insert into public.daily_sales (branch_id, day, service_sales, service_count, memo, updated_by)
+  values (p_branch_id, p_day, coalesce(p_service_sales, 0), coalesce(p_service_count, 0), nullif(btrim(p_memo), ''), auth.uid())
+  on conflict (branch_id, day) do update
+    set service_sales = excluded.service_sales, service_count = excluded.service_count,
+        memo = excluded.memo, updated_by = excluded.updated_by, updated_at = now();
+end;
+$$;
+revoke all on function public.save_daily_sales(uuid, date, bigint, integer, text) from public, anon;
+grant execute on function public.save_daily_sales(uuid, date, bigint, integer, text) to authenticated;
+
 revoke all on function public.list_staff_names(uuid) from public, anon;
 revoke all on function public.set_schedule(uuid, date, text, text) from public, anon;
 revoke all on function public.save_staff_month(uuid, date, bigint, integer, bigint, text) from public, anon;

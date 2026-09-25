@@ -264,6 +264,10 @@
           p_quantity: quantity, p_memo: memo || null, p_staff_id: staffId || null,
         })),
       listStaffNames: (branchId) => run(sb.rpc('list_staff_names', { p_branch_id: branchId })),
+      listDailySales: (branchId, from, to) =>
+        run(sb.from('daily_sales').select('day, service_sales, service_count, memo').eq('branch_id', branchId).gte('day', from).lte('day', to)),
+      saveDailySales: (branchId, day, v) =>
+        run(sb.rpc('save_daily_sales', { p_branch_id: branchId, p_day: day, p_service_sales: v.service_sales, p_service_count: v.service_count, p_memo: v.memo || null })),
       listSchedule: (branchId, from, to) =>
         run(sb.from('staff_schedule').select('staff_id, day, kind, memo').eq('branch_id', branchId).gte('day', from).lte('day', to)),
       setSchedule: (staffId, day, kind, memo) =>
@@ -389,6 +393,25 @@
     ];
   }
 
+  // Sample daily 시술 매출 for the last 21 days (weekends busier)
+  function buildDemoDailySales() {
+    const out = [];
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const today = new Date(Date.now() + KST).toISOString().slice(0, 10);
+    for (let i = 0; i < 21; i++) {
+      const day = new Date(Date.parse(`${today}T00:00:00Z`) - i * DAY).toISOString().slice(0, 10);
+      const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
+      const busy = dow === 0 || dow === 6 ? 1.35 : dow === 1 ? 0.7 : 1;
+      [['br01', 1], ['br02', 0.8]].forEach(([b, k]) => {
+        const count = Math.round((18 + rnd() * 14) * busy * k);
+        const avg = 62000 + Math.round(rnd() * 30) * 1000;
+        out.push({ branch_id: b, day, service_sales: Math.round(count * avg / 1000) * 1000, service_count: count, memo: null });
+      });
+    }
+    return out;
+  }
+
   function buildDemoState() {
     const rand = mulberry32(20260924);
     const now = Date.now();
@@ -482,7 +505,7 @@
       { staff_id: 'st8', day: `${ym}12`, kind: 'annual', memo: null },
     ].map((x) => ({ ...x, branch_id: staff.find((s) => s.id === x.staff_id).branch_id }));
     return {
-      branches, users, categories, products, inventory, movements, staff, schedule, staffMonthly, payrollMonths: [],
+      branches, users, categories, products, inventory, movements, staff, schedule, staffMonthly, payrollMonths: [], dailySales: buildDemoDailySales(),
       nextId: id, signedIn: false, meId: PERSONA.manager,
     };
   }
@@ -497,6 +520,7 @@
     if (!state || !Array.isArray(state.users)) state = buildDemoState();
     if (!Array.isArray(state.staff)) state.staff = buildDemoStaff();  // saved before 직원 관리 existed
     ['schedule', 'staffMonthly', 'payrollMonths'].forEach((k) => { if (!Array.isArray(state[k])) state[k] = []; });
+    if (!Array.isArray(state.dailySales)) state.dailySales = buildDemoDailySales();
     const save = () => {
       if (memoryOnly) return;
       try { localStorage.setItem(DEMO_KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; }
@@ -614,6 +638,21 @@
         if (row) Object.assign(row, next); else state.staff.push(next);
         save();
         return delay(next.id);
+      },
+      async listDailySales(branchId, from, to) {
+        must(isManager(branchId), 'FORBIDDEN');
+        return delay(clone(state.dailySales.filter((x) => x.branch_id === branchId && x.day >= from && x.day <= to)));
+      },
+      async saveDailySales(branchId, day, v) {
+        must(isManager(branchId), 'FORBIDDEN');
+        const today = new Date(Date.now() + KST).toISOString().slice(0, 10);
+        must(day && day <= today && v.service_sales >= 0 && v.service_sales <= 1e10 && v.service_count >= 0, 'INVALID_AMOUNT');
+        state.dailySales = state.dailySales.filter((x) => !(x.branch_id === branchId && x.day === day));
+        if (v.service_sales || v.service_count || trimOrNull(v.memo)) {
+          state.dailySales.push({ branch_id: branchId, day, service_sales: v.service_sales, service_count: v.service_count, memo: trimOrNull(v.memo) });
+        }
+        save();
+        return delay();
       },
       async listStaffNames(branchId) {
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');

@@ -2238,27 +2238,87 @@
   // ------------------------------------------------------------------
   // 매장 레포트: one day at the branch (managers)
   // ------------------------------------------------------------------
-  state.rp = { day: todayKey(), rows: [], people: [], sched: [] };
+  state.rp = { day: todayKey(), rows: [], all: [], sales: [], people: [], sched: [] };
 
   async function loadReport() {
     if (!isManager() || !state.branch) return;
-    const d = state.rp.day;
+    const d = state.rp.day, from = addDays(d, -13);
     const box = $('#rpError');
     try {
-      const [rows, people, sched] = await Promise.all([
-        api.listMovementsBetween(state.branch.id, d, d),
+      const [all, sales, people, sched] = await Promise.all([
+        api.listMovementsBetween(state.branch.id, from, d),
+        api.listDailySales(state.branch.id, from, d).catch(() => []),
         api.listStaff(state.branch.id).catch(() => []),
         api.listSchedule(state.branch.id, d, d).catch(() => []),
       ]);
-      Object.assign(state.rp, { rows, people, sched });
+      const rows = all.filter((m) => keyFmt.format(new Date(m.created_at)) === d);
+      Object.assign(state.rp, { rows, all, sales, people, sched });
       box.hidden = true;
     } catch (e) {
-      Object.assign(state.rp, { rows: [], people: [], sched: [] });
+      Object.assign(state.rp, { rows: [], all: [], sales: [], people: [], sched: [] });
       box.textContent = api.toAppError(e).message;
       box.hidden = false;
     }
     renderReport();
   }
+
+  // Per-day money for the 14 days ending on the report day.
+  // 제품 판매 at the sale price, 재료 사용액 at cost; reversals net out, counts leave them out.
+  function reportDays() {
+    const d = state.rp.day;
+    const price = (m) => m.unit_price ?? itemById(m.product_id)?.retail_price ?? 0;
+    const days = new Map();
+    for (let i = 13; i >= 0; i--) {
+      const k = addDays(d, -i);
+      days.set(k, { day: k, svc: 0, cnt: 0, entered: false, memo: '', prod: 0, prodN: 0, prodQty: 0, mat: 0, matN: 0 });
+    }
+    state.rp.sales.forEach((s) => {
+      const x = days.get(s.day);
+      if (!x) return;
+      Object.assign(x, { svc: Number(s.service_sales) || 0, cnt: Number(s.service_count) || 0, entered: true, memo: s.memo || '' });
+    });
+    state.rp.all.forEach((m) => {
+      const x = days.get(keyFmt.format(new Date(m.created_at)));
+      if (!x) return;
+      const counted = !m.reverts_id && !m.reverted;
+      if (m.type === 'sale') { x.prod += -m.quantity * price(m); x.prodQty += -m.quantity; if (counted) x.prodN += 1; }
+      if (m.type === 'use') { x.mat += -m.quantity * (m.unit_cost || 0); if (counted) x.matN += 1; }
+    });
+    days.forEach((x) => { x.total = x.svc + x.prod; });
+    return [...days.values()];
+  }
+  const sumDays = (list) => {
+    const s = list.reduce((a, x) => ({ svc: a.svc + x.svc, cnt: a.cnt + x.cnt, prod: a.prod + x.prod, mat: a.mat + x.mat, total: a.total + x.total }), { svc: 0, cnt: 0, prod: 0, mat: 0, total: 0 });
+    s.avg = s.cnt ? s.svc / s.cnt : 0;
+    s.ratio = s.svc ? (s.mat / s.svc) * 100 : null;
+    return s;
+  };
+  const pct1 = new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  // Change badge. costly = a rise is bad (재료 사용액). pp = percentage-point difference.
+  function deltaHtml(cur, base, { costly = false, pp = false, tag = 'span', id } = {}) {
+    let cls = 'flat', text = '—', label = '변화 없음';
+    if (pp) {
+      if (cur != null && base != null) {
+        const diff = cur - base;
+        if (Math.abs(diff) >= 0.05) { cls = (diff > 0) !== costly ? 'pos' : 'neg'; text = `${diff > 0 ? '▲' : '▼'} ${pct1.format(Math.abs(diff))}%p`; label = `${pct1.format(Math.abs(diff))}%포인트 ${diff > 0 ? '상승' : '하락'}`; } else text = '0.0%p';
+      }
+    } else if (base === 0 && cur > 0) {
+      cls = costly ? 'neg' : 'pos'; text = '신규'; label = '비교 기준 없음';
+    } else if (base > 0) {
+      const p = ((cur - base) / base) * 100;
+      if (Math.abs(p) >= 0.05) { cls = (p > 0) !== costly ? 'pos' : 'neg'; text = `${p > 0 ? '▲' : '▼'} ${pct1.format(Math.abs(p))}%`; label = `${pct1.format(Math.abs(p))}% ${p > 0 ? '증가' : '감소'}`; } else text = '0.0%';
+    }
+    return { cls: `delta delta-${cls}`, text, label, html: `<${tag} class="delta delta-${cls}"${id ? ` id="${id}"` : ''} aria-label="${label}">${text}</${tag}>` };
+  }
+  function setDelta(id, d, suffix) {
+    const el = $('#' + id);
+    el.className = d.cls;
+    el.textContent = d.text;
+    el.setAttribute('aria-label', `${suffix} ${d.label}`);
+    el.title = suffix;
+  }
+  const dayLabel = (k) => `${mdText(k)} (${DOW[dowOf(k)]})`;
 
   function renderReport() {
     const d = state.rp.day, today = todayKey();
@@ -2267,6 +2327,51 @@
     $('#rpPick').max = today;
     $('#rpNext').disabled = d >= today;
     $('#rpToday').disabled = d === today;
+
+    // KPIs: the day against the same weekday last week
+    const days = reportDays();
+    const cur = days[13], wk = days[6];
+    const vs = `지난주 ${dayLabel(wk.day)} 대비`;
+    $('#rpTotal').textContent = won.format(cur.total);
+    $('#rpTotalSub').textContent = `지난주 ${dayLabel(wk.day)} ${won.format(wk.total)}`;
+    setDelta('rpTotalDelta', deltaHtml(cur.total, wk.total), vs);
+    if (cur.entered) {
+      $('#rpService').textContent = won.format(cur.svc);
+      $('#rpServiceSub').innerHTML = `${nf.format(cur.cnt)}건${cur.cnt ? ` · 객단가 ${won.format(Math.round(cur.svc / cur.cnt))}` : ''} <button type="button" class="link-btn rp-ds-edit" data-ds-open>수정</button>`;
+      setDelta('rpServiceDelta', deltaHtml(cur.svc, wk.svc), vs);
+    } else {
+      $('#rpService').innerHTML = '<span class="rp-missing">미입력</span>';
+      $('#rpServiceSub').innerHTML = '<button type="button" class="link-btn rp-ds-edit" data-ds-open>POS 마감 매출 입력하기</button>';
+      setDelta('rpServiceDelta', { cls: 'delta', text: '', label: '' }, '');
+    }
+    $('#rpSales').textContent = won.format(cur.prod);
+    $('#rpSalesSub').textContent = `${nf.format(cur.prodN)}건 · ${nf.format(cur.prodQty)}개`;
+    setDelta('rpSalesDelta', deltaHtml(cur.prod, wk.prod), vs);
+    $('#rpUse').textContent = won.format(cur.mat);
+    $('#rpUseSub').textContent = `시술 사용 ${nf.format(cur.matN)}건${cur.svc ? ` · 재료비율 ${pct1.format((cur.mat / cur.svc) * 100)}%` : ''}`;
+    setDelta('rpUseDelta', deltaHtml(cur.mat, wk.mat, { costly: true }), vs);
+
+    // Last 7 days against the 7 before
+    const thisWk = days.slice(7), prevWk = days.slice(0, 7);
+    const a = sumDays(thisWk), b = sumDays(prevWk);
+    $('#rpWeekSub').textContent = `최근 7일 ${mdText(thisWk[0].day)}~${mdText(d)} · 이전 7일 ${mdText(prevWk[0].day)}~${mdText(prevWk[6].day)} · 같은 요일끼리 비교`;
+    const pctText = (v) => (v == null ? '—' : `${pct1.format(v)}%`);
+    const cmp = [
+      ['총매출', won.format(a.total), won.format(b.total), deltaHtml(a.total, b.total), true],
+      ['시술 매출', won.format(a.svc), won.format(b.svc), deltaHtml(a.svc, b.svc)],
+      ['시술 건수', `${nf.format(a.cnt)}건`, `${nf.format(b.cnt)}건`, deltaHtml(a.cnt, b.cnt)],
+      ['객단가', a.cnt ? won.format(Math.round(a.avg)) : '—', b.cnt ? won.format(Math.round(b.avg)) : '—', a.cnt && b.cnt ? deltaHtml(a.avg, b.avg) : deltaHtml(0, 0)],
+      ['제품 판매', won.format(a.prod), won.format(b.prod), deltaHtml(a.prod, b.prod)],
+      ['재료 사용액', won.format(a.mat), won.format(b.mat), deltaHtml(a.mat, b.mat, { costly: true })],
+      ['재료비율', pctText(a.ratio), pctText(b.ratio), deltaHtml(a.ratio, b.ratio, { costly: true, pp: true })],
+    ];
+    $('#rpCompare').innerHTML = cmp.map(([k, x, y, dl, main]) => `<tr${main ? ' class="rp-cmp-main"' : ''}><th scope="row" class="cell-name">${k}</th><td class="num" data-label="최근 7일">${x}</td><td class="num muted" data-label="이전 7일">${y}</td><td class="num" data-label="증감">${dl.html}</td></tr>`).join('');
+    const missing = thisWk.filter((x) => !x.entered).map((x) => mdText(x.day));
+    $('#rpChartNote').textContent = missing.length
+      ? `시술 매출 미입력: ${missing.join(', ')} — 입력하지 않은 날은 제품 판매만 합산됩니다.`
+      : '막대: 하루 총매출(시술 매출 + 제품 판매). 막대에 마우스를 올리면 자세히 보입니다.';
+    state.rp.chart = { thisWk, prevWk };
+    drawReportChart(true);
 
     // Amounts: 판매 at the sale price, everything else at cost. Reversals carry the
     // opposite quantity, so sums net out; counts leave both sides out.
@@ -2284,13 +2389,6 @@
     });
     counted.forEach((m) => { if (agg[m.type]) agg[m.type].n += 1; });
 
-    $('#rpSales').textContent = won.format(agg.sale.amt);
-    $('#rpSalesSub').textContent = `${nf.format(agg.sale.n)}건 · ${nf.format(agg.sale.qty)}개`;
-    $('#rpIn').textContent = won.format(agg.receive.amt);
-    $('#rpInSub').textContent = `${nf.format(agg.receive.n)}건 · ${nf.format(agg.receive.qty)}개 · 매입가 기준`;
-    $('#rpUse').textContent = won.format(agg.use.amt);
-    $('#rpUseSub').textContent = `시술 사용 ${nf.format(agg.use.n)}건 · ${nf.format(agg.use.qty)}개`;
-
     $('#rpTypes').innerHTML = ['receive', 'use', 'sale', 'dispose', 'adjust'].map((t) => {
       const a = agg[t];
       const qty = t === 'adjust' ? `${a.qty > 0 ? '+' : ''}${nf.format(a.qty)}` : nf.format(a.qty);
@@ -2305,8 +2403,6 @@
       .sort((a, b) => POS_RANK[a.x.position] - POS_RANK[b.x.position] || a.x.name.localeCompare(b.x.name, 'ko'));
     const on = people.filter((o) => workValue(o.st) > 0), off = people.filter((o) => workValue(o.st) === 0);
     const onDes = on.filter((o) => DESIGNER_POS.includes(o.x.position)).length;
-    $('#rpWork').textContent = `${nf.format(on.length)}명`;
-    $('#rpWorkSub').textContent = `시술 ${nf.format(onDes)}명 · 스태프 ${nf.format(on.length - onDes)}명 · 휴무 ${nf.format(off.length)}명`;
     $('#rpOnCount').textContent = `${nf.format(on.length)}명`;
     $('#rpOffCount').textContent = `${nf.format(off.length)}명`;
     const nameItem = (o, note) => `<li><span class="rp-name">${esc(o.x.name)}</span><span class="tag pos-tag pos-${o.x.position}">${POSITIONS[o.x.position]}</span>${note ? `<small>${esc(note)}</small>` : ''}</li>`;
@@ -2371,6 +2467,99 @@
   $('#rpToday').addEventListener('click', () => rpGo(todayKey()));
   $('#rpPick').addEventListener('change', (e) => { if (e.target.value) rpGo(e.target.value); });
   $('#rpPrint').addEventListener('click', () => window.print());
+
+  // Grouped bars: each weekday of the last 7 days next to the same weekday a week before
+  function drawReportChart(animate) {
+    const box = $('#rpChart');
+    const data = state.rp.chart;
+    if (!box || !data) return;
+    const W = Math.max(280, Math.round(box.clientWidth || 560)), H = 240;
+    const pad = { l: 12, r: 12, t: 16, b: 40 };
+    const max = Math.max(1, ...data.thisWk.map((x) => x.total), ...data.prevWk.map((x) => x.total));
+    const step = niceStep(max / 4), top = Math.ceil(max / step) * step;
+    const ticks = [];
+    for (let v = 0; v <= top + step / 2; v += step) ticks.push(v);
+    // room for the widest tick label
+    const labelW = Math.max(...ticks.map((v) => won.format(v).length)) * 7 + 8;
+    pad.l = labelW;
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const y = (v) => pad.t + ih - (v / top) * ih;
+    const slot = iw / 7, bw = Math.min(26, (slot - 10) / 2), gap = 3;
+    const tip = (x, tag) => `${dayLabel(x.day)} ${tag}\n총매출 ${won.format(x.total)}\n시술 매출 ${x.entered ? won.format(x.svc) : '미입력'}${x.entered ? ` (${nf.format(x.cnt)}건)` : ''}\n제품 판매 ${won.format(x.prod)}`;
+    const bar = (x, cx, cls, i, tag) => {
+      const h = Math.max(x.total ? 2 : 0, pad.t + ih - y(x.total));
+      return `<rect class="rp-bar ${cls}${x.entered ? '' : ' is-missing'}" x="${cx.toFixed(1)}" y="${(pad.t + ih - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3" style="--i:${i}"><title>${esc(tip(x, tag))}</title></rect>`;
+    };
+    const grid = ticks.map((v) => `<line class="rp-grid-line" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="${pad.l - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${won.format(v)}</text>`).join('');
+    const bars = data.thisWk.map((x, i) => {
+      const c = pad.l + slot * i + slot / 2;
+      const p = data.prevWk[i];
+      const isDay = i === 6;
+      return `<g>${bar(p, c - bw - gap / 2, 'rp-bar-prev', i, '(지난주)')}${bar(x, c + gap / 2, 'rp-bar-this', i, '')}
+        <text x="${c.toFixed(1)}" y="${H - pad.b + 18}" text-anchor="middle" class="${isDay ? 'rp-x-now' : ''}">${slot < 64 ? `${slot < 44 ? '' : `${Number(x.day.slice(5, 7))}/`}${Number(x.day.slice(8))}` : mdText(x.day)}</text>
+        <text x="${c.toFixed(1)}" y="${H - pad.b + 33}" text-anchor="middle" class="rp-x-dow${dowOf(x.day) === 0 ? ' is-sun' : ''}">${DOW[dowOf(x.day)]}</text></g>`;
+    }).join('');
+    const a = data.thisWk.reduce((s, x) => s + x.total, 0), b = data.prevWk.reduce((s, x) => s + x.total, 0);
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="최근 7일 총매출 ${won.format(a)}, 이전 7일 ${won.format(b)}" class="${animate && !reduceMotion.matches ? 'is-animated' : ''}">${grid}${bars}</svg>`;
+    box.dataset.w = String(W);
+  }
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(() => {
+      const box = $('#rpChart');
+      if (box && state.rp.chart && box.clientWidth && Math.abs(box.clientWidth - Number(box.dataset.w || 0)) > 4) drawReportChart(false);
+    }).observe($('#rpChart'));
+  }
+
+  // 시술 매출 입력 (the report day)
+  const dsDialog = setupDialog($('#dsDialog'));
+  const dsForm = $('#dsForm');
+  let dsTrigger = null;
+  function dsPreview() {
+    const s = parseWon($('#dsSales').value), c = Number($('#dsCount').value);
+    $('#dsAvg').textContent = Number.isFinite(s) && s > 0 && Number.isInteger(c) && c > 0 ? `객단가 ${won.format(Math.round(s / c))}` : '';
+  }
+  function openDailySales(trigger) {
+    const d = state.rp.day;
+    const e = state.rp.sales.find((x) => x.day === d);
+    dsTrigger = trigger || null;
+    dsForm.reset();
+    clearErrors(dsForm);
+    $('#dsTitle').textContent = `시술 매출 입력 · ${dayLabel(d)}`;
+    $('#dsSales').value = e?.service_sales ? nf.format(e.service_sales) : '';
+    $('#dsCount').value = e?.service_count || '';
+    $('#dsMemo').value = e?.memo || '';
+    dsPreview();
+    dsDialog.open();
+    $('#dsSales').focus();
+  }
+  $('#rpSalesBtn').addEventListener('click', (e) => openDailySales(e.currentTarget));
+  $('#rpServiceSub').addEventListener('click', (e) => { const b = e.target.closest('[data-ds-open]'); if (b) openDailySales($('#rpSalesBtn')); });
+  ['dsSales', 'dsCount'].forEach((id) => $('#' + id).addEventListener('input', dsPreview));
+  $('#dsSales').addEventListener('blur', () => { const v = parseWon($('#dsSales').value); if (Number.isFinite(v) && v > 0) $('#dsSales').value = nf.format(v); });
+  dsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(dsForm);
+    const errors = [];
+    const sales = parseWon($('#dsSales').value);
+    const cntRaw = $('#dsCount').value.trim(), cnt = cntRaw === '' ? 0 : Number(cntRaw);
+    if (!Number.isFinite(sales) || sales < 0 || sales > 1e10) { fieldError($('#dsSales'), '시술 매출은 0 이상의 숫자(원)로 입력해 주세요.'); errors.push({ id: 'dsSales', msg: '시술 매출을 확인해 주세요.' }); }
+    if (!Number.isInteger(cnt) || cnt < 0 || cnt > 100000) { fieldError($('#dsCount'), '시술 건수는 0 이상의 정수로 입력해 주세요.'); errors.push({ id: 'dsCount', msg: '시술 건수를 확인해 주세요.' }); }
+    if (errors.length) return showSummary(dsForm, errors);
+    const btn = $('#dsSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      const d = state.rp.day;
+      await api.saveDailySales(state.branch.id, d, { service_sales: sales, service_count: cnt, memo: $('#dsMemo').value });
+      $('#dsDialog').close();
+      toast(`${dayLabel(d)} 시술 매출을 저장했습니다.`);
+      await loadReport();
+      if (dsTrigger) dsTrigger.focus();
+    } catch (ex) {
+      showServerError(dsForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
 
   // ------------------------------------------------------------------
   // 실적·정산 (managers; admins reopen a confirmed month)
