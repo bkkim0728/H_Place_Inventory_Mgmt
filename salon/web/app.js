@@ -308,7 +308,7 @@
     document.title = `${ROUTES[route]} · H Place 매장관리`;
     if (route === 'dashboard') renderChart(state.chartBranch != null);  // animate once data is in
     if (route === 'users') loadUsers();
-    if (route === 'branches') renderBranches();
+    if (route === 'branches') { renderBranches(); loadBranchManagers(); }
     if (route === 'categories') renderCategories();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
@@ -1297,6 +1297,18 @@
   // ------------------------------------------------------------------
   // Branches (admin: all · manager: own branch info)
   // ------------------------------------------------------------------
+  // 지점 담당자 = the branch's active managers (set in 사용자 관리).
+  async function loadBranchManagers() {
+    try { state.branchManagers = await api.listBranchManagers(); } catch (e) { state.branchManagers = false; }
+    if (state.route === 'branches') renderBranches();
+  }
+  function managerCell(branchId) {
+    if (state.branchManagers === false) return '—';
+    if (!state.branchManagers) return '<span class="muted">…</span>';
+    const names = state.branchManagers.filter((u) => u.branch_id === branchId).map((u) => esc(u.full_name || u.login_id));
+    return names.length ? names.join(', ') : '<span class="muted">미지정</span>';
+  }
+
   function renderBranches() {
     if (!isManager()) return;
     $('#branchNote').textContent = isAdmin()
@@ -1307,6 +1319,7 @@
         ? `<img class="branch-thumb" src="${esc(b.photo_url)}" alt="" loading="lazy" />`
         : `<span class="branch-thumb branch-thumb-empty" aria-hidden="true">${svgIcon('i-image')}</span>`}
         <div><div class="item-name">${esc(b.name)}</div><div class="item-sku">${esc(b.code)}</div></div></div></td>
+      <td data-label="지점 담당자">${managerCell(b.id)}</td>
       <td data-label="연락처">${esc(b.phone || '—')}</td>
       <td data-label="주소"><span class="memo">${esc(b.address || '—')}</span></td>
       <td data-label="상태">${b.active === false ? '<span class="tag tag-off">중지</span>' : '운영 중'}</td>

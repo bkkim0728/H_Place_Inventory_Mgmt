@@ -129,6 +129,9 @@
         const branches = await run(sb.from('branches').select('*').order('code'));
         return { profile, branches: branches.map(withPhoto) };
       },
+      // Active branch managers (지점 담당자); RLS limits managers to their own branch.
+      listBranchManagers: () =>
+        run(sb.from('profiles').select('branch_id, full_name, login_id').eq('role', 'manager').eq('active', true).not('branch_id', 'is', null).order('full_name')),
       listBranches: async () => (await run(sb.from('branches').select('*').order('code'))).map(withPhoto),
       // Uploads a new photo, points the branch at it, then deletes the old file.
       async setBranchPhoto(branchId, blob) {
@@ -423,6 +426,11 @@
       },
       async listBranches() {
         return delay(clone(isAdmin() ? state.branches : state.branches.filter((b) => b.id === me().branch_id)));
+      },
+      async listBranchManagers() {
+        return delay(clone(state.users
+          .filter((u) => u.role === 'manager' && u.active && u.branch_id && isMember(u.branch_id))
+          .map((u) => ({ branch_id: u.branch_id, full_name: u.full_name, login_id: u.login_id }))));
       },
       // Demo photos are stored as data URLs in this browser.
       async setBranchPhoto(branchId, blob) {
