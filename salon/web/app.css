@@ -622,3 +622,25 @@ a.btn { text-decoration: none; }
   .man-item summary::after { display: none; }
   .man-steps-grid li::before { background: #000 !important; color: #fff !important; }
 }
+
+/* 판매 내역 */
+.sl-period { margin: var(--space-2) 0 0; }
+.sl-kpis { margin-top: var(--space-4); }
+.sl-grid { margin: var(--space-4) 0; }
+.sl-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.sl-bar-top { display: flex; align-items: baseline; gap: var(--space-2); font-size: 13.5px; }
+.sl-bar-top .rp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-bar-top .rp-val strong { color: var(--fg); }
+.sl-rank { flex: none; width: 18px; font-weight: 700; color: var(--accent); }
+.sl-bar { display: block; height: 6px; margin: 5px 0 0 26px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.sl-bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--violet))); transform-origin: left; animation: sl-grow 600ms var(--ease-out) both; }
+@keyframes sl-grow { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .sl-bar > span { animation: none; } }
+.sl-list .panel-head { align-items: baseline; }
+@media (max-width: 767px) {
+  .sl-bar-top { flex-wrap: wrap; }
+  .sl-bar-top .rp-val { flex-basis: 100%; padding-left: 26px; }
+}
+@media print {
+  #slXlsx, .sl-list .cell-action { display: none !important; }
+}

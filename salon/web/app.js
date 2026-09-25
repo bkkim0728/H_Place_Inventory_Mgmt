@@ -44,6 +44,7 @@
     workboard: '근무 현황',
     inventory: '재고 목록',
     movements: '입출고 내역',
+    sales: '판매 내역',
     schedule: '근무표',
     products: '제품 관리',
     categories: '카테고리 관리',
@@ -328,6 +329,7 @@
     fillFilters();
     renderInventory();
     renderMovements();
+    if (state.route === 'sales') loadSales();  // new or cancelled sales
     renderProducts();
     renderBranches();
     renderCategories();
@@ -358,6 +360,7 @@
     if (route === 'payroll') loadPayroll();
     if (route === 'categories') renderCategories();
     if (route === 'manual') renderManual();
+    if (route === 'sales') loadSales();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
     window.scrollTo(0, 0);
@@ -921,6 +924,214 @@
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `입출고내역_${state.branch.name}_${from}_${to}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast(`${nf.format(rows.length)}건을 엑셀 파일로 내려받았습니다.`);
+  });
+
+  // ------------------------------------------------------------------
+  // 판매 내역: sales for a period, against the period just before it
+  // ------------------------------------------------------------------
+  state.sl = { period: '7', from: '', to: '', q: '', staff: '', rows: [], prev: [], ticket: 0, loading: false };
+
+  const monthEnd = (key) => { const [y, m] = key.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+  const monthStart = (key) => `${key.slice(0, 7)}-01`;
+  const prevMonthStart = (key) => { const [y, m] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10); };
+  const dayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / DAY);
+
+  // { from, to, pFrom, pTo, label, prevLabel } in Korea dates
+  function salesRange() {
+    const f = state.sl, t = todayKey();
+    const span = (from, to, label) => {
+      const n = dayDiff(from, to) + 1;
+      return { from, to, pFrom: addDays(from, -n), pTo: addDays(from, -1), label, prevLabel: `이전 ${nf.format(n)}일` };
+    };
+    if (f.period === 'today') return { ...span(t, t, '오늘'), prevLabel: '어제' };
+    if (f.period === '7') return { ...span(addDays(t, -6), t, '최근 7일'), prevLabel: '이전 7일' };
+    if (f.period === '30') return { ...span(addDays(t, -29), t, '최근 30일'), prevLabel: '이전 30일' };
+    if (f.period === 'month') {
+      const from = monthStart(t), pFrom = prevMonthStart(t);
+      const pTo = [addDays(pFrom, dayDiff(from, t)), monthEnd(pFrom)].sort()[0];
+      return { from, to: t, pFrom, pTo, label: '이번 달', prevLabel: '지난달 같은 기간' };
+    }
+    if (f.period === 'lastmonth') {
+      const from = prevMonthStart(t), pFrom = prevMonthStart(from);
+      return { from, to: monthEnd(from), pFrom, pTo: monthEnd(pFrom), label: '지난달', prevLabel: '그 전달' };
+    }
+    return span(f.from, f.to, '선택한 기간');
+  }
+
+  async function loadSales() {
+    if (!state.branch) return;
+    const f = state.sl;
+    const r = salesRange();
+    if (!r.from || !r.to) return renderSales();
+    const ticket = (f.ticket += 1);
+    f.loading = true;
+    renderSales();
+    try {
+      const all = await api.listMovementsBetween(state.branch.id, r.pFrom, r.to);
+      if (ticket !== f.ticket) return;
+      const sales = all.filter((m) => m.type === 'sale');
+      const inRange = (m, a, b) => { const k = keyFmt.format(new Date(m.created_at)); return k >= a && k <= b; };
+      f.rows = sales.filter((m) => inRange(m, r.from, r.to));
+      f.prev = sales.filter((m) => inRange(m, r.pFrom, r.pTo));
+      $('#slError').hidden = true;
+    } catch (ex) {
+      if (ticket !== f.ticket) return;
+      f.rows = []; f.prev = [];
+      $('#slError').textContent = api.toAppError(ex).message;
+      $('#slError').hidden = false;
+    }
+    f.loading = false;
+    renderSales();
+  }
+
+  const salePrice = (m) => m.unit_price ?? itemById(m.product_id)?.retail_price ?? 0;
+  function salesMatch(m) {
+    const f = state.sl;
+    const q = f.q.trim().toLowerCase();
+    if (f.staff === '-' ? m.staff_id : f.staff && m.staff_id !== f.staff) return false;
+    return !q || m.product_name.toLowerCase().includes(q) || (m.staff_name || '').toLowerCase().includes(q)
+      || (m.memo || '').toLowerCase().includes(q) || whoText(m).toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q);
+  }
+  // Sales that count: not a cancellation and not cancelled
+  const salesTotals = (rows) => {
+    const live = rows.filter((m) => !m.reverts_id && !m.reverted && salesMatch(m));
+    const t = live.reduce((a, m) => ({ amt: a.amt + -m.quantity * salePrice(m), qty: a.qty + -m.quantity }), { amt: 0, qty: 0 });
+    return { ...t, n: live.length, avg: live.length ? t.amt / live.length : 0, live };
+  };
+
+  function fillSalesStaff() {
+    const sel = $('#slStaff');
+    const cur = state.sl.staff;
+    const seen = new Map((state.staffNames || []).filter((x) => x.status !== 'left').map((x) => [x.id, x.name]));
+    state.sl.rows.forEach((m) => { if (m.staff_id && !seen.has(m.staff_id)) seen.set(m.staff_id, m.staff_name || '—'); });
+    sel.innerHTML = '<option value="">전체</option>'
+      + [...seen].sort((a, b) => a[1].localeCompare(b[1], 'ko')).map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join('')
+      + '<option value="-">담당 미지정</option>';
+    sel.value = [...sel.options].some((o) => o.value === cur) ? cur : '';
+    state.sl.staff = sel.value;
+  }
+
+  function renderSales() {
+    const f = state.sl;
+    const r = salesRange();
+    const dot = (k) => k.replace(/-/g, '.');
+    $('#slPeriodText').textContent = f.loading ? '불러오는 중…'
+      : r.from ? `${r.label} ${dot(r.from)}${r.to !== r.from ? ` ~ ${dot(r.to)}` : ''} · 비교 기준: ${r.prevLabel} ${dot(r.pFrom)}${r.pTo !== r.pFrom ? ` ~ ${dot(r.pTo)}` : ''}` : '';
+    fillSalesStaff();
+    const cur = salesTotals(f.rows), prev = salesTotals(f.prev);
+    const vs = `${r.prevLabel} 대비`;
+    $('#slAmt').textContent = won.format(cur.amt);
+    $('#slAmtSub').textContent = `${r.prevLabel} ${won.format(prev.amt)}`;
+    setDelta('slAmtDelta', deltaHtml(cur.amt, prev.amt), vs);
+    $('#slCnt').textContent = `${nf.format(cur.n)}건`;
+    $('#slCntSub').textContent = `${r.prevLabel} ${nf.format(prev.n)}건`;
+    setDelta('slCntDelta', deltaHtml(cur.n, prev.n), vs);
+    $('#slQty').textContent = `${nf.format(cur.qty)}개`;
+    const kinds = new Set(cur.live.map((m) => m.product_id)).size;
+    $('#slQtySub').textContent = `${nf.format(kinds)}개 품목`;
+    setDelta('slQtyDelta', deltaHtml(cur.qty, prev.qty), vs);
+    $('#slAvg').textContent = won.format(Math.round(cur.avg));
+    $('#slAvgSub').textContent = `${r.prevLabel} ${won.format(Math.round(prev.avg))}`;
+    setDelta('slAvgDelta', cur.n && prev.n ? deltaHtml(cur.avg, prev.avg) : deltaHtml(0, 0), vs);
+
+    // Rankings (bar length relative to the top entry)
+    const bars = (list, empty) => {
+      if (!list.length) return `<li class="muted rp-empty">${empty}</li>`;
+      const max = Math.max(...list.map((x) => x.amt), 1);
+      return list.map((x, i) => `<li><div class="sl-bar-top"><span class="sl-rank">${i + 1}</span><span class="rp-name">${esc(x.name)}</span><span class="rp-val">${x.sub} · <strong>${won.format(x.amt)}</strong></span></div>
+        <span class="sl-bar" aria-hidden="true"><span style="width:${Math.max(2, (x.amt / max) * 100).toFixed(1)}%"></span></span></li>`).join('');
+    };
+    const byProd = new Map(), byDes = new Map();
+    cur.live.forEach((m) => {
+      const p = byProd.get(m.product_id) || { name: m.product_name, unit: m.unit, qty: 0, amt: 0 };
+      p.qty += -m.quantity; p.amt += -m.quantity * salePrice(m);
+      byProd.set(m.product_id, p);
+      const k = m.staff_id || '-';
+      const d = byDes.get(k) || { name: m.staff_id ? m.staff_name || '—' : '담당 미지정', n: 0, qty: 0, amt: 0 };
+      d.n += 1; d.qty += -m.quantity; d.amt += -m.quantity * salePrice(m);
+      byDes.set(k, d);
+    });
+    const top = [...byProd.values()].sort((a, b) => b.amt - a.amt || b.qty - a.qty).slice(0, 10)
+      .map((x) => ({ ...x, sub: `${nf.format(x.qty)}${esc(x.unit)}` }));
+    $('#slTop').innerHTML = bars(top, '판매 기록이 없습니다.');
+    const des = [...byDes.values()].sort((a, b) => b.amt - a.amt)
+      .map((x) => ({ ...x, sub: `${nf.format(x.n)}건 · ${nf.format(x.qty)}개` }));
+    $('#slDes').innerHTML = bars(des, '판매 기록이 없습니다.');
+
+    // Records: cancellations are shown on the sale they undo
+    const rows = f.rows.filter((m) => !m.reverts_id && salesMatch(m));
+    $('#slCount').textContent = f.loading ? '' : `${nf.format(rows.length)}건${rows.some((m) => m.reverted) ? ` (취소 ${nf.format(rows.filter((m) => m.reverted).length)}건 포함)` : ''}`;
+    $('#slXlsx').disabled = rows.length === 0;
+    $('#slEmpty').hidden = rows.length > 0 || f.loading;
+    $('#slTable').hidden = rows.length === 0;
+    $('#slBody').innerHTML = rows.map((m) => {
+      const d = new Date(m.created_at);
+      const price = salePrice(m);
+      return `<tr class="${m.reverted ? 'is-reverted' : ''}">
+        <td class="cell-name when"><span class="item-name">${esc(m.product_name)}</span><small>${dayFmt.format(d)} ${timeFmt.format(d)} · ${esc(m.sku)}</small></td>
+        <td class="num" data-label="수량">${nf.format(-m.quantity)}${esc(m.unit)}</td>
+        <td class="num" data-label="판매가">${won.format(price)}</td>
+        <td class="num" data-label="금액"><strong>${won.format(-m.quantity * price)}</strong>${m.reverted ? ' <span class="tag tag-note">취소됨</span>' : ''}</td>
+        <td data-label="담당 · 등록">${m.staff_name ? esc(m.staff_name) : '<span class="muted">미지정</span>'}<small class="mv-staff">등록 ${esc(whoText(m))}</small></td>
+        <td data-label="메모"><span class="memo">${esc(m.memo || '—')}</span></td>
+        <td class="cell-action">${canRevert(m) ? `<button type="button" class="btn btn-secondary btn-sm" data-revert="${m.id}" aria-label="${esc(m.product_name)} 판매 기록 취소">${svgIcon('i-undo')}취소</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  let slTimer = 0;
+  $('#slQ').addEventListener('input', (e) => { clearTimeout(slTimer); slTimer = setTimeout(() => { state.sl.q = e.target.value; renderSales(); }, 150); });
+  $('#slStaff').addEventListener('change', (e) => { state.sl.staff = e.target.value; renderSales(); });
+  $('#slPeriod').addEventListener('change', (e) => {
+    const f = state.sl;
+    f.period = e.target.value;
+    const custom = f.period === 'custom';
+    $('#slRange').hidden = !custom;
+    if (custom) {
+      if (!f.from) { f.to = todayKey(); f.from = addDays(f.to, -29); }
+      $('#slFrom').value = f.from; $('#slTo').value = f.to; $('#slFrom').max = $('#slTo').max = todayKey();
+      $('#slFrom').focus();
+    }
+    loadSales();
+  });
+  ['slFrom', 'slTo'].forEach((id) => $('#' + id).addEventListener('change', () => {
+    const from = $('#slFrom').value, to = $('#slTo').value, err = $('#slRangeErr');
+    let msg = '';
+    if (!from || !to) msg = '시작일과 종료일을 모두 골라 주세요.';
+    else if (from > to) msg = '시작일이 종료일보다 늦습니다.';
+    else if (dayDiff(from, to) > 366) msg = '한 번에 1년까지 조회할 수 있습니다.';
+    else if (from > todayKey()) msg = '시작일이 오늘보다 늦습니다.';
+    err.textContent = msg; err.hidden = !msg;
+    [$('#slFrom'), $('#slTo')].forEach((el) => el.toggleAttribute('aria-invalid', Boolean(msg)));
+    if (msg) return;
+    Object.assign(state.sl, { from, to });
+    loadSales();
+  }));
+
+  $('#slXlsx').addEventListener('click', () => {
+    const rows = state.sl.rows.filter((m) => !m.reverts_id && salesMatch(m));
+    if (!rows.length) { toast('내려받을 판매 기록이 없습니다.', { error: true }); return; }
+    const r = salesRange();
+    const stamp = (iso) => { const d = new Date(iso); return `${keyFmt.format(d)} ${timeFmt.format(d)}`; };
+    const blob = window.makeXlsx({
+      sheetName: '판매 내역',
+      columns: [
+        { header: '일시', width: 18 }, { header: '품목', width: 30 }, { header: '품목 코드', width: 12 },
+        { header: '수량', width: 8, type: 'number' }, { header: '단위', width: 7 },
+        { header: '판매가', width: 11, type: 'number' }, { header: '금액', width: 13, type: 'number' },
+        { header: '담당 디자이너', width: 13 }, { header: '등록', width: 12 }, { header: '메모', width: 30 }, { header: '상태', width: 9 },
+      ],
+      rows: rows.map((m) => [
+        stamp(m.created_at), m.product_name, m.sku, -m.quantity, m.unit, salePrice(m), -m.quantity * salePrice(m),
+        m.staff_name || '', whoText(m), m.memo || '', m.reverted ? '취소됨' : '',
+      ]),
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `판매내역_${state.branch.name}_${r.from}_${r.to}.xlsx`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast(`${nf.format(rows.length)}건을 엑셀 파일로 내려받았습니다.`);
