@@ -52,8 +52,8 @@
     users: '사용자 관리',
     branches: '지점 관리',
   };
-  const MANAGER_ROUTES = ['products', 'staff', 'payroll', 'users', 'branches'];
-  const ADMIN_ROUTES = ['categories'];
+  const MANAGER_ROUTES = ['products', 'staff', 'payroll', 'branches'];
+  const ADMIN_ROUTES = ['categories', 'users'];  // branch managers use 직원 관리 and 지점 관리 instead
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
   const typeTag = (t) => `<span class="tag tag-${TYPES[t]?.tag || 'adjust'}">${TYPES[t]?.label || t}</span>`;
