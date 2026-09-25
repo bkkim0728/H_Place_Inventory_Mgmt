@@ -823,9 +823,18 @@
         return delay(clone(m));
       },
       async saveProduct(branchId, p) {
-        // New: admin or the branch's manager. Existing (shared catalog): admin only.
-        if (p.productId) must(isAdmin(), 'ADMIN_ONLY');
-        else must(isAdmin() || (branchId && isManager(branchId)), 'MANAGER_ONLY');
+        // Admin: everything. Branch manager: new products, and on existing ones the
+        // name, prices and 고객 판매용 only (mirrors save_product in schema.sql).
+        must(isAdmin() || (branchId && isManager(branchId)), 'MANAGER_ONLY');
+        if (p.productId && !isAdmin()) {
+          const prod = product(p.productId);
+          must(prod, 'PRODUCT_NOT_FOUND');
+          must(p.name.trim() && p.costPrice >= 0 && (p.retailPrice ?? 0) >= 0 && p.safetyStock >= 0, 'INVALID_PRODUCT');
+          Object.assign(prod, { name: p.name.trim(), cost_price: p.costPrice, retail_price: p.retailPrice, is_retail: p.isRetail });
+          await this.setBranchItem(branchId, prod.id, p.safetyStock, p.location);
+          save();
+          return delay(prod.id);
+        }
         const sku = (p.sku || '').trim().toUpperCase() || (!p.productId && p.category ? nextSku(p.category, state.products.map((x) => x.sku)) : '');
         must(sku && p.name.trim() && p.category.trim() && p.unit.trim() && p.costPrice >= 0 && (p.retailPrice ?? 0) >= 0 && p.safetyStock >= 0, 'INVALID_PRODUCT');
         must(!state.products.some((x) => x.sku === sku && x.id !== p.productId), 'DUPLICATE_SKU');

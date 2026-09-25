@@ -778,7 +778,7 @@
   // ------------------------------------------------------------------
   function renderProducts() {
     $('#pdNote').textContent = isManager()
-      ? '제품 목록은 모든 지점이 함께 씁니다. 새 제품 등록과 이 지점의 안전재고·보관 위치 설정을 할 수 있고, 이미 등록된 제품의 이름·코드·가격 변경은 전체 관리자가 합니다. "이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서만 숨겨집니다.'
+      ? '제품 목록은 모든 지점이 함께 씁니다. 새 제품을 등록하고, 제품 이름·가격·고객 판매용을 고칠 수 있습니다(모든 지점에 함께 반영). 코드·브랜드·카테고리·단위는 전체 관리자가 바꿉니다. "이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서만 숨겨집니다.'
       : '"이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서 숨겨집니다. 다른 지점에는 영향이 없습니다. 제품 등록과 설정은 지점 관리자에게 요청해 주세요.';
     const q = state.pd.q.trim().toLowerCase();
     const rows = state.inventory.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
@@ -1019,11 +1019,12 @@
     $('#pActive').checked = item ? item.catalog_active !== false : true;
     // Managers register new products; changing an existing one is admin-only.
     const catalogLocked = !isAdmin() && Boolean(item);
-    $$('[data-catalog]', productForm).forEach((el) => { el.disabled = catalogLocked; });
+    // Managers may change the name, prices and 고객 판매용 (shared by all branches)
+    $$('[data-catalog]', productForm).forEach((el) => { el.disabled = catalogLocked && !el.hasAttribute('data-manager-edit'); });
     $('#productScopeNote').hidden = !catalogLocked;
-    if (catalogLocked) $('#productTitle').textContent = `${state.branch.name} 제품 설정`;
+    if (catalogLocked) $('#productTitle').textContent = `${item.name} 수정 · ${state.branch.name}`;
     productDialog.open();
-    (catalogLocked ? $('#pSafety') : $('#pName')).focus();
+    $('#pName').focus();
   }
 
   function previewSku() {
@@ -1037,27 +1038,6 @@
     e.preventDefault();
     clearErrors(productForm);
     const errors = [];
-    if (!isAdmin() && editingId) {
-      const raw = $('#pSafety').value.trim();
-      const n = Number(raw);
-      if (raw === '' || !Number.isInteger(n) || n < 0) {
-        fieldError($('#pSafety'), '안전재고는 0 이상의 정수로 입력해 주세요.');
-        return showSummary(productForm, [{ id: 'pSafety', msg: '안전재고를 확인해 주세요.' }]);
-      }
-      const btn = $('#productSubmit');
-      btn.disabled = true; btn.setAttribute('aria-busy', 'true');
-      try {
-        await api.setBranchItem(state.branch.id, editingId, n, $('#pLocation').value);
-        $('#productDialog').close();
-        toast(`${$('#pName').value.trim()}의 ${state.branch.name} 설정을 저장했습니다.`);
-        await loadData();
-      } catch (ex) {
-        showServerError(productForm, api.toAppError(ex).message);
-      } finally {
-        btn.disabled = false; btn.removeAttribute('aria-busy');
-      }
-      return;
-    }
     const need = (id, label) => {
       const el = $('#' + id);
       if (!el.value.trim()) { fieldError(el, `${label}을(를) 입력해 주세요.`); errors.push({ id, msg: `${label}을(를) 입력해 주세요.` }); return false; }
