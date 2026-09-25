@@ -61,7 +61,7 @@
     if (code) return new AppError(code);
     if (/invalid login credentials/i.test(text)) return new AppError('LOGIN_FAILED', '아이디(이메일) 또는 비밀번호가 올바르지 않습니다.');
     if (/email not confirmed/i.test(text)) return new AppError('LOGIN_FAILED', '이메일 인증이 끝나지 않았습니다. 받은편지함의 인증 메일을 확인해 주세요.');
-    if (/could not find the function|schema cache|column .* does not exist|bucket not found/i.test(text)) return new AppError('SCHEMA_OUTDATED');
+    if (/could not find the function|schema cache|column .* does not exist|bucket not found/i.test(text)) return new AppError('SCHEMA_OUTDATED', `${MESSAGES.SCHEMA_OUTDATED} (${text})`);
     if (/row-level security|unauthorized/i.test(text)) return new AppError('FORBIDDEN');
     if (/payload too large|exceeded the maximum|mime type/i.test(text)) return new AppError('INVALID_PHOTO');
     if (/rate limit/i.test(text)) return new AppError('RATE_LIMIT', '요청이 너무 많습니다. 몇 분 뒤 다시 시도해 주세요.');
