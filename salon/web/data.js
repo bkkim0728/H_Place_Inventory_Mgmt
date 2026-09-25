@@ -43,6 +43,8 @@
     CANNOT_CHANGE_SELF: '본인의 역할·지점·사용 여부는 바꿀 수 없습니다. 다른 관리자에게 요청해 주세요.',
     LAST_ADMIN: '마지막 전체 관리자는 역할을 바꾸거나 중지할 수 없습니다.',
     INVALID_PHOTO: '사진은 JPG·PNG·WEBP 이미지로, 5MB 이하만 올릴 수 있습니다.',
+    INVALID_STAFF: '직원 정보를 확인해 주세요. 이름은 1~30자, 인센티브는 0~100%, 퇴사일은 입사일 이후여야 합니다.',
+    STAFF_NOT_FOUND: '직원 정보를 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.',
     SCHEMA_OUTDATED: '데이터베이스 설정이 최신이 아닙니다. Supabase SQL Editor에서 최신 schema.sql을 다시 실행해 주세요.',
     PHOTO_UPLOAD_FAILED: '사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.',
   };
@@ -132,6 +134,15 @@
       // Active branch managers (지점 담당자); RLS limits managers to their own branch.
       listBranchManagers: () =>
         run(sb.from('profiles').select('branch_id, full_name, login_id').eq('role', 'manager').eq('active', true).not('branch_id', 'is', null).order('full_name')),
+      listStaff: (branchId) => run(sb.from('staff').select('*').eq('branch_id', branchId).order('name')),
+      saveStaff: (x) =>
+        run(sb.rpc('save_staff', {
+          p_id: x.id || null, p_branch_id: x.branch_id, p_name: x.name, p_position: x.position, p_phone: x.phone || null,
+          p_hired_on: x.hired_on || null, p_status: x.status, p_left_on: x.left_on || null, p_services: x.services || [],
+          p_days_off: x.days_off || [], p_incentive_service: x.incentive_service ?? null, p_incentive_retail: x.incentive_retail ?? null,
+          p_license_no: x.license_no || null, p_health_cert_expires: x.health_cert_expires || null, p_memo: x.memo || null,
+        })),
+      deleteStaff: (id) => run(sb.rpc('delete_staff', { p_id: id })),
       listBranches: async () => (await run(sb.from('branches').select('*').order('code'))).map(withPhoto),
       // Uploads a new photo, points the branch at it, then deletes the old file.
       async setBranchPhoto(branchId, blob) {
@@ -267,6 +278,27 @@
     };
   }
 
+  // Sample staff (same people as supabase/seed.sql for 1호점, plus 2호점)
+  function buildDemoStaff() {
+    const d = (days) => new Date(Date.now() + days * DAY + KST).toISOString().slice(0, 10);
+    const row = (id, branch, name, position, phone, hired, services, days, s, r, license, cert, memo = null) => ({
+      id, branch_id: branch, name, position, phone, hired_on: d(-hired), status: 'active', left_on: null, services, days_off: days,
+      incentive_service: s, incentive_retail: r, license_no: license, health_cert_expires: cert == null ? null : d(cert), memo,
+    });
+    return [
+      row('st1', 'br01', '한서윤', 'director', '010-1234-0001', 2900, ['color', 'cut', 'perm', 'updo'], [1], 45, 10, '서울-2015-01234', 200, '웨딩·업스타일 예약은 원장님 직접'),
+      row('st2', 'br01', '정다은', 'chief', '010-1234-0002', 1650, ['clinic', 'color', 'cut'], [1, 4], 40, 10, '서울-2018-04521', 18),
+      row('st3', 'br01', '김도윤', 'designer', '010-1234-0003', 820, ['cut', 'perm', 'styling'], [2], 35, 8, '경기-2020-11873', 95),
+      row('st4', 'br01', '이하린', 'designer', '010-1234-0004', 400, ['clinic', 'color', 'scalp'], [3], 35, 8, '서울-2022-07765', -12),
+      row('st5', 'br01', '박지후', 'intern', '010-1234-0005', 150, ['scalp', 'styling'], [1], null, 5, null, 240, '디자이너 승급 평가 예정'),
+      row('st6', 'br01', '최유진', 'desk', '010-1234-0006', 300, [], [0], null, 3, null, null),
+      { ...row('st7', 'br01', '오세라', 'designer', '010-1234-0007', 1300, ['cut', 'perm'], [5], 35, 8, '서울-2019-02210', -200), status: 'left', left_on: d(-60) },
+      row('st8', 'br02', '이서연', 'chief', '010-2345-0001', 1500, ['color', 'cut', 'perm'], [2], 40, 10, '서울-2017-09911', 150),
+      row('st9', 'br02', '윤태오', 'designer', '010-2345-0002', 600, ['cut', 'styling'], [4], 35, 8, '인천-2021-03321', 7),
+      { ...row('st10', 'br02', '강민서', 'designer', '010-2345-0003', 500, ['clinic', 'color'], [1], 35, 8, '서울-2022-01188', 300), status: 'leave' },
+    ];
+  }
+
   function buildDemoState() {
     const rand = mulberry32(20260924);
     const now = Date.now();
@@ -331,7 +363,7 @@
       memo: '샘플 데이터', reverts_id: null, created_by: m.created_by, created_at: iso(m.created_at),
     }));
     const categories = [...new Set(CATALOG.map((c) => c[2]))].map((name, i) => ({ id: `cat${i + 1}`, name, sort_order: (i + 1) * 10 }));
-    return { branches, users, categories, products, inventory, movements, nextId: id, signedIn: false, meId: PERSONA.manager };
+    return { branches, users, categories, products, inventory, movements, staff: buildDemoStaff(), nextId: id, signedIn: false, meId: PERSONA.manager };
   }
 
   function demoApi() {
@@ -342,6 +374,7 @@
       if (raw) state = JSON.parse(raw);
     } catch (e) { memoryOnly = true; }
     if (!state || !Array.isArray(state.users)) state = buildDemoState();
+    if (!Array.isArray(state.staff)) state.staff = buildDemoStaff();  // saved before 직원 관리 existed
     const save = () => {
       if (memoryOnly) return;
       try { localStorage.setItem(DEMO_KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; }
@@ -426,6 +459,43 @@
       },
       async listBranches() {
         return delay(clone(isAdmin() ? state.branches : state.branches.filter((b) => b.id === me().branch_id)));
+      },
+      async listStaff(branchId) {
+        return delay(clone(isManager(branchId) ? state.staff.filter((x) => x.branch_id === branchId) : []));
+      },
+      async saveStaff(x) {
+        must(x.branch_id && isManager(x.branch_id), 'FORBIDDEN');
+        const row = x.id ? state.staff.find((r) => r.id === x.id) : null;
+        must(!x.id || row, 'STAFF_NOT_FOUND');
+        if (row) must(isManager(row.branch_id), 'FORBIDDEN');
+        const name = String(x.name || '').trim();
+        const rate = (v) => v == null || (v >= 0 && v <= 100);
+        const status = x.status || 'active';
+        must(name && name.length <= 30 && ['director', 'chief', 'designer', 'intern', 'desk'].includes(x.position)
+          && ['active', 'leave', 'left'].includes(status)
+          && (x.services || []).every((v) => ['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo'].includes(v))
+          && (x.days_off || []).every((v) => Number.isInteger(v) && v >= 0 && v <= 6)
+          && rate(x.incentive_service) && rate(x.incentive_retail)
+          && !(x.left_on && x.hired_on && x.left_on < x.hired_on), 'INVALID_STAFF');
+        const today = new Date(Date.now() + KST).toISOString().slice(0, 10);
+        const next = {
+          id: row ? row.id : `st${Date.now()}`, branch_id: x.branch_id, name, position: x.position, phone: trimOrNull(x.phone),
+          hired_on: x.hired_on || null, status, left_on: status === 'left' ? x.left_on || today : null,
+          services: [...new Set(x.services || [])].sort(), days_off: [...new Set(x.days_off || [])].sort((a, b) => a - b),
+          incentive_service: x.incentive_service ?? null, incentive_retail: x.incentive_retail ?? null,
+          license_no: trimOrNull(x.license_no), health_cert_expires: x.health_cert_expires || null, memo: trimOrNull(x.memo),
+        };
+        if (row) Object.assign(row, next); else state.staff.push(next);
+        save();
+        return delay(next.id);
+      },
+      async deleteStaff(id) {
+        const row = state.staff.find((r) => r.id === id);
+        must(row, 'STAFF_NOT_FOUND');
+        must(isManager(row.branch_id), 'FORBIDDEN');
+        state.staff = state.staff.filter((r) => r.id !== id);
+        save();
+        return delay();
       },
       async listBranchManagers() {
         return delay(clone(state.users
