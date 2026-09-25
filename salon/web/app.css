@@ -644,3 +644,69 @@ a.btn { text-decoration: none; }
 @media print {
   #slXlsx, .sl-list .cell-action { display: none !important; }
 }
+
+/* 본사 대시보드 — branch identity colors (validated categorical order, dark / light steps) */
+:root { --br-1: #3987e5; --br-2: #d95926; --br-3: #199e70; --br-4: #c98500; --br-5: #d55181; --br-6: #008300; --br-7: #9085e9; --br-8: #e66767; }
+:root[data-theme="light"] { --br-1: #2a78d6; --br-2: #eb6834; --br-3: #1baf7a; --br-4: #eda100; --br-5: #e87ba4; --br-6: #008300; --br-7: #4a3aa7; --br-8: #e34948; }
+.hq-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
+  background: linear-gradient(135deg, var(--violet-soft), transparent 65%), var(--surface); }
+.hq-title { font-size: 19px; margin: 0 0 2px; }
+.hq-head p { margin: 0; }
+.hq-tools { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.hq-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
+.hq-kpi-wide .kpi-value { font-size: 30px; }
+.hq-kpis .kpi-value small { font-size: 0.6em; margin-left: 2px; color: var(--fg-muted); }
+.hq-trend { position: relative; margin-bottom: var(--space-4); }
+.hq-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px var(--space-3); font-size: 12.5px; color: var(--fg-muted); }
+.hq-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.hq-legend i, .hq-dot, .hq-tip i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+.hq-chart { min-height: 260px; }
+.hq-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.hq-chart svg text { fill: var(--fg-muted); font-size: 11.5px; font-family: var(--font); font-variant-numeric: tabular-nums; }
+.hq-chart .rp-x-now { fill: var(--fg); font-weight: 700; }
+.hq-hit { fill: transparent; cursor: crosshair; }
+.hq-hit.is-on { fill: color-mix(in srgb, var(--fg) 6%, transparent); }
+.hq-chart svg.is-animated .hq-seg { transform-box: fill-box; transform-origin: 50% 100%; animation: rp-grow 650ms var(--ease-out) both; animation-delay: calc(var(--i) * 18ms); }
+.hq-tip { position: absolute; transform: translateX(-50%); z-index: 5; pointer-events: none; min-width: 200px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--surface-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); font-size: 12.5px; display: grid; gap: 4px; }
+.hq-tip strong { font-size: 13px; margin-bottom: 2px; }
+.hq-tip span { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); }
+.hq-tip b { margin-left: auto; color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.hq-table th, .hq-table td { white-space: nowrap; padding-left: 7px; padding-right: 7px; font-size: 13px; }
+.hq-table th:first-child, .hq-table td:first-child { padding-left: 12px; }
+.hq-table .delta { padding: 1px 6px; font-size: 11.5px; }
+.hq-branch { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; min-height: 32px; }
+.hq-share { display: inline-flex; align-items: center; gap: 8px; }
+.hq-share-bar { width: 40px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; display: inline-block; }
+.hq-share-bar > span { display: block; height: 100%; border-radius: inherit; }
+.hq-warn { color: var(--warn); font-weight: 700; }
+.hq-total-row th, .hq-total-row td { border-top: 2px solid var(--border-strong); font-weight: 700; background: var(--surface-2); }
+.hq-grid { margin-top: var(--space-4); }
+.hq-grid .rp-alert .link-btn { flex: none; }
+@media (max-width: 1100px) {
+  .hq-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+  .hq-kpi-wide { grid-column: 1 / -1; }
+  .hq-kpi-wide .kpi-value { font-size: 24px; }
+  .hq-tools { width: 100%; }
+  .hq-tools .segmented { width: 100%; }
+  .hq-tools .segmented button { flex: 1; padding-left: 4px; padding-right: 4px; }
+  .hq-table th, .hq-table td { white-space: normal; }
+  .hq-total-row th, .hq-total-row td { background: transparent; }
+}
+@media print {
+  .hq-tools, .hq-tip { display: none !important; }
+  .hq-kpis { grid-template-columns: repeat(4, 1fr) !important; }
+  .hq-chart svg text { fill: #333 !important; }
+  .hq-chart svg.is-animated .hq-seg { animation: none !important; }
+}
+/* Phones: keep the page title on one line next to the branch picker */
+@media (max-width: 480px) {
+  .topbar-title h1 { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar-title p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+  .topbar-actions { gap: 6px; }
+  .branch-select { width: 92px; max-width: 92px; padding: 0 8px; }
+}
+/* 본사 대시보드 covers every branch: no branch picker there */
+body[data-route="hq"] #branchSelect { display: none; }

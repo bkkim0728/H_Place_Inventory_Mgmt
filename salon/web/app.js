@@ -54,9 +54,10 @@
     users: '사용자 관리',
     branches: '지점 관리',
     manual: '사용 매뉴얼',
+    hq: '본사 대시보드',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
-  const ADMIN_ROUTES = ['categories', 'users'];  // branch managers use 직원 관리 and 지점 관리 instead
+  const ADMIN_ROUTES = ['categories', 'users', 'hq'];  // branch managers use 직원 관리 and 지점 관리 instead
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
   const typeTag = (t) => `<span class="tag tag-${TYPES[t]?.tag || 'adjust'}">${TYPES[t]?.label || t}</span>`;
@@ -302,6 +303,7 @@
       else if (r === 'staff') await loadStaff();
       else if (r === 'payroll') await loadPayroll();
       else if (r === 'users') await loadUsers();
+      else if (r === 'hq') await loadHq();
       else if (r === 'branches') {
         state.branches = await api.listBranches();
         state.branch = state.branches.find((b) => b.id === state.branch.id) || state.branch;
@@ -343,6 +345,7 @@
     let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'dashboard';
     if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager()) || (ADMIN_ROUTES.includes(route) && !isAdmin())) route = 'dashboard';
     state.route = route;
+    document.body.dataset.route = route;
     $$('.view').forEach((v) => { v.hidden = v.dataset.view !== route; });
     $$('.nav-link').forEach((a) => {
       if (a.dataset.route === route) a.setAttribute('aria-current', 'page');
@@ -361,6 +364,7 @@
     if (route === 'categories') renderCategories();
     if (route === 'manual') renderManual();
     if (route === 'sales') loadSales();
+    if (route === 'hq') loadHq();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
     window.scrollTo(0, 0);
@@ -2846,6 +2850,337 @@
     } finally {
       btn.disabled = false; btn.removeAttribute('aria-busy');
     }
+  });
+
+  // ------------------------------------------------------------------
+  // 본사 대시보드 (admin): every branch, one period against the one before
+  // ------------------------------------------------------------------
+  state.hq = { period: '7', data: [], loading: false, ticket: 0 };
+  const BRANCH_COLORS = 8;  // --br-1 … --br-8 (validated categorical order); more branches reuse none
+
+  function hqRange() {
+    const t = todayKey(), p = state.hq.period;
+    if (p === 'month') {
+      const from = monthStart(t), pFrom = prevMonthStart(t);
+      return { from, to: t, pFrom, pTo: [addDays(pFrom, dayDiff(from, t)), monthEnd(pFrom)].sort()[0], label: '이번 달', prevLabel: '지난달 같은 기간' };
+    }
+    if (p === 'lastmonth') {
+      const from = prevMonthStart(t), pFrom = prevMonthStart(from);
+      return { from, to: monthEnd(from), pFrom, pTo: monthEnd(pFrom), label: '지난달', prevLabel: '그 전달' };
+    }
+    const n = Number(p);
+    const from = addDays(t, -(n - 1));
+    return { from, to: t, pFrom: addDays(from, -n), pTo: addDays(from, -1), label: `최근 ${n}일`, prevLabel: `이전 ${n}일` };
+  }
+
+  async function loadHq() {
+    if (!isAdmin()) return;
+    const h = state.hq, r = hqRange(), today = todayKey();
+    const ticket = (h.ticket += 1);
+    h.loading = true;
+    $('#hqSub').textContent = '전체 지점 자료를 불러오는 중…';
+    const branches = state.branches.filter((b) => b.active !== false);
+    try {
+      const data = await Promise.all(branches.map(async (b, i) => {
+        const [inv, mv, sales, staff, sched] = await Promise.all([
+          api.listInventory(b.id),
+          api.listMovementsBetween(b.id, r.pFrom, r.to),
+          api.listDailySales(b.id, r.pFrom, r.to).catch(() => []),
+          api.listStaff(b.id).catch(() => []),
+          api.listSchedule(b.id, today, today).catch(() => []),
+        ]);
+        return { b, color: i < BRANCH_COLORS ? `var(--br-${i + 1})` : 'var(--fg-muted)', inv, mv, sales, staff, sched };
+      }));
+      if (ticket !== h.ticket) return;
+      h.data = data;
+      $('#hqError').hidden = true;
+    } catch (ex) {
+      if (ticket !== h.ticket) return;
+      h.data = [];
+      $('#hqError').textContent = api.toAppError(ex).message;
+      $('#hqError').hidden = false;
+    }
+    h.loading = false;
+    renderHq();
+  }
+
+  // Per-branch numbers for a date window
+  function hqCalc(d, from, to) {
+    const inWin = (k) => k >= from && k <= to;
+    const byDay = new Map();
+    const dayRow = (k) => { if (!byDay.has(k)) byDay.set(k, { svc: 0, prod: 0 }); return byDay.get(k); };
+    const price = (m) => m.unit_price ?? d.inv.find((i) => i.product_id === m.product_id)?.retail_price ?? 0;
+    let svc = 0, cnt = 0, prod = 0, prodN = 0, mat = 0, entered = 0;
+    const products = new Map();
+    d.sales.forEach((s) => {
+      if (!inWin(s.day)) return;
+      svc += Number(s.service_sales) || 0; cnt += Number(s.service_count) || 0; entered += 1;
+      dayRow(s.day).svc += Number(s.service_sales) || 0;
+    });
+    d.mv.forEach((m) => {
+      const k = keyFmt.format(new Date(m.created_at));
+      if (!inWin(k)) return;
+      if (m.type === 'sale') {
+        const amt = -m.quantity * price(m);
+        prod += amt; dayRow(k).prod += amt;
+        if (!m.reverts_id && !m.reverted) prodN += 1;
+        const p = products.get(m.sku) || { name: m.product_name, unit: m.unit, qty: 0, amt: 0 };
+        p.qty += -m.quantity; p.amt += amt;
+        products.set(m.sku, p);
+      } else if (m.type === 'use') mat += -m.quantity * (m.unit_cost || 0);
+    });
+    return { svc, cnt, prod, prodN, mat, total: svc + prod, entered, avg: cnt ? svc / cnt : 0, ratio: svc ? (mat / svc) * 100 : null, byDay, products };
+  }
+
+  function renderHq() {
+    const h = state.hq, r = hqRange(), today = todayKey();
+    const dot = (k) => k.replace(/-/g, '.');
+    const days = dayDiff(r.from, r.to) + 1;
+    $('#hqSub').textContent = `${r.label} ${dot(r.from)} ~ ${dot(r.to)} · 비교 기준: ${r.prevLabel} ${dot(r.pFrom)} ~ ${dot(r.pTo)} · 운영 중 지점 ${nf.format(h.data.length)}곳`;
+    const rows = h.data.map((d) => {
+      const cur = hqCalc(d, r.from, r.to), prev = hqCalc(d, r.pFrom, r.pTo);
+      const items = d.inv.filter((i) => i.active);
+      const sched = new Map(d.sched.map((x) => [`${x.staff_id}|${x.day}`, x]));
+      const people = d.staff.filter((x) => x.status !== 'leave').map((x) => ({ x, st: dayState(x, today, sched) })).filter((o) => o.st !== 'na');
+      const on = people.filter((o) => workValue(o.st) > 0);
+      return {
+        ...d, cur, prev,
+        stock: items.reduce((a, i) => a + i.stock * i.cost_price, 0), itemN: items.length,
+        low: items.filter((i) => i.status === 'low'), out: items.filter((i) => i.status === 'out'),
+        staffN: d.staff.filter((x) => x.status === 'active').length, on: on.length,
+        onDes: on.filter((o) => DESIGNER_POS.includes(o.x.position)).length, off: people.length - on.length,
+        certs: d.staff.filter((x) => x.status !== 'left' && x.health_cert_expires && daysUntil(x.health_cert_expires) <= 30),
+        // days that should have a 시술 매출 entry (up to yesterday; today may still be open)
+        due: Math.max(0, dayDiff(r.from, [r.to, addDays(today, -1)].sort()[0]) + 1),
+      };
+    });
+    const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
+    const T = {
+      total: sum(rows, (x) => x.cur.total), pTotal: sum(rows, (x) => x.prev.total),
+      svc: sum(rows, (x) => x.cur.svc), pSvc: sum(rows, (x) => x.prev.svc),
+      cnt: sum(rows, (x) => x.cur.cnt), pCnt: sum(rows, (x) => x.prev.cnt),
+      prod: sum(rows, (x) => x.cur.prod), pProd: sum(rows, (x) => x.prev.prod),
+      prodN: sum(rows, (x) => x.cur.prodN),
+      mat: sum(rows, (x) => x.cur.mat), pMat: sum(rows, (x) => x.prev.mat),
+      stock: sum(rows, (x) => x.stock), itemN: sum(rows, (x) => x.itemN),
+      low: sum(rows, (x) => x.low.length), out: sum(rows, (x) => x.out.length),
+      staffN: sum(rows, (x) => x.staffN), on: sum(rows, (x) => x.on), onDes: sum(rows, (x) => x.onDes), off: sum(rows, (x) => x.off),
+      entered: sum(rows, (x) => x.cur.entered), due: sum(rows, (x) => Math.min(x.due, days)),
+    };
+    const ratio = T.svc ? (T.mat / T.svc) * 100 : null, pRatio = T.pSvc ? (T.pMat / T.pSvc) * 100 : null;
+    const vs = `${r.prevLabel} 대비`;
+    $('#hqTotal').textContent = won.format(T.total);
+    $('#hqTotalSub').textContent = `${r.prevLabel} ${won.format(T.pTotal)} · 하루 평균 ${won.format(Math.round(T.total / days))}`;
+    setDelta('hqTotalDelta', deltaHtml(T.total, T.pTotal), vs);
+    $('#hqSvc').textContent = won.format(T.svc);
+    $('#hqSvcSub').textContent = `${nf.format(T.cnt)}건 · 객단가 ${T.cnt ? won.format(Math.round(T.svc / T.cnt)) : '—'}`;
+    setDelta('hqSvcDelta', deltaHtml(T.svc, T.pSvc), vs);
+    $('#hqProd').textContent = won.format(T.prod);
+    $('#hqProdSub').textContent = `${nf.format(T.prodN)}건 · 총매출의 ${T.total ? pct1.format((T.prod / T.total) * 100) : '0.0'}%`;
+    setDelta('hqProdDelta', deltaHtml(T.prod, T.pProd), vs);
+    $('#hqRatio').textContent = ratio == null ? '—' : `${pct1.format(ratio)}%`;
+    $('#hqRatioSub').textContent = `재료 사용액 ${won.format(T.mat)}`;
+    setDelta('hqRatioDelta', deltaHtml(ratio, pRatio, { costly: true, pp: true }), vs);
+    $('#hqStock').textContent = won.format(T.stock);
+    $('#hqStockSub').textContent = `${nf.format(T.itemN)}개 품목 · 매입가 기준 · 오늘`;
+    $('#hqWarn').innerHTML = `${nf.format(T.low + T.out)}<small>개</small>`;
+    $('#hqWarnSub').textContent = `부족 ${nf.format(T.low)} · 품절 ${nf.format(T.out)}`;
+    $('#hqWork').textContent = `${nf.format(T.on)}명`;
+    $('#hqWorkSub').textContent = `시술 ${nf.format(T.onDes)} · 스태프 ${nf.format(T.on - T.onDes)} · 휴무 ${nf.format(T.off)} · 재직 ${nf.format(T.staffN)}`;
+    const entered = Math.min(T.entered, T.due);
+    $('#hqEntry').innerHTML = T.due ? `${pct1.format((entered / T.due) * 100)}<small>%</small>` : '—';
+    $('#hqEntrySub').textContent = T.due ? `${nf.format(entered)}/${nf.format(T.due)}일 · 어제까지 기준 · 지점 ${nf.format(rows.filter((x) => Math.min(x.due, days) > x.cur.entered).length)}곳 미입력` : '입력할 날이 아직 없습니다';
+
+    // Legend (a single branch needs none)
+    $('#hqLegend').innerHTML = rows.length > 1 ? rows.map((x) => `<li><i style="background:${x.color}"></i>${esc(x.b.name)}</li>`).join('') : '';
+    h.chart = { rows, from: r.from, days };
+    drawHqChart(true);
+
+    // Branch table, biggest first
+    const sorted = [...rows].sort((a, b) => b.cur.total - a.cur.total);
+    const pctText = (v) => (v == null ? '—' : `${pct1.format(v)}%`);
+    const entry = (x) => { const due = Math.min(x.due, days); return due ? `${nf.format(Math.min(x.cur.entered, due))}/${nf.format(due)}일` : '—'; };
+    $('#hqBody').innerHTML = sorted.length ? sorted.map((x) => {
+      const share = T.total ? (x.cur.total / T.total) * 100 : 0;
+      const missing = Math.min(x.due, days) - x.cur.entered;
+      return `<tr>
+        <th scope="row" class="cell-name"><button type="button" class="link-btn hq-branch" data-hq-branch="${x.b.id}"><i class="hq-dot" style="background:${x.color}" aria-hidden="true"></i>${esc(x.b.name)}</button></th>
+        <td class="num" data-label="총매출"><strong>${won.format(x.cur.total)}</strong></td>
+        <td class="num" data-label="이전 대비">${deltaHtml(x.cur.total, x.prev.total).html}</td>
+        <td class="num" data-label="매출 비중"><span class="hq-share"><span class="hq-share-bar" aria-hidden="true"><span style="width:${share.toFixed(1)}%;background:${x.color}"></span></span>${pct1.format(share)}%</span></td>
+        <td class="num" data-label="시술 매출">${won.format(x.cur.svc)}</td>
+        <td class="num" data-label="시술 건수">${nf.format(x.cur.cnt)}건</td>
+        <td class="num" data-label="객단가">${x.cur.cnt ? won.format(Math.round(x.cur.avg)) : '—'}</td>
+        <td class="num" data-label="제품 판매">${won.format(x.cur.prod)}</td>
+        <td class="num" data-label="재료비율">${pctText(x.cur.ratio)}</td>
+        <td class="num" data-label="재고 금액">${won.format(x.stock)}</td>
+        <td class="num" data-label="부족·품절">${x.low.length + x.out.length ? `<span class="hq-warn">${nf.format(x.low.length)} · ${nf.format(x.out.length)}</span>` : '0 · 0'}</td>
+        <td class="num" data-label="오늘 근무">${nf.format(x.on)}/${nf.format(x.staffN)}명</td>
+        <td class="num" data-label="매출 입력"><span class="${missing > 0 ? 'hq-warn' : ''}">${entry(x)}</span></td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="13" class="muted rp-empty">${h.loading ? '불러오는 중…' : '운영 중인 지점이 없습니다.'}</td></tr>`;
+    $('#hqFoot').innerHTML = rows.length > 1 ? `<tr class="hq-total-row">
+      <th scope="row" class="cell-name">전체</th>
+      <td class="num" data-label="총매출"><strong>${won.format(T.total)}</strong></td>
+      <td class="num" data-label="이전 대비">${deltaHtml(T.total, T.pTotal).html}</td>
+      <td class="num" data-label="매출 비중">100%</td>
+      <td class="num" data-label="시술 매출">${won.format(T.svc)}</td>
+      <td class="num" data-label="시술 건수">${nf.format(T.cnt)}건</td>
+      <td class="num" data-label="객단가">${T.cnt ? won.format(Math.round(T.svc / T.cnt)) : '—'}</td>
+      <td class="num" data-label="제품 판매">${won.format(T.prod)}</td>
+      <td class="num" data-label="재료비율">${pctText(ratio)}</td>
+      <td class="num" data-label="재고 금액">${won.format(T.stock)}</td>
+      <td class="num" data-label="부족·품절">${nf.format(T.low)} · ${nf.format(T.out)}</td>
+      <td class="num" data-label="오늘 근무">${nf.format(T.on)}/${nf.format(T.staffN)}명</td>
+      <td class="num" data-label="매출 입력">${T.due ? `${nf.format(Math.min(T.entered, T.due))}/${nf.format(T.due)}일` : '—'}</td>
+    </tr>` : '';
+
+    // Best sellers across branches (same code = same product)
+    const top = new Map();
+    rows.forEach((x) => x.cur.products.forEach((p, sku) => {
+      const t = top.get(sku) || { name: p.name, unit: p.unit, qty: 0, amt: 0, branches: new Set() };
+      t.qty += p.qty; t.amt += p.amt; if (p.qty > 0) t.branches.add(x.b.name);
+      top.set(sku, t);
+    }));
+    const list = [...top.values()].filter((x) => x.amt > 0).sort((a, b) => b.amt - a.amt).slice(0, 10);
+    const max = Math.max(1, ...list.map((x) => x.amt));
+    $('#hqTop').innerHTML = list.length ? list.map((x, i) => `<li><div class="sl-bar-top"><span class="sl-rank">${i + 1}</span><span class="rp-name">${esc(x.name)}</span><span class="rp-val">${nf.format(x.qty)}${esc(x.unit)} · ${nf.format(x.branches.size)}개 지점 · <strong>${won.format(x.amt)}</strong></span></div>
+      <span class="sl-bar" aria-hidden="true"><span style="width:${Math.max(2, (x.amt / max) * 100).toFixed(1)}%"></span></span></li>`).join('')
+      : '<li class="muted rp-empty">이 기간에 판매 기록이 없습니다.</li>';
+
+    // Things to look at, most urgent first
+    const alerts = [];
+    rows.forEach((x) => {
+      const n = x.b.name;
+      if (x.out.length) alerts.push({ tone: 'danger', text: `${n} · 품절 ${nf.format(x.out.length)}개: ${x.out.slice(0, 3).map((i) => i.name).join(', ')}${x.out.length > 3 ? ' 외' : ''}`, id: x.b.id, to: 'inventory', link: '재고 목록' });
+      const miss = Math.min(x.due, days) - x.cur.entered;
+      if (miss > 0) alerts.push({ tone: 'warn', text: `${n} · 시술 매출 미입력 ${nf.format(miss)}일`, id: x.b.id, to: 'report', link: '매장 레포트' });
+      if (x.low.length) alerts.push({ tone: 'warn', text: `${n} · 안전재고 이하 ${nf.format(x.low.length)}개`, id: x.b.id, to: 'inventory', link: '재고 목록' });
+      if (x.cur.ratio != null && ratio != null && x.cur.ratio > ratio * 1.3 && x.cur.ratio - ratio >= 2) alerts.push({ tone: 'warn', text: `${n} · 재료비율 ${pct1.format(x.cur.ratio)}% (전체 평균 ${pct1.format(ratio)}%보다 높음)`, id: x.b.id, to: 'report', link: '매장 레포트' });
+      if (x.prev.total > 0 && x.cur.total < x.prev.total * 0.8) alerts.push({ tone: 'warn', text: `${n} · 총매출 ${pct1.format((1 - x.cur.total / x.prev.total) * 100)}% 감소 (${r.prevLabel} 대비)`, id: x.b.id, to: 'report', link: '매장 레포트' });
+      x.certs.forEach((s) => {
+        const dd = daysUntil(s.health_cert_expires);
+        alerts.push({ tone: dd < 0 ? 'danger' : 'warn', text: `${n} · ${s.name} 보건증 ${dd < 0 ? `만료 ${nf.format(-dd)}일 지남` : `D-${dd}`}`, id: x.b.id, to: 'staff', link: '직원 관리' });
+      });
+      if (x.staffN && x.onDes === 0 && x.staff.some((s) => DESIGNER_POS.includes(s.position) && s.status === 'active')) alerts.push({ tone: 'danger', text: `${n} · 오늘 시술 인원이 없습니다`, id: x.b.id, to: 'schedule', link: '근무표' });
+    });
+    alerts.sort((a, b) => (a.tone === b.tone ? 0 : a.tone === 'danger' ? -1 : 1));
+    $('#hqAlerts').innerHTML = alerts.length
+      ? alerts.slice(0, 12).map((a) => `<li class="rp-alert rp-${a.tone}"><span>${esc(a.text)}</span><button type="button" class="link-btn" data-hq-branch="${a.id}" data-hq-to="${a.to}">${a.link}</button></li>`).join('')
+        + (alerts.length > 12 ? `<li class="muted small">외 ${nf.format(alerts.length - 12)}건</li>` : '')
+      : `<li class="muted rp-empty">${h.loading ? '불러오는 중…' : '모든 지점이 정상입니다.'}</li>`;
+  }
+
+  // Stacked bars: one column per day, one segment per branch (2px surface gap)
+  function drawHqChart(animate) {
+    const box = $('#hqChart'), c = state.hq.chart;
+    if (!box || !c) return;
+    const W = Math.max(300, Math.round(box.clientWidth || 800)), H = 260;
+    const pad = { l: 12, r: 8, t: 12, b: 30 };
+    const keys = Array.from({ length: c.days }, (_, i) => addDays(c.from, i));
+    const totals = keys.map((k) => c.rows.reduce((a, x) => { const d = x.cur.byDay.get(k); return a + (d ? d.svc + d.prod : 0); }, 0));
+    const max = Math.max(1, ...totals);
+    const step = niceStep(max / 4), top = Math.ceil(max / step) * step;
+    const ticks = [];
+    for (let v = 0; v <= top + step / 2; v += step) ticks.push(v);
+    pad.l = Math.max(...ticks.map((v) => won.format(v).length)) * 7 + 10;
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const y = (v) => pad.t + ih - (v / top) * ih;
+    const slot = iw / keys.length, bw = Math.max(3, Math.min(44, slot * 0.56));
+    const every = Math.ceil(keys.length / Math.max(1, Math.floor(iw / 64)));
+    const grid = ticks.map((v) => `<line class="rp-grid-line" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="${pad.l - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${won.format(v)}</text>`).join('');
+    const cols = keys.map((k, i) => {
+      const cx = pad.l + slot * i + (slot - bw) / 2;
+      let acc = 0;
+      const segs = c.rows.map((x) => ({ x, v: (() => { const d = x.cur.byDay.get(k); return d ? Math.max(0, d.svc + d.prod) : 0; })() })).filter((s) => s.v > 0);
+      const rects = segs.map((s, j) => {
+        const y0 = y(acc), y1 = y(acc + s.v);
+        acc += s.v;
+        const hgt = Math.max(1, y0 - y1 - (j > 0 ? 2 : 0));  // 2px surface gap under each upper segment
+        return `<rect class="hq-seg" x="${cx.toFixed(1)}" y="${y1.toFixed(1)}" width="${bw.toFixed(1)}" height="${hgt.toFixed(1)}" rx="${j === segs.length - 1 ? Math.min(4, bw / 2) : 0}" style="fill:${s.x.color};--i:${i}"/>`;
+      }).join('');
+      const label = i % every === 0 || i === keys.length - 1
+        ? `<text x="${(pad.l + slot * i + slot / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="${k === todayKey() ? 'rp-x-now' : ''}">${Number(k.slice(5, 7))}/${Number(k.slice(8))}</text>` : '';
+      return `<g>${rects}${label}<rect class="hq-hit" data-hq-day="${i}" x="${(pad.l + slot * i).toFixed(1)}" y="${pad.t}" width="${slot.toFixed(1)}" height="${ih}"/></g>`;
+    }).join('');
+    const total = totals.reduce((a, b) => a + b, 0);
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${keys.length}일간 전체 총매출 ${won.format(total)}. 지점별 수치는 아래 지점별 성과 표에 있습니다." class="${animate && !reduceMotion.matches ? 'is-animated' : ''}">${grid}${cols}</svg>`;
+    box.dataset.w = String(W);
+    c.keys = keys; c.totals = totals;
+  }
+
+  // Hover: that day's total and each branch
+  $('#hqChart').addEventListener('mousemove', (e) => {
+    const hit = e.target.closest('[data-hq-day]');
+    const tip = $('#hqTip'), c = state.hq.chart;
+    $$('.hq-hit.is-on', $('#hqChart')).forEach((r) => r.classList.remove('is-on'));
+    if (!hit || !c) { tip.hidden = true; return; }
+    hit.classList.add('is-on');
+    const i = Number(hit.dataset.hqDay), k = c.keys[i];
+    const lines = c.rows.map((x) => { const d = x.cur.byDay.get(k); return { x, v: d ? d.svc + d.prod : 0 }; }).sort((a, b) => b.v - a.v);
+    tip.innerHTML = `<strong>${mdText(k)} (${DOW[dowOf(k)]}) · ${won.format(c.totals[i])}</strong>`
+      + lines.map((l) => `<span><i style="background:${l.x.color}"></i>${esc(l.x.b.name)}<b>${won.format(l.v)}</b></span>`).join('');
+    tip.hidden = false;
+    const panel = $('.hq-trend').getBoundingClientRect();
+    const hr = hit.getBoundingClientRect();
+    const left = hr.left - panel.left + hr.width / 2;
+    tip.style.left = `${Math.min(Math.max(left, 110), panel.width - 110)}px`;
+    tip.style.top = `${hr.top - panel.top + 8}px`;
+  });
+  $('#hqChart').addEventListener('mouseleave', () => { $('#hqTip').hidden = true; $$('.hq-hit.is-on', $('#hqChart')).forEach((r) => r.classList.remove('is-on')); });
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(() => {
+      const box = $('#hqChart');
+      if (box && state.hq.chart && box.clientWidth && Math.abs(box.clientWidth - Number(box.dataset.w || 0)) > 4) drawHqChart(false);
+    }).observe($('#hqChart'));
+  }
+
+  $('#hqPeriod').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-hq-period]');
+    if (!b) return;
+    $$('[data-hq-period]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    state.hq.period = b.dataset.hqPeriod;
+    loadHq();
+  });
+  // Jump into one branch
+  $('[data-view="hq"]').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-hq-branch]');
+    if (!b) return;
+    const br = state.branches.find((x) => x.id === b.dataset.hqBranch);
+    if (!br) return;
+    if (state.branch.id !== br.id) {
+      state.branch = br;
+      $('#branchSelect').value = br.id;
+      try { localStorage.setItem('hp-branch', br.id); } catch (err) {}
+      loadData();
+    }
+    location.hash = `#/${b.dataset.hqTo || 'report'}`;
+  });
+  $('#hqPrint').addEventListener('click', () => window.print());
+  $('#hqXlsx').addEventListener('click', () => {
+    const c = state.hq.chart;
+    if (!c || !c.rows.length) { toast('내려받을 자료가 없습니다.', { error: true }); return; }
+    const r = hqRange();
+    const blob = window.makeXlsx({
+      sheetName: '지점별 성과',
+      columns: [
+        { header: '지점', width: 16 }, { header: '총매출', width: 14, type: 'number' }, { header: `${r.prevLabel} 총매출`, width: 16, type: 'number' },
+        { header: '시술 매출', width: 14, type: 'number' }, { header: '시술 건수', width: 10, type: 'number' }, { header: '객단가', width: 12, type: 'number' },
+        { header: '제품 판매', width: 13, type: 'number' }, { header: '재료 사용액', width: 13, type: 'number' }, { header: '재료비율(%)', width: 11, type: 'number' },
+        { header: '재고 금액', width: 14, type: 'number' }, { header: '부족', width: 7, type: 'number' }, { header: '품절', width: 7, type: 'number' },
+        { header: '재직 직원', width: 9, type: 'number' }, { header: '시술 매출 입력일', width: 14, type: 'number' },
+      ],
+      rows: c.rows.map((x) => [
+        x.b.name, x.cur.total, x.prev.total, x.cur.svc, x.cur.cnt, Math.round(x.cur.avg), x.cur.prod, Math.round(x.cur.mat),
+        x.cur.ratio == null ? '' : Math.round(x.cur.ratio * 10) / 10, x.stock, x.low.length, x.out.length, x.staffN, x.cur.entered,
+      ]),
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `본사대시보드_${r.from}_${r.to}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('지점별 성과를 엑셀 파일로 내려받았습니다.');
   });
 
   // ------------------------------------------------------------------
