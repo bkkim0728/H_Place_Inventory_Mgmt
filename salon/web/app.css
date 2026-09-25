@@ -401,3 +401,4 @@ button.sc:hover { border-color: var(--border-strong); }
   .wb-range { min-width: 0; font-size: 14px; }
 }
 a.btn { text-decoration: none; }
+.form-field input[readonly] { background: var(--surface-2); color: var(--fg-muted); cursor: default; font-variant-numeric: tabular-nums; }

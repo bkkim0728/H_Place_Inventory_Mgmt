@@ -109,6 +109,12 @@ const oldMv = (await one(`select id from stock_movements where branch_id=$1 and 
 ok((await err(staff, () => q(`select revert_movement($1)`, [oldMv])))?.includes('REVERT_WINDOW_PASSED'), 'staff cannot revert old/other entries');
 
 console.log('catalog (admin) and branch item settings (manager)');
+const auto1 = await as(mgr, async () => (await one(`select save_product($1,null,'','자동 코드 앰플','', '클리닉','박스',15000,null,false,1,null) id`, [b1])).id);
+const auto2 = await as(admin, async () => (await one(`select save_product($1,null,null,'자동 코드 앰플 2','', '클리닉','박스',15000,null,false,1,null) id`, [b1])).id);
+const skus = (await q(`select sku from products where id in ($1,$2) order by sku`, [auto1, auto2])).map(r => r.sku);
+ok(skus[0] === 'CN-001' && skus[1] === 'CN-002', 'blank code → next code for the category (CN-001, CN-002)');
+ok((await as(mgr, () => one(`select next_sku('소모품') s`))).s === 'SP-001' && (await as(mgr, () => one(`select next_sku('새 분류') s`))).s === 'P-001', 'other categories get their own prefix');
+ok((await err(admin, () => q(`select save_product($1,$2,'','이름','', '클리닉','박스',1,null,false,1,null)`, [b1, auto1])))?.includes('INVALID_PRODUCT'), 'editing still needs a code');
 const mgrPid = await as(mgr, async () => (await one(`select save_product($1,null,'mg-1','지점 등록 제품','', '소모품','개',100,null,false,2,'창고') id`, [b1])).id);
 ok((await one(`select count(*)::int n from inventory where product_id=$1`, [mgrPid])).n === (await one(`select count(*)::int n from branches`)).n, 'manager registers a new product (stock rows for every branch)');
 ok((await one(`select safety_stock, location from inventory where product_id=$1 and branch_id=$2`, [mgrPid, b1])).location === '창고', 'the registering branch gets its safety stock and location');

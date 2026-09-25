@@ -975,10 +975,14 @@
     $('#productTitle').textContent = item ? '제품 수정' : `제품 등록${isAdmin() ? '' : ` · ${state.branch.name}`}`;
     $('#pName').value = item?.name || '';
     $('#pSku').value = item?.sku || '';
+    // New products get their code automatically (confirmed by the server on save).
+    $('#pSku').readOnly = !item;
+    $('#pSkuHelp').textContent = item ? '영문·숫자·하이픈. 예: CL-6N' : '카테고리를 고르면 자동으로 정해집니다. 저장할 때 확정됩니다.';
     $('#pBrand').value = item?.brand || '';
     const pc = $('#pCategory');
     if (item && !state.categories.some((c) => c.name === item.category)) pc.add(new Option(item.category, item.category));
     pc.value = item?.category || '';
+    if (!item) previewSku();
     $('#pUnit').value = item?.unit || '개';
     $('#pCost').value = item ? item.cost_price : '';
     $('#pRetail').value = item?.retail_price ?? '';
@@ -994,6 +998,13 @@
     productDialog.open();
     (catalogLocked ? $('#pSafety') : $('#pName')).focus();
   }
+
+  function previewSku() {
+    const cat = $('#pCategory').value;
+    $('#pSku').value = cat ? api.nextSku(cat, state.inventory.map((i) => i.sku)) : '';
+    $('#pSku').placeholder = cat ? '' : '카테고리를 먼저 고르세요';
+  }
+  $('#pCategory').addEventListener('change', () => { if (!editingId) previewSku(); });
 
   productForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1037,7 +1048,7 @@
       return n;
     };
     need('pName', '품목명');
-    if (need('pSku', '품목 코드') && !/^[A-Za-z0-9-]+$/.test($('#pSku').value.trim())) {
+    if (editingId && need('pSku', '품목 코드') && !/^[A-Za-z0-9-]+$/.test($('#pSku').value.trim())) {
       fieldError($('#pSku'), '품목 코드는 영문, 숫자, 하이픈(-)만 쓸 수 있습니다.');
       errors.push({ id: 'pSku', msg: '품목 코드 형식을 확인해 주세요.' });
     }
@@ -1051,15 +1062,16 @@
     const btn = $('#productSubmit');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
-      await api.saveProduct(state.branch.id, {
-        productId: editingId, sku: $('#pSku').value, name: $('#pName').value, brand: $('#pBrand').value,
+      const newId = await api.saveProduct(state.branch.id, {
+        productId: editingId, sku: editingId ? $('#pSku').value : '', name: $('#pName').value, brand: $('#pBrand').value,
         category: $('#pCategory').value, unit: $('#pUnit').value, costPrice: cost, retailPrice: retail,
         isRetail: $('#pRetailFlag').checked, safetyStock: safety, location: $('#pLocation').value,
         active: $('#pActive').checked,
       });
       $('#productDialog').close();
-      toast(editingId ? `${$('#pName').value.trim()} 제품을 수정했습니다.` : `${$('#pName').value.trim()} 제품을 등록했습니다. 모든 지점에 재고 0으로 준비되었습니다.`);
       await loadData();
+      const code = editingId ? '' : itemById(newId)?.sku;
+      toast(editingId ? `${$('#pName').value.trim()} 제품을 수정했습니다.` : `${$('#pName').value.trim()} 제품을 등록했습니다${code ? ` (코드 ${code})` : ''}. 모든 지점에 재고 0으로 준비되었습니다.`);
     } catch (ex) {
       const err = api.toAppError(ex);
       if (err.code === 'DUPLICATE_SKU') { fieldError($('#pSku'), err.message); showSummary(productForm, [{ id: 'pSku', msg: err.message }]); }
