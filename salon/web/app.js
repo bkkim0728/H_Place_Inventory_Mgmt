@@ -256,7 +256,10 @@
     renderKpis();
     renderAlerts();
     renderRecent();
-    renderChart();
+    // Sweep the chart in for a newly opened branch; after a save the totals just roll.
+    const fresh = state.chartBranch !== state.branch.id;
+    state.chartBranch = state.branch.id;
+    renderChart(fresh);
     fillFilters();
     renderInventory();
     renderMovements();
@@ -280,7 +283,7 @@
     });
     $('#pageTitle').textContent = ROUTES[route];
     document.title = `${ROUTES[route]} · H Place 매장관리`;
-    if (route === 'dashboard') renderChart();
+    if (route === 'dashboard') renderChart(state.chartBranch != null);  // animate once data is in
     if (route === 'users') loadUsers();
     if (route === 'branches') renderBranches();
     if (route === 'categories') renderCategories();
@@ -363,6 +366,8 @@
   }
 
   // Trend chart (inline SVG)
+  const easeOut = (t) => 1 - Math.pow(1 - t, 4);
+
   function niceStep(v) {
     const p = Math.pow(10, Math.floor(Math.log10(Math.max(v, 1e-9))));
     const n = v / p;
@@ -383,7 +388,47 @@
     return buckets;
   }
 
-  function renderChart() {
+  // Monotone cubic curve through every point: smooth, but never overshoots
+  // (so a day with 0 never dips below the baseline).
+  function smoothPath(pts) {
+    const f = (v) => v.toFixed(1);
+    const n = pts.length;
+    if (n < 3) return pts.map((p, i) => `${i ? 'L' : 'M'}${f(p[0])},${f(p[1])}`).join('');
+    const dx = [], s = [];
+    for (let i = 0; i < n - 1; i++) { dx.push(pts[i + 1][0] - pts[i][0]); s.push((pts[i + 1][1] - pts[i][1]) / dx[i]); }
+    const t = [s[0]];
+    for (let i = 1; i < n - 1; i++) t.push(s[i - 1] * s[i] <= 0 ? 0 : (s[i - 1] + s[i]) / 2);
+    t.push(s[n - 2]);
+    for (let i = 0; i < n - 1; i++) {
+      if (s[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+      const a = t[i] / s[i], b = t[i + 1] / s[i], h = a * a + b * b;
+      if (h > 9) { const k = 3 / Math.sqrt(h); t[i] = k * a * s[i]; t[i + 1] = k * b * s[i]; }
+    }
+    let d = `M${f(pts[0][0])},${f(pts[0][1])}`;
+    for (let i = 0; i < n - 1; i++) {
+      const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], h = dx[i] / 3;
+      d += `C${f(x0 + h)},${f(y0 + t[i] * h)} ${f(x1 - h)},${f(y1 - t[i + 1] * h)} ${f(x1)},${f(y1)}`;
+    }
+    return d;
+  }
+
+  // Period totals above the chart; numbers roll to their new value.
+  function countTo(el, to, signed = false) {
+    const fmt = (v) => (signed && v > 0 ? `+${nf.format(v)}` : nf.format(v));
+    const from = Number(el.dataset.v ?? to);
+    el.dataset.v = to;
+    cancelAnimationFrame(el._raf);
+    if (reduceMotion.matches || from === to) { el.textContent = fmt(to); return; }
+    const t0 = performance.now();
+    const tick = (now) => {
+      const p = Math.min(1, Math.max(0, (now - t0) / 700));
+      el.textContent = fmt(Math.round(from + (to - from) * easeOut(p)));
+      if (p < 1) el._raf = requestAnimationFrame(tick);
+    };
+    el._raf = requestAnimationFrame(tick);
+  }
+
+  function renderChart(animate = false) {
     const svg = $('#chartSvg');
     const box = $('#chart').getBoundingClientRect();
     if (!box.width || $('#screenApp').hidden) return;
@@ -391,68 +436,130 @@
     const H = Math.round(box.height);
     const data = trendData();
     const narrow = W < 520;
-    const m = { t: 12, r: narrow ? 40 : 48, b: 28, l: 40 };
+    const m = { t: 16, r: narrow ? 40 : 48, b: 28, l: 40 };
     const iw = W - m.l - m.r, ih = H - m.t - m.b;
-    const peak = Math.max(4, ...data.map((d) => Math.max(d.in, d.out))) * 1.05;
+    const peak = Math.max(4, ...data.map((d) => Math.max(d.in, d.out))) * 1.08;
     const tickStep = niceStep(peak / 4);
     const ticks = Math.ceil(peak / tickStep);
     const max = tickStep * ticks;
     const x = (i) => m.l + (data.length === 1 ? iw / 2 : (i / (data.length - 1)) * iw);
     const y = (v) => m.t + ih - (v / max) * ih;
+    const base = y(0), n = data.length, xN = x(n - 1);
+    const last = data[n - 1];
 
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    let g = '';
+    let g = `<defs>
+      <linearGradient id="gradIn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="stop-in" stop-opacity="0.34"/><stop offset="1" class="stop-in" stop-opacity="0"/></linearGradient>
+      <linearGradient id="gradOut" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="stop-out" stop-opacity="0.18"/><stop offset="1" class="stop-out" stop-opacity="0"/></linearGradient>
+      <filter id="lineGlow" filterUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur"/>
+        <feComponentTransfer in="blur" result="soft"><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+        <feMerge><feMergeNode in="soft"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <clipPath id="chartReveal"><rect id="chartRevealRect" x="0" y="0" width="${(animate && !reduceMotion.matches) || state.chartBranch == null ? 0 : W}" height="${H}"/></clipPath>
+    </defs>`;
     for (let i = 0; i <= ticks; i++) {
       const v = tickStep * i;
-      g += `<line class="gridline" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/>`;
+      g += `<line class="${i ? 'gridline' : 'baseline'}" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/>`;
       g += `<text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${nf.format(v)}</text>`;
     }
-    const step = Math.max(1, Math.ceil(data.length / (narrow ? 4 : 8)));
+    const step = Math.max(1, Math.ceil(n / (narrow ? 4 : 8)));
     data.forEach((d, i) => {
-      if ((data.length - 1 - i) % step === 0) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${dayFmt.format(d.date)}</text>`;
+      if ((n - 1 - i) % step === 0) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${dayFmt.format(d.date)}</text>`;
     });
-    const path = (k) => data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(d[k]).toFixed(1)}`).join('');
-    const last = data[data.length - 1];
+
+    const lineIn = smoothPath(data.map((d, i) => [x(i), y(d.in)]));
+    const lineOut = smoothPath(data.map((d, i) => [x(i), y(d.out)]));
+    const close = `L${xN.toFixed(1)},${base.toFixed(1)}L${x(0).toFixed(1)},${base.toFixed(1)}Z`;
+    g += `<g clip-path="url(#chartReveal)">
+      <path class="area-out" d="${lineOut}${close}"/>
+      <path class="area-in" d="${lineIn}${close}"/>
+      <path class="line-out" d="${lineOut}" filter="url(#lineGlow)"/>
+      <path class="line-in" d="${lineIn}" filter="url(#lineGlow)"/>
+    </g>`;
+
+    // Latest values: markers and direct labels at the right edge
     let yIn = y(last.in) + 4, yOut = y(last.out) + 4;
     if (Math.abs(yIn - yOut) < 14) {
       const mid = (yIn + yOut) / 2;
       if (last.in >= last.out) { yIn = mid - 7; yOut = mid + 7; } else { yIn = mid + 7; yOut = mid - 7; }
     }
-    g += `<path class="area-in" d="${path('in')}L${x(data.length - 1)},${y(0)}L${x(0)},${y(0)}Z"/>`;
-    g += `<path class="line-in" d="${path('in')}"/><path class="line-out" d="${path('out')}"/>`;
-    g += `<text class="label-in" x="${W - m.r + 6}" y="${yIn}">입고</text><text class="label-out" x="${W - m.r + 6}" y="${yOut}">출고</text>`;
-    g += '<g id="chartActive"></g>';
+    g += `<g transform="translate(${xN},${y(last.out)})"><rect class="pulse pulse-out" x="-4" y="-4" width="8" height="8"/><rect class="end-mark mark-out" x="-4" y="-4" width="8" height="8"/></g>
+      <g transform="translate(${xN},${y(last.in)})"><circle class="pulse pulse-in" r="4.5"/><circle class="end-mark mark-in" r="4.5"/></g>
+      <text class="end-label label-in" x="${W - m.r + 8}" y="${yIn}">입고</text>
+      <text class="end-label label-out" x="${W - m.r + 8}" y="${yOut}">출고</text>`;
+
+    // Hover / keyboard cursor, moved with transforms so it glides between days
+    const band = Math.max(8, Math.min(40, n > 1 ? iw / (n - 1) : iw));
+    g += `<g class="cursor" id="chartCursor">
+      <g class="cursor-x"><rect class="cursor-band" x="${-band / 2}" y="${m.t}" width="${band}" height="${base - m.t}" rx="6"/>
+        <line class="guide" x1="0" x2="0" y1="${m.t}" y2="${base}"/></g>
+      <g class="cursor-dot cursor-out"><rect class="halo" x="-9" y="-9" width="18" height="18" rx="4"/><rect class="mark-out" x="-4" y="-4" width="8" height="8"/></g>
+      <g class="cursor-dot cursor-in"><circle class="halo" r="10"/><circle class="mark-in" r="4.5"/></g>
+    </g>`;
+
+    cancelAnimationFrame(svg._raf);
     svg.innerHTML = g;
+    svg.classList.toggle('is-entering', animate && !reduceMotion.matches);
+    if (animate && !reduceMotion.matches) {
+      const rect = svg.querySelector('#chartRevealRect'), t0 = performance.now();
+      const tick = (now) => {
+        const p = Math.min(1, Math.max(0, (now - t0) / 1100));
+        rect.setAttribute('width', (W * easeOut(p)).toFixed(1));
+        if (p < 1) svg._raf = requestAnimationFrame(tick);
+      };
+      svg._raf = requestAnimationFrame(tick);
+    }
+
     const sumIn = data.reduce((a, d) => a + d.in, 0), sumOut = data.reduce((a, d) => a + d.out, 0);
+    countTo($('#sumIn'), sumIn);
+    countTo($('#sumOut'), sumOut);
+    countTo($('#sumNet'), sumIn - sumOut, true);
+    $('#sumRange').textContent = `최근 ${state.range}일 합계`;
     svg.setAttribute('aria-label', `최근 ${state.range}일 입고·출고 수량 선 그래프. 입고 합계 ${nf.format(sumIn)}, 출고 합계 ${nf.format(sumOut)}.`);
     svg._geom = { data, x, y, m, W, H };
-    if (state.activeIdx != null) setActive(Math.min(state.activeIdx, data.length - 1));
+    if (state.activeIdx != null) setActive(Math.min(state.activeIdx, n - 1));
+    else $('#chartTip').classList.remove('is-on');
   }
 
   function setActive(i) {
     const svg = $('#chartSvg');
     if (!svg._geom) return;
-    const { data, x, y, m, H, W } = svg._geom;
-    const tip = $('#chartTip'), layer = $('#chartActive');
-    if (i == null) { state.activeIdx = null; layer.innerHTML = ''; tip.hidden = true; return; }
+    const { data, x, y, W } = svg._geom;
+    const tip = $('#chartTip'), cursor = $('#chartCursor');
+    if (i == null) {
+      state.activeIdx = null;
+      cursor?.classList.remove('is-on');
+      tip.classList.remove('is-on');
+      return;
+    }
+    // Appearing from hidden: jump into place instead of sliding in from the old spot.
+    const jump = !cursor.classList.contains('is-on');
+    cursor.classList.toggle('no-anim', jump);
+    tip.classList.toggle('no-anim', jump);
     state.activeIdx = i;
-    const d = data[i];
-    layer.innerHTML = `<line class="guide" x1="${x(i)}" x2="${x(i)}" y1="${m.t}" y2="${H - m.b}"/>
-      <circle class="dot-in" cx="${x(i)}" cy="${y(d.in)}" r="4"/>
-      <rect class="dot-out" x="${x(i) - 3.5}" y="${y(d.out) - 3.5}" width="7" height="7"/>`;
+    const d = data[i], net = d.in - d.out;
+    cursor.querySelector('.cursor-x').style.transform = `translate(${x(i)}px, 0)`;
+    cursor.querySelector('.cursor-in').style.transform = `translate(${x(i)}px, ${y(d.in)}px)`;
+    cursor.querySelector('.cursor-out').style.transform = `translate(${x(i)}px, ${y(d.out)}px)`;
     tip.innerHTML = `<strong>${fullFmt.format(d.date)}</strong>
-      <div class="row"><span>입고</span><span>${nf.format(d.in)}</span></div>
-      <div class="row"><span>출고</span><span>${nf.format(d.out)}</span></div>`;
-    tip.hidden = false;
+      <div class="row"><span class="k"><span class="tip-mk tip-in"></span>입고</span><span>${nf.format(d.in)}</span></div>
+      <div class="row"><span class="k"><span class="tip-mk tip-out"></span>출고</span><span>${nf.format(d.out)}</span></div>
+      <div class="row net"><span class="k">순증감</span><span>${net > 0 ? '+' : ''}${nf.format(net)}</span></div>`;
     const tw = tip.offsetWidth;
-    tip.style.left = `${Math.max(0, x(i) + 12 + tw > W ? x(i) - 12 - tw : x(i) + 12)}px`;
+    const left = Math.max(0, x(i) + 14 + tw > W ? x(i) - 14 - tw : x(i) + 14);
+    tip.style.transform = `translate(${left}px, 0)`;
+    if (jump) { void tip.offsetWidth; cursor.getBoundingClientRect(); }
+    cursor.classList.add('is-on');
+    tip.classList.add('is-on');
+    if (jump) requestAnimationFrame(() => { cursor.classList.remove('no-anim'); tip.classList.remove('no-anim'); });
   }
 
   (function bindChart() {
     const svg = $('#chartSvg');
     const idx = (e) => {
       const { data, x } = svg._geom;
-      const px = e.clientX - svg.getBoundingClientRect().left;
+      const px = (e.clientX - svg.getBoundingClientRect().left) * (svg._geom.W / svg.getBoundingClientRect().width);
       let best = 0, bd = Infinity;
       data.forEach((_, i) => { const dd = Math.abs(x(i) - px); if (dd < bd) { bd = dd; best = i; } });
       return best;
@@ -476,13 +583,22 @@
       setActive(i);
     });
     $$('.segmented button').forEach((b) => b.addEventListener('click', () => {
+      if (Number(b.dataset.range) === state.range) return;
       state.range = Number(b.dataset.range);
       state.activeIdx = null;
       $$('.segmented button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      renderChart();
+      renderChart(true);
     }));
+    // Redraw on real size changes only, so an entrance animation isn't cut short.
     let raf = 0;
-    new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(renderChart); }).observe($('#chart'));
+    new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const box = $('#chart').getBoundingClientRect(), gm = svg._geom;
+        if (gm && Math.max(280, Math.round(box.width)) === gm.W && Math.round(box.height) === gm.H) return;
+        renderChart();
+      });
+    }).observe($('#chart'));
   })();
 
   $$('.kpi-action').forEach((b) => b.addEventListener('click', () => {
