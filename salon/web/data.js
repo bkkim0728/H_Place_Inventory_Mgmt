@@ -42,6 +42,8 @@
     USER_NOT_FOUND: '사용자를 찾을 수 없습니다.',
     CANNOT_CHANGE_SELF: '본인의 역할·지점·사용 여부는 바꿀 수 없습니다. 다른 관리자에게 요청해 주세요.',
     LAST_ADMIN: '마지막 전체 관리자는 역할을 바꾸거나 중지할 수 없습니다.',
+    INVALID_PHOTO: '사진은 JPG·PNG·WEBP 이미지로, 5MB 이하만 올릴 수 있습니다.',
+    PHOTO_UPLOAD_FAILED: '사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.',
   };
 
   class AppError extends Error {
@@ -58,6 +60,8 @@
     if (code) return new AppError(code);
     if (/invalid login credentials/i.test(text)) return new AppError('LOGIN_FAILED', '아이디(이메일) 또는 비밀번호가 올바르지 않습니다.');
     if (/email not confirmed/i.test(text)) return new AppError('LOGIN_FAILED', '이메일 인증이 끝나지 않았습니다. 받은편지함의 인증 메일을 확인해 주세요.');
+    if (/row-level security|unauthorized/i.test(text)) return new AppError('FORBIDDEN');
+    if (/payload too large|exceeded the maximum|mime type/i.test(text)) return new AppError('INVALID_PHOTO');
     if (/rate limit/i.test(text)) return new AppError('RATE_LIMIT', '요청이 너무 많습니다. 몇 분 뒤 다시 시도해 주세요.');
     if (/failed to fetch|networkerror|load failed/i.test(text)) return new AppError('NETWORK', '서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
     return new AppError('UNKNOWN', `요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요. (${text})`);
@@ -89,6 +93,9 @@
     const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
       auth: { persistSession: true, autoRefreshToken: true },
     });
+    const photos = sb.storage.from('branch-photos');
+    const photoUrl = (path) => (path ? photos.getPublicUrl(path).data.publicUrl : null);
+    const withPhoto = (b) => ({ ...b, photo_url: photoUrl(b.photo_path) });
     const run = async (promise) => {
       let res;
       try { res = await promise; } catch (e) { throw toAppError(e); }
@@ -115,10 +122,36 @@
         const profile = await run(sb.from('profiles').select('user_id, email, login_id, full_name, role, branch_id, active').eq('user_id', user.id).maybeSingle());
         if (!profile || !profile.active) return { profile, branches: [] };
         // RLS returns only the branches this user may see (all of them for admins).
-        const branches = await run(sb.from('branches').select('id, code, name, phone, address, active').order('code'));
-        return { profile, branches };
+        const branches = await run(sb.from('branches').select('id, code, name, phone, address, active, photo_path').order('code'));
+        return { profile, branches: branches.map(withPhoto) };
       },
-      listBranches: () => run(sb.from('branches').select('id, code, name, phone, address, active').order('code')),
+      listBranches: async () => (await run(sb.from('branches').select('id, code, name, phone, address, active, photo_path').order('code'))).map(withPhoto),
+      // Uploads a new photo, points the branch at it, then deletes the old file.
+      async setBranchPhoto(branchId, blob) {
+        const ext = blob.type === 'image/webp' ? 'webp' : blob.type === 'image/png' ? 'png' : 'jpg';
+        const path = `${branchId}/${Date.now().toString(36)}.${ext}`;
+        await run(photos.upload(path, blob, { contentType: blob.type, cacheControl: '31536000', upsert: false }));
+        let old;
+        try {
+          old = await run(sb.rpc('set_branch_photo', { p_branch_id: branchId, p_path: path }));
+        } catch (e) {
+          await photos.remove([path]).catch(() => {});
+          throw e;
+        }
+        if (old && old !== path) await photos.remove([old]).catch(() => {});
+        return photoUrl(path);
+      },
+      async removeBranchPhoto(branchId) {
+        const old = await run(sb.rpc('set_branch_photo', { p_branch_id: branchId, p_path: null }));
+        if (old) await photos.remove([old]).catch(() => {});
+      },
+      // Works before sign-in (granted to anon); failures just mean no photo.
+      async loginPhotos() {
+        try {
+          const rows = await run(sb.rpc('login_photos'));
+          return (rows || []).map((r) => ({ id: r.id, name: r.name, url: photoUrl(r.photo_path) }));
+        } catch (e) { return []; }
+      },
       listCategories: () => run(sb.from('categories').select('id, name, sort_order').order('sort_order').order('name')),
       saveCategory: (id, name) => run(sb.rpc('save_category', { p_category_id: id || null, p_name: name })),
       deleteCategory: (id) => run(sb.rpc('delete_category', { p_category_id: id })),
@@ -386,6 +419,33 @@
       },
       async listBranches() {
         return delay(clone(isAdmin() ? state.branches : state.branches.filter((b) => b.id === me().branch_id)));
+      },
+      // Demo photos are stored as data URLs in this browser.
+      async setBranchPhoto(branchId, blob) {
+        must(isManager(branchId), 'FORBIDDEN');
+        const row = state.branches.find((b) => b.id === branchId);
+        must(row, 'BRANCH_NOT_FOUND');
+        must(/^image\/(jpeg|png|webp)$/.test(blob.type) && blob.size <= 5242880, 'INVALID_PHOTO');
+        const url = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new AppError('PHOTO_UPLOAD_FAILED'));
+          r.readAsDataURL(blob);
+        });
+        row.photo_url = url;
+        save();
+        return delay(url);
+      },
+      async removeBranchPhoto(branchId) {
+        must(isManager(branchId), 'FORBIDDEN');
+        const row = state.branches.find((b) => b.id === branchId);
+        must(row, 'BRANCH_NOT_FOUND');
+        delete row.photo_url;
+        save();
+        return delay();
+      },
+      async loginPhotos() {
+        return state.branches.filter((b) => b.active !== false && b.photo_url).map((b) => ({ id: b.id, name: b.name, url: b.photo_url }));
       },
       async listInventory(branchId) {
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');
