@@ -54,6 +54,10 @@
       <symbol id="i-badge" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16.2a3.4 3.4 0 0 1 6.4 0M14 10h4M14 13.5h3"/></symbol>
       <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
       <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+      <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+      <symbol id="i-lock-check" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M9.5 15.5l2 2 3.5-3.5"/></symbol>
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     </defs>
@@ -117,12 +121,14 @@
           <li><a href="#/dashboard" class="nav-link" data-route="dashboard"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>대시보드</a></li>
           <li><a href="#/inventory" class="nav-link" data-route="inventory"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>재고 목록<span class="nav-badge" id="navAlertCount" data-zero="true">0</span></a></li>
           <li><a href="#/movements" class="nav-link" data-route="movements"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>입출고 내역</a></li>
+          <li><a href="#/schedule" class="nav-link" data-route="schedule"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg>근무표</a></li>
         </ul>
         <p class="nav-section" data-manager-only>관리</p>
         <ul class="nav-list" data-manager-only>
           <li><a href="#/products" class="nav-link" data-route="products"><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>제품 관리</a></li>
           <li data-admin-only><a href="#/categories" class="nav-link" data-route="categories"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>카테고리 관리</a></li>
           <li><a href="#/staff" class="nav-link" data-route="staff"><svg class="icon" aria-hidden="true"><use href="#i-badge"/></svg>직원 관리</a></li>
+          <li><a href="#/payroll" class="nav-link" data-route="payroll"><svg class="icon" aria-hidden="true"><use href="#i-won"/></svg>실적·정산</a></li>
           <li><a href="#/users" class="nav-link" data-route="users"><svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>사용자 관리</a></li>
           <li><a href="#/branches" class="nav-link" data-route="branches"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>지점 관리</a></li>
         </ul>
@@ -332,7 +338,7 @@
                   <th scope="col" class="th-plain">구분</th>
                   <th scope="col" class="th-plain num">변동</th>
                   <th scope="col" class="th-plain num">변동 후</th>
-                  <th scope="col" class="th-plain">담당자</th>
+                  <th scope="col" class="th-plain">등록 · 담당</th>
                   <th scope="col" class="th-plain">메모</th>
                   <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
                 </tr>
@@ -486,6 +492,114 @@
           </div>
         </section>
 
+        <section class="view" data-view="schedule" hidden aria-labelledby="pageTitle">
+          <div class="card panel">
+            <div class="toolbar sched-toolbar">
+              <div class="month-nav">
+                <button type="button" class="icon-btn" id="schPrev" aria-label="이전 달"><svg class="icon" aria-hidden="true"><use href="#i-chev-left"/></svg></button>
+                <h2 id="schMonth" aria-live="polite">—</h2>
+                <button type="button" class="icon-btn" id="schNext" aria-label="다음 달"><svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></button>
+                <button type="button" class="btn btn-secondary btn-sm" id="schThis">이번 달</button>
+              </div>
+              <ul class="sched-legend" aria-label="표시 설명">
+                <li><span class="sc sc-reg">휴</span>정기 휴무</li>
+                <li><span class="sc sc-off">휴</span>추가 휴무</li>
+                <li><span class="sc sc-work">근</span>대체 근무</li>
+                <li><span class="sc sc-annual">연</span>연차</li>
+                <li><span class="sc sc-half">반</span>반차</li>
+                <li><span class="sc sc-sick">병</span>병가</li>
+                <li><span class="sc sc-edu">교</span>교육</li>
+              </ul>
+            </div>
+            <p class="note" data-manager-only>칸을 누르면 그날의 연차·반차·병가·교육·추가 휴무·대체 근무를 기록합니다. 정기 휴무 요일은 직원 관리에서 정합니다.</p>
+            <p class="err-box" id="schError" hidden></p>
+            <div class="sched-wrap" id="schWrap" tabindex="0" role="region" aria-label="월별 근무표. 가로로 스크롤할 수 있습니다.">
+              <table class="sched" id="schTable"></table>
+            </div>
+            <div class="empty" id="schEmpty" hidden>
+              <svg class="icon icon-lg" aria-hidden="true"><use href="#i-calendar"/></svg>
+              <p><strong>이 달에 근무한 직원이 없습니다.</strong></p>
+              <p class="muted small" data-manager-only>직원 관리에서 직원을 먼저 등록해 주세요.</p>
+            </div>
+          </div>
+
+          <section class="card panel" data-manager-only aria-labelledby="leaveHeading">
+            <div class="panel-head">
+              <div>
+                <h2 id="leaveHeading">연차 현황</h2>
+                <p class="muted small" id="leaveSub">—</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="inv-table" id="leaveTable">
+                <caption class="sr-only">직원별 연차 현황</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" class="th-plain">직원</th>
+                    <th scope="col" class="th-plain">입사·근속</th>
+                    <th scope="col" class="th-plain">발생</th>
+                    <th scope="col" class="th-plain">사용</th>
+                    <th scope="col" class="th-plain">남음</th>
+                    <th scope="col" class="th-plain">사용한 날</th>
+                  </tr>
+                </thead>
+                <tbody id="leaveBody"></tbody>
+              </table>
+            </div>
+            <p class="muted small leave-note">발생 일수는 근로기준법 제60조를 입사일 기준으로 적용한 추정치입니다(1년 미만: 개근한 달마다 1일, 1년 이상: 15일 + 2년마다 1일, 최대 25일). 상시 근로자 5인 미만 사업장은 연차 규정이 적용되지 않습니다. 회사 기준이 다르면 직원 관리에서 연차 일수를 직접 정해 주세요. 사용 일수는 올해 근무표의 연차(1일)·반차(0.5일) 합계입니다.</p>
+          </section>
+        </section>
+
+        <section class="view" data-view="payroll" hidden aria-labelledby="pageTitle">
+          <div class="card panel">
+            <div class="toolbar sched-toolbar">
+              <div class="month-nav">
+                <button type="button" class="icon-btn" id="payPrev" aria-label="이전 달"><svg class="icon" aria-hidden="true"><use href="#i-chev-left"/></svg></button>
+                <h2 id="payMonth" aria-live="polite">—</h2>
+                <button type="button" class="icon-btn" id="payNext" aria-label="다음 달"><svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></button>
+                <span id="payStatus"></span>
+              </div>
+              <div class="row-gap">
+                <button type="button" class="btn btn-secondary" id="payCsv"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>CSV 내보내기</button>
+                <button type="button" class="btn btn-secondary" id="payReopen" data-admin-only hidden>확정 취소</button>
+                <button type="button" class="btn btn-primary" id="payConfirm"><svg class="icon" aria-hidden="true"><use href="#i-lock-check"/></svg>정산 확정</button>
+              </div>
+            </div>
+            <p class="note">시술 매출·건수는 POS 기준으로 직접 입력하고, 제품 판매와 재료 사용액은 입출고 등록 때 고른 <strong>담당 디자이너</strong> 기준으로 자동 집계합니다. 인센티브 = 시술 매출 × 시술율 + 제품 판매 × 판매율 + 조정액.</p>
+            <p class="err-box" id="payError" hidden></p>
+            <div class="kpi-grid pay-kpis">
+              <article class="card kpi"><div class="kpi-head"><span class="kpi-label">시술 매출</span></div><p class="kpi-value" id="payKpiService">0원</p><p class="kpi-sub muted" id="payKpiServiceSub">—</p></article>
+              <article class="card kpi"><div class="kpi-head"><span class="kpi-label">제품 판매</span></div><p class="kpi-value" id="payKpiRetail">0원</p><p class="kpi-sub muted" id="payKpiRetailSub">—</p></article>
+              <article class="card kpi"><div class="kpi-head"><span class="kpi-label">인센티브 합계</span></div><p class="kpi-value" id="payKpiIncentive">0원</p><p class="kpi-sub muted" id="payKpiIncentiveSub">—</p></article>
+              <article class="card kpi"><div class="kpi-head"><span class="kpi-label">재료 사용액</span></div><p class="kpi-value" id="payKpiMaterial">0원</p><p class="kpi-sub muted">매입가 기준 · 시술 사용</p></article>
+            </div>
+            <div class="table-wrap">
+              <table class="inv-table pay-table" id="payTable">
+                <caption class="sr-only">직원별 실적과 인센티브</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" class="th-plain">직원</th>
+                    <th scope="col" class="th-plain num">시술 매출</th>
+                    <th scope="col" class="th-plain num">시술 인센티브</th>
+                    <th scope="col" class="th-plain num">제품 판매</th>
+                    <th scope="col" class="th-plain num">판매 인센티브</th>
+                    <th scope="col" class="th-plain num">조정</th>
+                    <th scope="col" class="th-plain num">인센티브 합계</th>
+                    <th scope="col" class="th-plain num">재료 사용액</th>
+                    <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
+                  </tr>
+                </thead>
+                <tbody id="payBody"></tbody>
+                <tfoot id="payFoot"></tfoot>
+              </table>
+              <div class="empty" id="payEmpty" hidden>
+                <svg class="icon icon-lg" aria-hidden="true"><use href="#i-won"/></svg>
+                <p><strong>이 달에 정산할 직원이 없습니다.</strong></p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="view" data-view="users" hidden aria-labelledby="pageTitle">
           <div class="card panel">
             <div class="toolbar">
@@ -581,6 +695,11 @@
           <input id="mQty" type="number" inputmode="numeric" min="0" step="1" required aria-describedby="mPreview mQtyErr" />
           <p class="help preview" id="mPreview">품목을 선택하면 등록 후 재고를 미리 보여 줍니다.</p>
           <p class="err" id="mQtyErr" hidden></p>
+        </div>
+        <div class="form-field" id="mStaffField" hidden>
+          <label for="mStaff">담당 디자이너 <span class="muted small">(선택)</span></label>
+          <select id="mStaff" aria-describedby="mStaffHelp"></select>
+          <p class="help" id="mStaffHelp">선택하면 이 디자이너의 제품 판매 실적·재료 사용액에 들어갑니다.</p>
         </div>
         <div class="form-field">
           <label for="mMemo">메모 <span class="muted small">(선택)</span></label>
@@ -1002,6 +1121,12 @@
             <input id="sCert" type="date" aria-describedby="sCertHelp" />
             <p class="help" id="sCertHelp">건강진단결과서는 1년마다 갱신합니다. 만료 30일 전부터 알려 드립니다.</p>
           </div>
+          <div class="form-field">
+            <label for="sLeave">연간 연차 일수 <span class="muted small">(선택)</span></label>
+            <input id="sLeave" type="number" inputmode="decimal" min="0" max="60" step="0.5" aria-describedby="sLeaveHelp sLeaveErr" />
+            <p class="help" id="sLeaveHelp">비워 두면 입사일 기준으로 자동 계산합니다(근로기준법).</p>
+            <p class="err" id="sLeaveErr" hidden></p>
+          </div>
           <div class="form-field span-2">
             <label for="sMemo">메모 <span class="muted small">(선택)</span></label>
             <textarea id="sMemo" rows="2" maxlength="300" placeholder="예: 웨딩·업스타일 예약 담당, 승급 평가 예정"></textarea>
@@ -1012,6 +1137,80 @@
         <button type="button" class="btn btn-ghost-danger foot-start" id="staffDelete" hidden>삭제</button>
         <button type="button" class="btn btn-secondary" data-close>취소</button>
         <button type="submit" class="btn btn-primary" id="staffSubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Schedule day dialog -->
+  <dialog class="modal" id="schDialog" aria-labelledby="schTitle">
+    <form id="schForm" novalidate>
+      <div class="modal-head">
+        <h2 id="schTitle">근무표 수정</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="schErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <p class="muted small" id="schInfo"></p>
+        <fieldset class="form-field">
+          <legend>이날의 근무</legend>
+          <div class="chip-row" id="schKinds">
+            <label class="radio"><input type="radio" name="schKind" value="" /> 기본 일정</label>
+            <label class="radio"><input type="radio" name="schKind" value="annual" /> 연차</label>
+            <label class="radio"><input type="radio" name="schKind" value="half" /> 반차</label>
+            <label class="radio"><input type="radio" name="schKind" value="sick" /> 병가</label>
+            <label class="radio"><input type="radio" name="schKind" value="edu" /> 교육</label>
+            <label class="radio"><input type="radio" name="schKind" value="off" /> 추가 휴무</label>
+            <label class="radio"><input type="radio" name="schKind" value="work" /> 대체 근무</label>
+          </div>
+        </fieldset>
+        <div class="form-field">
+          <label for="schMemo">메모 <span class="muted small">(선택)</span></label>
+          <input id="schMemo" type="text" maxlength="100" placeholder="예: 가족 행사, 신제품 교육" />
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="schSubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Payroll entry dialog -->
+  <dialog class="modal" id="payDialog" aria-labelledby="payTitle">
+    <form id="payForm" novalidate>
+      <div class="modal-head">
+        <h2 id="payTitle">실적 입력</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="payErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="pSales">시술 매출 <span class="muted small">(원)</span></label>
+            <input id="pSales" type="text" inputmode="numeric" autocomplete="off" aria-describedby="pSalesErr" />
+            <p class="err" id="pSalesErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pCount">시술 건수</label>
+            <input id="pCount" type="number" inputmode="numeric" min="0" step="1" aria-describedby="pCountErr" />
+            <p class="err" id="pCountErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pAdj">조정액 <span class="muted small">(원, ±)</span></label>
+            <input id="pAdj" type="text" inputmode="numeric" autocomplete="off" placeholder="예: 50000 또는 -20000" aria-describedby="pAdjHelp pAdjErr" />
+            <p class="help" id="pAdjHelp">보너스·공제 등. 빼려면 앞에 - 를 붙입니다.</p>
+            <p class="err" id="pAdjErr" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="pMemo">메모 <span class="muted small">(선택)</span></label>
+            <input id="pMemo" type="text" maxlength="100" placeholder="예: 우수 사원 보너스" />
+          </div>
+        </div>
+        <div class="pay-preview" id="pPreview" aria-live="polite"></div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="paySubmit">저장</button>
       </div>
     </form>
   </dialog>

@@ -147,6 +147,41 @@ create index if not exists stock_movements_branch_created_idx
 create index if not exists stock_movements_product_idx
   on public.stock_movements (product_id);
 
+-- Staff (직원) records; the rest of 직원 관리 is further down.
+create table if not exists public.staff (
+  id                   uuid primary key default gen_random_uuid(),
+  branch_id            uuid not null references public.branches(id) on delete cascade,
+  name                 text not null,
+  position             text not null default 'designer',
+  phone                text,
+  hired_on             date,
+  status               text not null default 'active',
+  left_on              date,
+  services             text[] not null default '{}',
+  days_off             smallint[] not null default '{}',
+  incentive_service    numeric(4,1),
+  incentive_retail     numeric(4,1),
+  license_no           text,
+  health_cert_expires  date,
+  memo                 text,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  constraint staff_position_chk check (position in ('director', 'chief', 'designer', 'intern', 'desk')),
+  constraint staff_status_chk check (status in ('active', 'leave', 'left')),
+  constraint staff_services_chk check (services <@ array['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo']::text[]),
+  constraint staff_days_chk check (days_off <@ array[0, 1, 2, 3, 4, 5, 6]::smallint[]),
+  constraint staff_rates_chk check (coalesce(incentive_service, 0) between 0 and 100
+                                    and coalesce(incentive_retail, 0) between 0 and 100)
+);
+create index if not exists staff_branch_idx on public.staff (branch_id);
+alter table public.staff add column if not exists photo_path text;  -- file in the private staff-photos bucket
+alter table public.staff add column if not exists annual_leave_days numeric(4,1);  -- 연차 일수 override (null = 자동 계산)
+
+-- Designer who did the 시술 / made the sale, and the 판매가 at the time of a sale
+alter table public.stock_movements add column if not exists staff_id uuid references public.staff(id) on delete set null;
+alter table public.stock_movements add column if not exists unit_price integer;
+create index if not exists stock_movements_staff_idx on public.stock_movements (staff_id, created_at);
+
 -- ---------------------------------------------------------------------------
 -- Access helpers (security definer so policies don't recurse into profiles)
 -- ---------------------------------------------------------------------------
@@ -239,13 +274,24 @@ select
 from public.inventory i
 join public.products p on p.id = i.product_id;
 
+-- Staff names for a branch's members (the staff table itself is manager-only
+-- because it holds pay rates).
+create or replace function public.staff_display_name(p_staff_id uuid)
+returns text
+language sql stable security definer set search_path = public
+as $$
+  select s.name from public.staff s
+  where s.id = p_staff_id and public.is_branch_member(s.branch_id);
+$$;
+
 create or replace view public.movement_view with (security_invoker = true) as
 select
   m.id, m.branch_id, m.product_id, m.type, m.quantity, m.stock_after,
   m.unit_cost, m.memo, m.reverts_id, m.created_by, m.created_at,
   p.name as product_name, p.sku, p.unit,
   pr.full_name as created_by_name,
-  exists (select 1 from public.stock_movements r where r.reverts_id = m.id) as reverted
+  exists (select 1 from public.stock_movements r where r.reverts_id = m.id) as reverted,
+  m.staff_id, public.staff_display_name(m.staff_id) as staff_name, m.unit_price
 from public.stock_movements m
 join public.products p on p.id = m.product_id
 left join public.profiles pr on pr.user_id = m.created_by;
@@ -261,12 +307,14 @@ grant select on public.inventory_view, public.movement_view to authenticated;
 --   NOT_AUTHENTICATED, NOT_BRANCH_MEMBER, MANAGER_ONLY, PRODUCT_NOT_FOUND,
 --   INVALID_QUANTITY, UNSUPPORTED_TYPE, INSUFFICIENT_STOCK, NO_CHANGE
 -- ---------------------------------------------------------------------------
+drop function if exists public.record_movement(uuid, uuid, public.movement_type, integer, text);  -- before 담당 디자이너
 create or replace function public.record_movement(
   p_branch_id  uuid,
   p_product_id uuid,
   p_type       public.movement_type,
   p_quantity   integer,
-  p_memo       text default null
+  p_memo       text default null,
+  p_staff_id   uuid default null   -- 담당 디자이너 (optional; a current staff member of the branch)
 )
 returns public.stock_movements
 language plpgsql security definer set search_path = public
@@ -276,6 +324,7 @@ declare
   v_delta  integer;
   v_after  integer;
   v_cost   integer;
+  v_price  integer;
   v_row    public.stock_movements;
 begin
   if auth.uid() is null then
@@ -294,9 +343,14 @@ begin
     raise exception 'INVALID_QUANTITY' using errcode = '22023';
   end if;
 
-  select cost_price into v_cost from public.products where id = p_product_id and active;
+  select cost_price, retail_price into v_cost, v_price from public.products where id = p_product_id and active;
   if not found then
     raise exception 'PRODUCT_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if p_staff_id is not null and not exists (
+       select 1 from public.staff s
+       where s.id = p_staff_id and s.branch_id = p_branch_id and s.status <> 'left') then
+    raise exception 'INVALID_STAFF' using errcode = '22023';
   end if;
 
   insert into public.inventory (branch_id, product_id)
@@ -328,9 +382,10 @@ begin
    where branch_id = p_branch_id and product_id = p_product_id;
 
   insert into public.stock_movements
-    (branch_id, product_id, type, quantity, stock_after, unit_cost, memo, created_by)
+    (branch_id, product_id, type, quantity, stock_after, unit_cost, unit_price, staff_id, memo, created_by)
   values
     (p_branch_id, p_product_id, p_type, v_delta, v_after, v_cost,
+     case when p_type = 'sale' then v_price end, p_staff_id,
      nullif(btrim(p_memo), ''), auth.uid())
   returning * into v_row;
 
@@ -389,10 +444,10 @@ begin
    where branch_id = v_mv.branch_id and product_id = v_mv.product_id;
 
   insert into public.stock_movements
-    (branch_id, product_id, type, quantity, stock_after, unit_cost, memo, reverts_id, created_by)
+    (branch_id, product_id, type, quantity, stock_after, unit_cost, unit_price, staff_id, memo, reverts_id, created_by)
   values
     (v_mv.branch_id, v_mv.product_id, v_mv.type, -v_mv.quantity, v_after, v_mv.unit_cost,
-     format('취소: #%s', v_mv.id), v_mv.id, auth.uid())
+     v_mv.unit_price, v_mv.staff_id, format('취소: #%s', v_mv.id), v_mv.id, auth.uid())
   returning * into v_row;
 
   return v_row;
@@ -808,33 +863,6 @@ $$;
 --   days_off  regular weekly days off, 0 = Sunday … 6 = Saturday
 --   health_cert_expires  건강진단결과서(보건증) expiry — renewed every year
 -- ---------------------------------------------------------------------------
-create table if not exists public.staff (
-  id                   uuid primary key default gen_random_uuid(),
-  branch_id            uuid not null references public.branches(id) on delete cascade,
-  name                 text not null,
-  position             text not null default 'designer',
-  phone                text,
-  hired_on             date,
-  status               text not null default 'active',
-  left_on              date,
-  services             text[] not null default '{}',
-  days_off             smallint[] not null default '{}',
-  incentive_service    numeric(4,1),
-  incentive_retail     numeric(4,1),
-  license_no           text,
-  health_cert_expires  date,
-  memo                 text,
-  created_at           timestamptz not null default now(),
-  updated_at           timestamptz not null default now(),
-  constraint staff_position_chk check (position in ('director', 'chief', 'designer', 'intern', 'desk')),
-  constraint staff_status_chk check (status in ('active', 'leave', 'left')),
-  constraint staff_services_chk check (services <@ array['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo']::text[]),
-  constraint staff_days_chk check (days_off <@ array[0, 1, 2, 3, 4, 5, 6]::smallint[]),
-  constraint staff_rates_chk check (coalesce(incentive_service, 0) between 0 and 100
-                                    and coalesce(incentive_retail, 0) between 0 and 100)
-);
-create index if not exists staff_branch_idx on public.staff (branch_id);
-alter table public.staff add column if not exists photo_path text;  -- file in the private staff-photos bucket
 
 alter table public.staff enable row level security;
 drop policy if exists "staff: managers read" on public.staff;
@@ -847,6 +875,7 @@ grant select on public.staff to authenticated;
 -- manager of the branch (and, on update, of the record's current branch).
 -- Leaving (status 'left') without a date records today.
 -- Errors: FORBIDDEN, INVALID_STAFF, STAFF_NOT_FOUND
+drop function if exists public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text);
 create or replace function public.save_staff(
   p_id                  uuid,
   p_branch_id           uuid,
@@ -862,7 +891,8 @@ create or replace function public.save_staff(
   p_incentive_retail    numeric,
   p_license_no          text,
   p_health_cert_expires date,
-  p_memo                text
+  p_memo                text,
+  p_annual_leave_days   numeric default null   -- null = 입사일 기준 자동 계산
 )
 returns uuid
 language plpgsql security definer set search_path = public
@@ -891,7 +921,8 @@ begin
      or not coalesce(p_days_off, '{}') <@ array[0, 1, 2, 3, 4, 5, 6]
      or coalesce(p_incentive_service, 0) not between 0 and 100
      or coalesce(p_incentive_retail, 0) not between 0 and 100
-     or (p_left_on is not null and p_hired_on is not null and p_left_on < p_hired_on) then
+     or (p_left_on is not null and p_hired_on is not null and p_left_on < p_hired_on)
+     or coalesce(p_annual_leave_days, 0) not between 0 and 60 then
     raise exception 'INVALID_STAFF' using errcode = '22023';
   end if;
 
@@ -916,6 +947,7 @@ begin
          license_no = nullif(btrim(p_license_no), ''),
          health_cert_expires = p_health_cert_expires,
          memo = nullif(btrim(p_memo), ''),
+         annual_leave_days = p_annual_leave_days,
          updated_at = now()
    where id = v_id;
   return v_id;
@@ -973,17 +1005,288 @@ begin
 end;
 $$;
 
-revoke all on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text) from public, anon;
+revoke all on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text, numeric) from public, anon;
 revoke all on function public.delete_staff(uuid) from public, anon;
-grant execute on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text) to authenticated;
+grant execute on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text, numeric) to authenticated;
 grant execute on function public.delete_staff(uuid) to authenticated;
 revoke all on function public.set_staff_photo(uuid, text) from public, anon;
 grant execute on function public.set_staff_photo(uuid, text) to authenticated;
 
+-- Names for everyone at the branch (근무표, 담당 디자이너 선택). No pay data.
+create or replace function public.list_staff_names(p_branch_id uuid)
+returns table (id uuid, name text, "position" text, status text, days_off smallint[], hired_on date, left_on date)
+language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if not public.is_branch_member(p_branch_id) then
+    raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501';
+  end if;
+  return query
+    select s.id, s.name, s.position, s.status, s.days_off, s.hired_on, s.left_on
+    from public.staff s where s.branch_id = p_branch_id
+    order by s.name;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 근무표: exceptions to the regular weekly days off, one per person per day.
+--   off 추가 휴무 · work 대체 근무 (works on a regular day off) · annual 연차 ·
+--   half 반차 · sick 병가 · edu 교육
+-- Everyone at the branch can read it; the manager (or an admin) edits it.
+-- ---------------------------------------------------------------------------
+create table if not exists public.staff_schedule (
+  id          bigint generated always as identity primary key,
+  branch_id   uuid not null references public.branches(id) on delete cascade,
+  staff_id    uuid not null references public.staff(id) on delete cascade,
+  day         date not null,
+  kind        text not null,
+  memo        text,
+  created_by  uuid references auth.users(id) on delete set null,
+  created_at  timestamptz not null default now(),
+  constraint staff_schedule_kind_chk check (kind in ('off', 'work', 'annual', 'half', 'sick', 'edu')),
+  constraint staff_schedule_day_key unique (staff_id, day)
+);
+create index if not exists staff_schedule_branch_day_idx on public.staff_schedule (branch_id, day);
+alter table public.staff_schedule enable row level security;
+drop policy if exists "schedule: members read" on public.staff_schedule;
+create policy "schedule: members read" on public.staff_schedule
+  for select to authenticated using (public.is_branch_member(branch_id));
+revoke all on public.staff_schedule from anon, authenticated;
+grant select on public.staff_schedule to authenticated;
+
+-- set_schedule: p_kind null clears the day. Errors: FORBIDDEN, STAFF_NOT_FOUND, INVALID_SCHEDULE
+create or replace function public.set_schedule(p_staff_id uuid, p_day date, p_kind text, p_memo text default null)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_branch uuid;
+begin
+  select branch_id into v_branch from public.staff where id = p_staff_id;
+  if not found then
+    raise exception 'STAFF_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if not public.is_branch_manager(v_branch) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if p_day is null or (p_kind is not null and p_kind not in ('off', 'work', 'annual', 'half', 'sick', 'edu')) then
+    raise exception 'INVALID_SCHEDULE' using errcode = '22023';
+  end if;
+  if p_kind is null then
+    delete from public.staff_schedule where staff_id = p_staff_id and day = p_day;
+  else
+    insert into public.staff_schedule (branch_id, staff_id, day, kind, memo, created_by)
+    values (v_branch, p_staff_id, p_day, p_kind, nullif(btrim(p_memo), ''), auth.uid())
+    on conflict (staff_id, day) do update
+      set kind = excluded.kind, memo = excluded.memo, created_by = excluded.created_by, created_at = now();
+  end if;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 실적·정산 (monthly, per branch; manager or admin)
+--   시술 매출·건수·조정액 are entered from the POS; 제품 판매 and 재료 사용액
+--   come from stock movements tagged with the designer (Korea time months).
+--   Incentive = 시술 매출 × 시술율 + 제품 판매 × 판매율 + 조정액 (원 단위 반올림).
+--   Confirming a month stores the figures so later changes don't alter it;
+--   only an admin can reopen a confirmed month.
+-- ---------------------------------------------------------------------------
+create table if not exists public.staff_monthly (
+  staff_id        uuid not null references public.staff(id) on delete cascade,
+  month           date not null,              -- first day of the month
+  branch_id       uuid not null references public.branches(id) on delete cascade,
+  service_sales   bigint not null default 0,
+  service_count   integer not null default 0,
+  adjustment      bigint not null default 0,
+  memo            text,
+  -- stored when the month is confirmed
+  retail_sales_snap   bigint,
+  retail_qty_snap     integer,
+  material_cost_snap  bigint,
+  rate_service_snap   numeric(4,1),
+  rate_retail_snap    numeric(4,1),
+  updated_at      timestamptz not null default now(),
+  primary key (staff_id, month),
+  constraint staff_monthly_amounts_chk check (service_sales >= 0 and service_count >= 0)
+);
+create table if not exists public.payroll_months (
+  branch_id     uuid not null references public.branches(id) on delete cascade,
+  month         date not null,
+  confirmed_at  timestamptz not null default now(),
+  confirmed_by  uuid references auth.users(id) on delete set null,
+  primary key (branch_id, month)
+);
+alter table public.staff_monthly enable row level security;
+alter table public.payroll_months enable row level security;
+drop policy if exists "staff_monthly: managers read" on public.staff_monthly;
+create policy "staff_monthly: managers read" on public.staff_monthly
+  for select to authenticated using (public.is_branch_manager(branch_id));
+drop policy if exists "payroll_months: managers read" on public.payroll_months;
+create policy "payroll_months: managers read" on public.payroll_months
+  for select to authenticated using (public.is_branch_manager(branch_id));
+revoke all on public.staff_monthly, public.payroll_months from anon, authenticated;
+grant select on public.staff_monthly, public.payroll_months to authenticated;
+
+-- save_staff_month: 시술 매출·건수·조정액·메모. Errors: FORBIDDEN, STAFF_NOT_FOUND, INVALID_AMOUNT, MONTH_CONFIRMED
+create or replace function public.save_staff_month(
+  p_staff_id uuid, p_month date, p_service_sales bigint, p_service_count integer, p_adjustment bigint, p_memo text
+)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_branch uuid;
+  v_month  date := date_trunc('month', p_month)::date;
+begin
+  select branch_id into v_branch from public.staff where id = p_staff_id;
+  if not found then
+    raise exception 'STAFF_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if not public.is_branch_manager(v_branch) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if p_month is null or coalesce(p_service_sales, 0) < 0 or coalesce(p_service_count, 0) < 0
+     or abs(coalesce(p_adjustment, 0)) > 100000000 or coalesce(p_service_sales, 0) > 10000000000 then
+    raise exception 'INVALID_AMOUNT' using errcode = '22023';
+  end if;
+  if exists (select 1 from public.payroll_months where branch_id = v_branch and month = v_month) then
+    raise exception 'MONTH_CONFIRMED' using errcode = 'P0001';
+  end if;
+  insert into public.staff_monthly (staff_id, month, branch_id, service_sales, service_count, adjustment, memo)
+  values (p_staff_id, v_month, v_branch, coalesce(p_service_sales, 0), coalesce(p_service_count, 0),
+          coalesce(p_adjustment, 0), nullif(btrim(p_memo), ''))
+  on conflict (staff_id, month) do update
+    set service_sales = excluded.service_sales, service_count = excluded.service_count,
+        adjustment = excluded.adjustment, memo = excluded.memo, updated_at = now();
+end;
+$$;
+
+-- staff_month_report: one row per person who worked that month (or has figures).
+create or replace function public.staff_month_report(p_branch_id uuid, p_month date)
+returns table (
+  staff_id uuid, name text, "position" text, status text,
+  rate_service numeric, rate_retail numeric,
+  service_sales bigint, service_count integer, adjustment bigint, memo text,
+  retail_sales bigint, retail_qty integer, material_cost bigint,
+  incentive_service bigint, incentive_retail bigint, incentive_total bigint,
+  confirmed boolean
+)
+language plpgsql stable security definer set search_path = public
+as $$
+declare
+  v_month     date := date_trunc('month', p_month)::date;
+  v_from      timestamptz := (date_trunc('month', p_month)::date)::timestamp at time zone 'Asia/Seoul';
+  v_to        timestamptz := ((date_trunc('month', p_month) + interval '1 month')::date)::timestamp at time zone 'Asia/Seoul';
+  v_confirmed boolean;
+begin
+  if p_branch_id is null or not public.is_branch_manager(p_branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  v_confirmed := exists (select 1 from public.payroll_months pm where pm.branch_id = p_branch_id and pm.month = v_month);
+  return query
+  with mv as (
+    select m.staff_id as sid,
+           sum(case when m.type = 'sale' then -m.quantity * coalesce(m.unit_price, p.retail_price, 0) else 0 end)::bigint as r_sales,
+           sum(case when m.type = 'sale' then -m.quantity else 0 end)::integer as r_qty,
+           sum(case when m.type = 'use' then -m.quantity * coalesce(m.unit_cost, 0) else 0 end)::bigint as mat
+    from public.stock_movements m
+    join public.products p on p.id = m.product_id
+    where m.branch_id = p_branch_id and m.staff_id is not null
+      and m.created_at >= v_from and m.created_at < v_to
+    group by m.staff_id
+  ), base as (
+    select s.id, s.name, s.position, s.status,
+           case when v_confirmed then sm.rate_service_snap else s.incentive_service end as rs,
+           case when v_confirmed then sm.rate_retail_snap else s.incentive_retail end as rr,
+           coalesce(sm.service_sales, 0) as ss, coalesce(sm.service_count, 0) as sc,
+           coalesce(sm.adjustment, 0) as adj, sm.memo as mm,
+           case when v_confirmed then coalesce(sm.retail_sales_snap, 0) else coalesce(mv.r_sales, 0) end as rsales,
+           case when v_confirmed then coalesce(sm.retail_qty_snap, 0) else coalesce(mv.r_qty, 0) end as rqty,
+           case when v_confirmed then coalesce(sm.material_cost_snap, 0) else coalesce(mv.mat, 0) end as mcost
+    from public.staff s
+    left join public.staff_monthly sm on sm.staff_id = s.id and sm.month = v_month
+    left join mv on mv.sid = s.id
+    where s.branch_id = p_branch_id
+      and (case when v_confirmed then sm.staff_id is not null
+                else (sm.staff_id is not null or mv.sid is not null
+                      or ((s.hired_on is null or s.hired_on < (v_month + interval '1 month')::date)
+                          and (s.status <> 'left' or s.left_on is null or s.left_on >= v_month))) end)
+  )
+  select b.id, b.name, b.position, b.status, b.rs, b.rr, b.ss, b.sc, b.adj, b.mm,
+         b.rsales, b.rqty, b.mcost,
+         round(b.ss * coalesce(b.rs, 0) / 100)::bigint,
+         round(b.rsales * coalesce(b.rr, 0) / 100)::bigint,
+         (round(b.ss * coalesce(b.rs, 0) / 100) + round(b.rsales * coalesce(b.rr, 0) / 100) + b.adj)::bigint,
+         v_confirmed
+  from base b
+  order by case b.position when 'director' then 0 when 'chief' then 1 when 'designer' then 2 when 'intern' then 3 else 4 end, b.name;
+end;
+$$;
+
+-- confirm_payroll: stores the month's figures and locks it. Errors: FORBIDDEN, MONTH_CONFIRMED
+create or replace function public.confirm_payroll(p_branch_id uuid, p_month date)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_month date := date_trunc('month', p_month)::date;
+begin
+  if p_branch_id is null or not public.is_branch_manager(p_branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if exists (select 1 from public.payroll_months where branch_id = p_branch_id and month = v_month) then
+    raise exception 'MONTH_CONFIRMED' using errcode = 'P0001';
+  end if;
+  insert into public.staff_monthly as sm (staff_id, month, branch_id, retail_sales_snap, retail_qty_snap,
+                                          material_cost_snap, rate_service_snap, rate_retail_snap)
+  select r.staff_id, v_month, p_branch_id, r.retail_sales, r.retail_qty, r.material_cost, r.rate_service, r.rate_retail
+  from public.staff_month_report(p_branch_id, v_month) r
+  on conflict (staff_id, month) do update
+    set retail_sales_snap = excluded.retail_sales_snap, retail_qty_snap = excluded.retail_qty_snap,
+        material_cost_snap = excluded.material_cost_snap, rate_service_snap = excluded.rate_service_snap,
+        rate_retail_snap = excluded.rate_retail_snap, updated_at = now();
+  insert into public.payroll_months (branch_id, month, confirmed_by) values (p_branch_id, v_month, auth.uid());
+end;
+$$;
+
+-- reopen_payroll: admin only; the month goes back to live figures.
+create or replace function public.reopen_payroll(p_branch_id uuid, p_month date)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_month date := date_trunc('month', p_month)::date;
+begin
+  if not public.is_admin() then
+    raise exception 'ADMIN_ONLY' using errcode = '42501';
+  end if;
+  delete from public.payroll_months where branch_id = p_branch_id and month = v_month;
+  update public.staff_monthly
+     set retail_sales_snap = null, retail_qty_snap = null, material_cost_snap = null,
+         rate_service_snap = null, rate_retail_snap = null, updated_at = now()
+   where branch_id = p_branch_id and month = v_month;
+end;
+$$;
+
+revoke all on function public.list_staff_names(uuid) from public, anon;
+revoke all on function public.set_schedule(uuid, date, text, text) from public, anon;
+revoke all on function public.save_staff_month(uuid, date, bigint, integer, bigint, text) from public, anon;
+revoke all on function public.staff_month_report(uuid, date) from public, anon;
+revoke all on function public.confirm_payroll(uuid, date) from public, anon;
+revoke all on function public.reopen_payroll(uuid, date) from public, anon;
+revoke all on function public.staff_display_name(uuid) from public, anon;
+grant execute on function public.list_staff_names(uuid) to authenticated;
+grant execute on function public.set_schedule(uuid, date, text, text) to authenticated;
+grant execute on function public.save_staff_month(uuid, date, bigint, integer, bigint, text) to authenticated;
+grant execute on function public.staff_month_report(uuid, date) to authenticated;
+grant execute on function public.confirm_payroll(uuid, date) to authenticated;
+grant execute on function public.reopen_payroll(uuid, date) to authenticated;
+grant execute on function public.staff_display_name(uuid) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Function privileges: signed-in users only (each function checks the role)
 -- ---------------------------------------------------------------------------
-revoke all on function public.record_movement(uuid, uuid, public.movement_type, integer, text) from public, anon;
+revoke all on function public.record_movement(uuid, uuid, public.movement_type, integer, text, uuid) from public, anon;
 revoke all on function public.revert_movement(bigint) from public, anon;
 revoke all on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) from public, anon;
 revoke all on function public.set_branch_item(uuid, uuid, integer, text) from public, anon;
@@ -995,7 +1298,7 @@ revoke all on function public.list_users(uuid) from public, anon;
 revoke all on function public.update_user(uuid, text, uuid, public.app_role, boolean) from public, anon;
 revoke all on function public.set_branch_photo(uuid, text) from public, anon;
 revoke all on function public.login_photos() from public;
-grant execute on function public.record_movement(uuid, uuid, public.movement_type, integer, text) to authenticated;
+grant execute on function public.record_movement(uuid, uuid, public.movement_type, integer, text, uuid) to authenticated;
 grant execute on function public.revert_movement(bigint) to authenticated;
 grant execute on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) to authenticated;
 grant execute on function public.set_branch_item(uuid, uuid, integer, text) to authenticated;
