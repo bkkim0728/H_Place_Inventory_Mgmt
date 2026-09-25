@@ -735,3 +735,22 @@ body[data-route="hq"] #branchSelect { display: none; }
 @media (max-width: 767px) {
   .st-branch-table th, .st-branch-table td { white-space: normal; }
 }
+
+/* 전체현황: 기간 직접 설정 */
+.hq-range { flex-basis: 100%; margin-top: var(--space-2); }
+.hq-range .mv-range-row { flex-wrap: wrap; }
+.hq-range-help { margin: 0 0 10px var(--space-2); align-self: flex-end; }
+@media (max-width: 767px) {
+  .hq-range-help { margin: 4px 0 0; flex-basis: 100%; }
+  .hq-tools .segmented { flex-wrap: wrap; border-radius: 16px; }
+  .hq-tools .segmented button { flex: 1 1 30%; }
+}
+@media print { .hq-range { display: none !important; } }
+@media (max-width: 767px) {
+  .hq-kpis .kpi-value { font-size: 17px; letter-spacing: -0.02em; white-space: nowrap; }
+  .hq-kpi-wide .kpi-value { font-size: 24px; }
+  .hq-range .mv-range-row { flex-wrap: nowrap; }
+  .hq-range .mv-range-row .field { flex: 1; min-width: 0; }
+  .hq-range input[type="date"] { width: 100%; min-width: 0; font-size: 14px; padding-left: 8px; padding-right: 6px; }
+  .hq-range-help { display: none; }
+}

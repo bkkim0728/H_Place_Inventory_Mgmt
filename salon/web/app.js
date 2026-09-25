@@ -2944,7 +2944,7 @@
   // ------------------------------------------------------------------
   // 전체현황 (admin): every branch, one period against the one before
   // ------------------------------------------------------------------
-  state.hq = { period: '7', data: [], loading: false, ticket: 0 };
+  state.hq = { period: '7', from: '', to: '', data: [], loading: false, ticket: 0 };
   const BRANCH_COLORS = 8;  // --br-1 … --br-8 (validated categorical order); more branches reuse none
 
   function hqRange() {
@@ -2956,6 +2956,11 @@
     if (p === 'lastmonth') {
       const from = prevMonthStart(t), pFrom = prevMonthStart(from);
       return { from, to: monthEnd(from), pFrom, pTo: monthEnd(pFrom), label: '지난달', prevLabel: '그 전달' };
+    }
+    if (p === 'custom') {
+      const { from, to } = state.hq;
+      const n = dayDiff(from, to) + 1;
+      return { from, to, pFrom: addDays(from, -n), pTo: addDays(from, -1), label: '선택한 기간', prevLabel: `이전 ${nf.format(n)}일` };
     }
     const n = Number(p);
     const from = addDays(t, -(n - 1));
@@ -3170,8 +3175,9 @@
     if (!box || !c) return;
     const W = Math.max(300, Math.round(box.clientWidth || 800)), H = 260;
     const pad = { l: 12, r: 8, t: 12, b: 30 };
-    const keys = Array.from({ length: c.days }, (_, i) => addDays(c.from, i));
-    const totals = keys.map((k) => c.rows.reduce((a, x) => { const d = x.cur.byDay.get(k); return a + (d ? d.svc + d.prod : 0); }, 0));
+    const keys = hqBuckets(c.from, c.days);
+    const valueOf = (x, k) => k.days.reduce((a, day) => { const d = x.cur.byDay.get(day); return a + (d ? d.svc + d.prod : 0); }, 0);
+    const totals = keys.map((k) => c.rows.reduce((a, x) => a + valueOf(x, k), 0));
     const max = Math.max(1, ...totals);
     const step = niceStep(max / 4), top = Math.ceil(max / step) * step;
     const ticks = [];
@@ -3179,27 +3185,51 @@
     pad.l = Math.max(...ticks.map((v) => won.format(v).length)) * 7 + 10;
     const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
     const y = (v) => pad.t + ih - (v / top) * ih;
-    const slot = iw / keys.length, bw = Math.max(3, Math.min(44, slot * 0.56));
+    const slot = iw / keys.length, bw = Math.max(1, Math.min(44, slot * 0.56));
     const every = Math.ceil(keys.length / Math.max(1, Math.floor(iw / 64)));
     const grid = ticks.map((v) => `<line class="rp-grid-line" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="${pad.l - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${won.format(v)}</text>`).join('');
     const cols = keys.map((k, i) => {
       const cx = pad.l + slot * i + (slot - bw) / 2;
       let acc = 0;
-      const segs = c.rows.map((x) => ({ x, v: (() => { const d = x.cur.byDay.get(k); return d ? Math.max(0, d.svc + d.prod) : 0; })() })).filter((s) => s.v > 0);
+      const segs = c.rows.map((x) => ({ x, v: Math.max(0, valueOf(x, k)) })).filter((s) => s.v > 0);
       const rects = segs.map((s, j) => {
         const y0 = y(acc), y1 = y(acc + s.v);
         acc += s.v;
-        const hgt = Math.max(1, y0 - y1 - (j > 0 ? 2 : 0));  // 2px surface gap under each upper segment
+        const hgt = Math.max(1, y0 - y1 - (j > 0 && bw >= 4 ? 2 : 0));  // 2px surface gap under each upper segment
         return `<rect class="hq-seg" x="${cx.toFixed(1)}" y="${y1.toFixed(1)}" width="${bw.toFixed(1)}" height="${hgt.toFixed(1)}" rx="${j === segs.length - 1 ? Math.min(4, bw / 2) : 0}" style="fill:${s.x.color};--i:${i}"/>`;
       }).join('');
       const label = i % every === 0 || i === keys.length - 1
-        ? `<text x="${(pad.l + slot * i + slot / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="${k === todayKey() ? 'rp-x-now' : ''}">${Number(k.slice(5, 7))}/${Number(k.slice(8))}</text>` : '';
+        ? `<text x="${(pad.l + slot * i + slot / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="${k.days.includes(todayKey()) ? 'rp-x-now' : ''}">${k.short}</text>` : '';
       return `<g>${rects}${label}<rect class="hq-hit" data-hq-day="${i}" x="${(pad.l + slot * i).toFixed(1)}" y="${pad.t}" width="${slot.toFixed(1)}" height="${ih}"/></g>`;
     }).join('');
     const total = totals.reduce((a, b) => a + b, 0);
-    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${keys.length}일간 전체 총매출 ${won.format(total)}. 지점별 수치는 아래 지점별 성과 표에 있습니다." class="${animate && !reduceMotion.matches ? 'is-animated' : ''}">${grid}${cols}</svg>`;
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${nf.format(c.days)}일간 전체 총매출 ${won.format(total)}. 지점별 수치는 아래 지점별 성과 표에 있습니다." class="${animate && !reduceMotion.matches ? 'is-animated' : ''}">${grid}${cols}</svg>`;
     box.dataset.w = String(W);
-    c.keys = keys; c.totals = totals;
+    c.keys = keys; c.totals = totals; c.valueOf = valueOf;
+    $('#hqTrendHeading').textContent = `${keys[0]?.unit || '일별'} 총매출 · 지점별`;
+  }
+
+  // Chart columns: days up to 2 months, weeks up to ~7 months, months beyond
+  function hqBuckets(from, days) {
+    const all = Array.from({ length: days }, (_, i) => addDays(from, i));
+    const md = (k) => `${Number(k.slice(5, 7))}/${Number(k.slice(8))}`;
+    if (days <= 62) return all.map((k) => ({ days: [k], short: md(k), long: `${mdText(k)} (${DOW[dowOf(k)]})`, unit: '일별' }));
+    if (days <= 210) {
+      const out = [];
+      for (let i = 0; i < all.length; i += 7) {
+        const d = all.slice(i, i + 7);
+        out.push({ days: d, short: md(d[0]), long: `${mdText(d[0])} ~ ${mdText(d[d.length - 1])}`, unit: '주별' });
+      }
+      return out;
+    }
+    const byMonth = new Map();
+    all.forEach((k) => { const m = k.slice(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m).push(k); });
+    const years = new Set(all.map((k) => k.slice(0, 4))).size > 1;
+    return [...byMonth].map(([m, d]) => ({
+      days: d, unit: '월별',
+      short: years ? `${m.slice(2, 4)}.${Number(m.slice(5))}` : `${Number(m.slice(5))}월`,
+      long: `${m.slice(0, 4)}년 ${Number(m.slice(5))}월${d.length < Number(monthEnd(d[0]).slice(8)) ? ` (${Number(d[0].slice(8))}일~${Number(d[d.length - 1].slice(8))}일)` : ''}`,
+    }));
   }
 
   // Hover: that day's total and each branch
@@ -3210,8 +3240,8 @@
     if (!hit || !c) { tip.hidden = true; return; }
     hit.classList.add('is-on');
     const i = Number(hit.dataset.hqDay), k = c.keys[i];
-    const lines = c.rows.map((x) => { const d = x.cur.byDay.get(k); return { x, v: d ? d.svc + d.prod : 0 }; }).sort((a, b) => b.v - a.v);
-    tip.innerHTML = `<strong>${mdText(k)} (${DOW[dowOf(k)]}) · ${won.format(c.totals[i])}</strong>`
+    const lines = c.rows.map((x) => ({ x, v: c.valueOf(x, k) })).sort((a, b) => b.v - a.v);
+    tip.innerHTML = `<strong>${k.long} · ${won.format(c.totals[i])}</strong>`
       + lines.map((l) => `<span><i style="background:${l.x.color}"></i>${esc(l.x.b.name)}<b>${won.format(l.v)}</b></span>`).join('');
     tip.hidden = false;
     const panel = $('.hq-trend').getBoundingClientRect();
@@ -3232,9 +3262,32 @@
     const b = e.target.closest('[data-hq-period]');
     if (!b) return;
     $$('[data-hq-period]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-    state.hq.period = b.dataset.hqPeriod;
+    const h = state.hq;
+    h.period = b.dataset.hqPeriod;
+    const custom = h.period === 'custom';
+    $('#hqRange').hidden = !custom;
+    if (custom) {
+      if (!h.from) { h.to = todayKey(); h.from = addDays(h.to, -29); }
+      $('#hqFrom').value = h.from; $('#hqTo').value = h.to;
+      $('#hqFrom').max = $('#hqTo').max = todayKey();
+      $('#hqFrom').focus();
+    }
     loadHq();
   });
+  // 기간 직접 설정: up to one year, compared with the same length just before
+  ['hqFrom', 'hqTo'].forEach((id) => $('#' + id).addEventListener('change', () => {
+    const from = $('#hqFrom').value, to = $('#hqTo').value, err = $('#hqRangeErr');
+    let msg = '';
+    if (!from || !to) msg = '시작일과 종료일을 모두 골라 주세요.';
+    else if (from > to) msg = '시작일이 종료일보다 늦습니다.';
+    else if (dayDiff(from, to) + 1 > 366) msg = '한 번에 최대 1년(366일)까지 조회할 수 있습니다.';
+    else if (to > todayKey()) msg = '종료일은 오늘까지 고를 수 있습니다.';
+    err.textContent = msg; err.hidden = !msg;
+    [$('#hqFrom'), $('#hqTo')].forEach((el) => el.toggleAttribute('aria-invalid', Boolean(msg)));
+    if (msg) return;
+    Object.assign(state.hq, { from, to });
+    loadHq();
+  }));
   // Jump into one branch
   $('[data-view="hq"]').addEventListener('click', (e) => {
     const b = e.target.closest('[data-hq-branch]');
