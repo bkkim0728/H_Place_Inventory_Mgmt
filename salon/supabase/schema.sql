@@ -517,12 +517,12 @@ declare
 begin
   -- New products: admins, or a branch manager (registered for every branch).
   -- Changing an existing product (shared by all branches): admins only.
-  if p_product_id is null then
+  -- Changing an existing product: admins change everything; a branch manager
+  -- may change the name, prices and 고객 판매용 flag (shared by all branches).
+  if p_product_id is null or not public.is_admin() then
     if not (public.is_admin() or (p_branch_id is not null and public.is_branch_manager(p_branch_id))) then
       raise exception 'MANAGER_ONLY' using errcode = '42501';
     end if;
-  elsif not public.is_admin() then
-    raise exception 'ADMIN_ONLY' using errcode = '42501';
   end if;
   -- A new product without a code gets the next one for its category.
   if p_product_id is null and coalesce(btrim(p_sku), '') = '' and coalesce(btrim(p_category), '') <> '' then
@@ -549,6 +549,15 @@ begin
       insert into public.inventory (branch_id, product_id)
       select b.id, v_id from public.branches b
       on conflict do nothing;
+    elsif not public.is_admin() then
+      update public.products
+         set name = btrim(p_name), cost_price = coalesce(p_cost_price, 0),
+             retail_price = p_retail_price, is_retail = coalesce(p_is_retail, false)
+       where id = p_product_id
+      returning id into v_id;
+      if v_id is null then
+        raise exception 'PRODUCT_NOT_FOUND' using errcode = 'P0002';
+      end if;
     else
       update public.products
          set sku = upper(btrim(p_sku)), name = btrim(p_name), brand = nullif(btrim(p_brand), ''),
