@@ -120,8 +120,8 @@ ok((await one(`select count(*)::int n from inventory where product_id=$1`, [mgrP
 ok((await one(`select safety_stock, location from inventory where product_id=$1 and branch_id=$2`, [mgrPid, b1])).location === '창고', 'the registering branch gets its safety stock and location');
 await as(mgr, () => q(`select save_product($1,$2,'HACK-1','이름 변경','딴브랜드', '도구','통',200,2500,true,2,null,false)`, [b1, mgrPid]));
 const mp = await one(`select sku, name, brand, category, unit, cost_price, retail_price, is_retail, active from products where id=$1`, [mgrPid]);
-ok(mp.name === '이름 변경' && mp.category === '도구' && mp.cost_price === 200 && mp.retail_price === 2500 && mp.is_retail === true, 'manager changes name, category, prices and 고객 판매용');
-ok(mp.sku === 'MG-1' && mp.brand === null && mp.unit === '개' && mp.active === true, 'code, brand, unit and 사용 stay as they were');
+ok(mp.name === '이름 변경' && mp.brand === '딴브랜드' && mp.category === '도구' && mp.unit === '통' && mp.cost_price === 200 && mp.retail_price === 2500 && mp.is_retail === true, 'manager changes name, brand, category, unit, prices and 고객 판매용');
+ok(mp.sku === 'MG-1' && mp.active === true, 'code and catalog-wide 사용 stay as they were');
 ok((await err(mgr, () => q(`select save_product($1,$2,'MG-1','이름 변경','', '없는분류','개',200,2500,true,2,null)`, [b1, mgrPid])))?.includes('CATEGORY_NOT_FOUND'), 'manager can only pick an existing category');
 ok((await err(other, () => q(`select save_product($1,$2,'MG-1','x','', '소모품','개',1,null,false,0,null)`, [b1, mgrPid])))?.includes('MANAGER_ONLY'), 'manager of another branch cannot use this branch');
 ok((await err(staff, () => q(`select save_product($1,$2,'MG-1','x','', '소모품','개',1,null,false,0,null)`, [b1, mgrPid])))?.includes('MANAGER_ONLY'), 'staff cannot change products');

@@ -518,7 +518,7 @@ begin
   -- New products: admins, or a branch manager (registered for every branch).
   -- Changing an existing product (shared by all branches): admins only.
   -- Changing an existing product: admins change everything; a branch manager
-  -- may change the name, category, prices and 고객 판매용 flag (shared by all branches).
+  -- may change everything but the code and the catalog-wide 사용 flag (shared by all branches).
   if p_product_id is null or not public.is_admin() then
     if not (public.is_admin() or (p_branch_id is not null and public.is_branch_manager(p_branch_id))) then
       raise exception 'MANAGER_ONLY' using errcode = '42501';
@@ -551,7 +551,8 @@ begin
       on conflict do nothing;
     elsif not public.is_admin() then
       update public.products
-         set name = btrim(p_name), category = btrim(p_category), cost_price = coalesce(p_cost_price, 0),
+         set name = btrim(p_name), brand = nullif(btrim(p_brand), ''), category = btrim(p_category),
+             unit = btrim(p_unit), cost_price = coalesce(p_cost_price, 0),
              retail_price = p_retail_price, is_retail = coalesce(p_is_retail, false)
        where id = p_product_id
       returning id into v_id;

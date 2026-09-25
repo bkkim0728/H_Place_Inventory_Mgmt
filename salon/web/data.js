@@ -824,14 +824,17 @@
       },
       async saveProduct(branchId, p) {
         // Admin: everything. Branch manager: new products, and on existing ones the
-        // name, category, prices and 고객 판매용 only (mirrors save_product in schema.sql).
+        // everything but the code and 사용 (mirrors save_product in schema.sql).
         must(isAdmin() || (branchId && isManager(branchId)), 'MANAGER_ONLY');
         if (p.productId && !isAdmin()) {
           const prod = product(p.productId);
           must(prod, 'PRODUCT_NOT_FOUND');
-          must(p.name.trim() && p.category.trim() && p.costPrice >= 0 && (p.retailPrice ?? 0) >= 0 && p.safetyStock >= 0, 'INVALID_PRODUCT');
+          must(p.name.trim() && p.category.trim() && p.unit.trim() && p.costPrice >= 0 && (p.retailPrice ?? 0) >= 0 && p.safetyStock >= 0, 'INVALID_PRODUCT');
           must(state.categories.some((c) => c.name === p.category.trim()), 'CATEGORY_NOT_FOUND');
-          Object.assign(prod, { name: p.name.trim(), category: p.category.trim(), cost_price: p.costPrice, retail_price: p.retailPrice, is_retail: p.isRetail });
+          Object.assign(prod, {
+            name: p.name.trim(), brand: trimOrNull(p.brand), category: p.category.trim(), unit: p.unit.trim(),
+            cost_price: p.costPrice, retail_price: p.retailPrice, is_retail: p.isRetail,
+          });
           await this.setBranchItem(branchId, prod.id, p.safetyStock, p.location);
           save();
           return delay(prod.id);
