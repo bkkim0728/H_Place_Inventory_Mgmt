@@ -392,5 +392,16 @@ ok((await one(`select position from staff where id=$1`, [ss])).position === 'sen
 ok((await err(mgr, () => sv(mgr, base(null, b1, { position: 'director' }))))?.includes('INVALID_STAFF'), 'old titles rejected');
 ok((await as(mgr, () => q(`select name from staff_month_report($1,$2)`, [b1, month])))[0].name !== undefined, 'report orders by the new titles');
 
+console.log('지점별 사용 중');
+const pUse = p6n;  // stocked by both test branches
+await as(staff, () => q(`select set_item_in_use($1,$2,false)`, [b1, pUse]));
+ok((await as(staff, () => one(`select in_use from inventory_view where branch_id=$1 and product_id=$2`, [b1, pUse]))).in_use === false, 'staff turns 사용 중 off for their branch');
+ok((await one(`select in_use from inventory where branch_id=$1 and product_id=$2`, [b2, pUse])).in_use === true, 'other branches are not affected');
+ok((await one(`select active from products where id=$1`, [pUse])).active === true, 'catalog-wide 사용 flag unchanged');
+ok((await err(staff, () => q(`select set_item_in_use($1,$2,false)`, [b2, pUse])))?.includes('NOT_BRANCH_MEMBER'), 'cannot change another branch');
+await as(mgr, () => q(`select set_item_in_use($1,$2,true)`, [b1, pUse]));
+ok((await one(`select in_use from inventory where branch_id=$1 and product_id=$2`, [b1, pUse])).in_use === true, 'manager turns it back on');
+ok((await err(null, () => q(`select set_item_in_use($1,$2,false)`, [b1, pUse])))?.includes('permission denied'), 'anon cannot change it');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

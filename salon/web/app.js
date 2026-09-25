@@ -53,7 +53,7 @@
     users: '사용자 관리',
     branches: '지점 관리',
   };
-  const MANAGER_ROUTES = ['products', 'staff', 'payroll', 'branches'];
+  const MANAGER_ROUTES = ['staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users'];  // branch managers use 직원 관리 and 지점 관리 instead
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
@@ -777,6 +777,9 @@
   // Products (manager)
   // ------------------------------------------------------------------
   function renderProducts() {
+    $('#pdNote').textContent = isManager()
+      ? '제품 목록은 모든 지점이 함께 씁니다. 새 제품 등록과 이 지점의 안전재고·보관 위치 설정을 할 수 있고, 이미 등록된 제품의 이름·코드·가격 변경은 전체 관리자가 합니다. "이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서만 숨겨집니다.'
+      : '"이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서 숨겨집니다. 다른 지점에는 영향이 없습니다. 제품 등록과 설정은 지점 관리자에게 요청해 주세요.';
     const q = state.pd.q.trim().toLowerCase();
     const rows = state.inventory.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
       .sort((a, b) => byCategory(a.category, b.category) || a.name.localeCompare(b.name, 'ko'));
@@ -789,10 +792,34 @@
       <td class="num" data-label="판매가">${i.retail_price != null ? won.format(i.retail_price) : '—'}</td>
       <td class="num" data-label="안전재고">${nf.format(i.safety_stock)}</td>
       <td data-label="보관 위치">${esc(i.location || '—')}</td>
-      <td data-label="사용">${i.active ? '사용 중' : '사용 안 함'}${i.is_retail ? ' · 판매용' : ''}</td>
-      <td class="cell-action"><button type="button" class="btn btn-secondary btn-sm" data-edit="${i.product_id}" aria-label="${esc(i.name)} ${isAdmin() ? '수정' : '지점 설정'}">${svgIcon('i-edit')}${isAdmin() ? '수정' : '설정'}</button></td>
+      <td data-label="이 지점 사용">${i.catalog_active === false
+        ? '<span class="tag tag-off">본사 사용 중지</span>'
+        : `<label class="switch"><input type="checkbox" role="switch" data-in-use="${i.product_id}" ${i.in_use !== false ? 'checked' : ''} aria-label="${esc(i.name)} ${esc(state.branch.name)}에서 사용" /><span class="switch-track" aria-hidden="true"></span><span class="switch-text">${i.in_use !== false ? '사용 중' : '사용 안 함'}</span></label>`}${i.is_retail ? '<small class="sub-num">판매용</small>' : ''}</td>
+      <td class="cell-action">${isManager() ? `<button type="button" class="btn btn-secondary btn-sm" data-edit="${i.product_id}" aria-label="${esc(i.name)} ${isAdmin() ? '수정' : '지점 설정'}">${svgIcon('i-edit')}${isAdmin() ? '수정' : '설정'}</button>` : ''}</td>
     </tr>`).join('');
   }
+  // 사용 중 switch: this branch only (everyone at the branch). Updates in place.
+  document.addEventListener('change', async (e) => {
+    const sw = e.target.closest('[data-in-use]');
+    if (!sw) return;
+    const item = itemById(sw.dataset.inUse);
+    const on = sw.checked;
+    sw.disabled = true;
+    try {
+      await api.setItemInUse(state.branch.id, item.product_id, on);
+      item.in_use = on;
+      item.active = item.catalog_active !== false && on;
+      sw.nextElementSibling.nextElementSibling.textContent = on ? '사용 중' : '사용 안 함';
+      sw.closest('tr').classList.toggle('inactive-row', !item.active);
+      toast(`${item.name}을(를) ${state.branch.name}에서 ${on ? '다시 사용합니다' : '사용하지 않습니다. 재고 목록과 입출고 등록에서 숨겨집니다'}.`);
+      renderKpis(); renderAlerts(); renderInventory(); fillMoveItems();
+    } catch (ex) {
+      sw.checked = !on;
+      toast(api.toAppError(ex).message, { error: true });
+    } finally {
+      sw.disabled = false;
+    }
+  });
   let pdTimer = 0;
   $('#pdQ').addEventListener('input', (e) => { clearTimeout(pdTimer); pdTimer = setTimeout(() => { state.pd.q = e.target.value; renderProducts(); }, 150); });
 
@@ -989,7 +1016,7 @@
     $('#pSafety').value = item ? item.safety_stock : '';
     $('#pLocation').value = item?.location || '';
     $('#pRetailFlag').checked = Boolean(item?.is_retail);
-    $('#pActive').checked = item ? item.active : true;
+    $('#pActive').checked = item ? item.catalog_active !== false : true;
     // Managers register new products; changing an existing one is admin-only.
     const catalogLocked = !isAdmin() && Boolean(item);
     $$('[data-catalog]', productForm).forEach((el) => { el.disabled = catalogLocked; });

@@ -124,14 +124,14 @@
           <li><a href="#/movements" class="nav-link" data-route="movements"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>입출고 내역</a></li>
           <li><a href="#/schedule" class="nav-link" data-route="schedule"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg>근무표</a></li>
         </ul>
-        <p class="nav-section" data-manager-only>관리</p>
-        <ul class="nav-list" data-manager-only>
+        <p class="nav-section">관리</p>
+        <ul class="nav-list">
           <li><a href="#/products" class="nav-link" data-route="products"><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>제품 관리</a></li>
           <li data-admin-only><a href="#/categories" class="nav-link" data-route="categories"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>카테고리 관리</a></li>
-          <li><a href="#/staff" class="nav-link" data-route="staff"><svg class="icon" aria-hidden="true"><use href="#i-badge"/></svg>직원 관리</a></li>
-          <li><a href="#/payroll" class="nav-link" data-route="payroll"><svg class="icon" aria-hidden="true"><use href="#i-won"/></svg>실적·정산</a></li>
+          <li data-manager-only><a href="#/staff" class="nav-link" data-route="staff"><svg class="icon" aria-hidden="true"><use href="#i-badge"/></svg>직원 관리</a></li>
+          <li data-manager-only><a href="#/payroll" class="nav-link" data-route="payroll"><svg class="icon" aria-hidden="true"><use href="#i-won"/></svg>실적·정산</a></li>
           <li data-admin-only><a href="#/users" class="nav-link" data-route="users"><svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>사용자 관리</a></li>
-          <li><a href="#/branches" class="nav-link" data-route="branches"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>지점 관리</a></li>
+          <li data-manager-only><a href="#/branches" class="nav-link" data-route="branches"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>지점 관리</a></li>
         </ul>
       </nav>
       <div class="sidebar-foot">
@@ -362,9 +362,9 @@
               <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
               <input id="pdQ" type="search" placeholder="품목명, 코드 검색" autocomplete="off" />
             </div>
-            <button class="btn btn-primary" type="button" id="newProductBtn"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>제품 등록</button>
+            <button class="btn btn-primary" type="button" id="newProductBtn" data-manager-only><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>제품 등록</button>
           </div>
-          <p class="note" data-manager-note>제품 목록은 모든 지점이 함께 씁니다. 지점 관리자는 새 제품을 등록하고 이 지점의 안전재고·보관 위치를 설정할 수 있습니다. 이미 등록된 제품의 이름·코드·가격 변경은 전체 관리자가 합니다.</p>
+          <p class="note" id="pdNote" data-manager-note>제품 목록은 모든 지점이 함께 씁니다. 지점 관리자는 새 제품을 등록하고 이 지점의 안전재고·보관 위치를 설정할 수 있습니다. 이미 등록된 제품의 이름·코드·가격 변경은 전체 관리자가 합니다.</p>
           <p class="muted small result-count" id="pdCount" aria-live="polite"></p>
           <div class="table-wrap">
             <table class="inv-table" id="pdTable">
@@ -378,7 +378,7 @@
                   <th scope="col" class="th-plain num">판매가</th>
                   <th scope="col" class="th-plain num">안전재고</th>
                   <th scope="col" class="th-plain">보관 위치</th>
-                  <th scope="col" class="th-plain">사용</th>
+                  <th scope="col" class="th-plain">이 지점 사용</th>
                   <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
                 </tr>
               </thead>
@@ -579,7 +579,7 @@
                     <th scope="col" class="th-plain">직원</th>
                     <th scope="col" class="th-plain">입사·근속</th>
                     <th scope="col" class="th-plain">발생</th>
-                    <th scope="col" class="th-plain">사용</th>
+                    <th scope="col" class="th-plain">이 지점 사용</th>
                     <th scope="col" class="th-plain">남음</th>
                     <th scope="col" class="th-plain">사용한 날</th>
                   </tr>
