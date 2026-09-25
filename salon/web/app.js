@@ -268,6 +268,7 @@
       state.categories = categories;
       // Names for 담당 디자이너; an outdated database just means no list.
       state.staffNames = await api.listStaffNames(state.branch.id).catch(() => []);
+      if (state.mv.days === 'custom' && state.mv.from) loadMovementRange();
       $('#loadError').hidden = true;
       renderAll();
     } catch (e) {
@@ -729,15 +730,27 @@
     return m.created_by === state.user?.id && Date.now() - Date.parse(m.created_at) < 10 * 60000;
   }
 
-  function renderMovements() {
+  // Rows on screen: the loaded last 30 days, or a date range fetched on demand
+  function movementRows() {
     const f = state.mv;
     const q = f.q.trim().toLowerCase();
-    const since = sinceMs(f.days);
-    const rows = state.movements.filter((m) =>
+    const custom = f.days === 'custom';
+    const since = custom ? 0 : sinceMs(f.days);
+    const source = custom ? (f.rangeRows || []) : state.movements;
+    return source.filter((m) =>
       Date.parse(m.created_at) >= since && (!f.type || m.type === f.type) &&
       (!q || m.product_name.toLowerCase().includes(q) || (m.memo || '').toLowerCase().includes(q) || whoText(m).toLowerCase().includes(q)
         || (m.staff_name || '').toLowerCase().includes(q)));
-    $('#mvCount').textContent = `${nf.format(rows.length)}건`;
+  }
+
+  function renderMovements() {
+    const f = state.mv;
+    const rows = movementRows();
+    const custom = f.days === 'custom';
+    $('#mvCount').textContent = custom
+      ? (f.rangeLoading ? '불러오는 중…' : `${f.from.replace(/-/g, '.')} ~ ${f.to.replace(/-/g, '.')} · ${nf.format(rows.length)}건`)
+      : `${nf.format(rows.length)}건`;
+    $('#mvXlsx').disabled = rows.length === 0;
     $('#mvEmpty').hidden = rows.length > 0;
     $('#mvTable').hidden = rows.length === 0;
     $('#mvBody').innerHTML = rows.map((m) => {
@@ -759,7 +772,87 @@
   let mvTimer = 0;
   $('#mvQ').addEventListener('input', (e) => { clearTimeout(mvTimer); mvTimer = setTimeout(() => { state.mv.q = e.target.value; renderMovements(); }, 150); });
   $('#mvType').addEventListener('change', (e) => { state.mv.type = e.target.value; renderMovements(); });
-  $('#mvDays').addEventListener('change', (e) => { state.mv.days = Number(e.target.value); renderMovements(); });
+  $('#mvDays').addEventListener('change', (e) => {
+    const custom = e.target.value === 'custom';
+    $('#mvRange').hidden = !custom;
+    if (!custom) { state.mv.days = Number(e.target.value); renderMovements(); return; }
+    state.mv.days = 'custom';
+    if (!state.mv.from) {
+      const today = keyFmt.format(new Date());
+      state.mv.to = today;
+      state.mv.from = new Date(Date.parse(`${today}T00:00:00Z`) - 29 * DAY).toISOString().slice(0, 10);
+    }
+    $('#mvFrom').value = state.mv.from;
+    $('#mvTo').value = state.mv.to;
+    loadMovementRange();
+    $('#mvFrom').focus();
+  });
+
+  // 기간 직접 설정: up to one year at a time, fetched from the server
+  async function loadMovementRange() {
+    const f = state.mv;
+    const err = $('#mvRangeErr');
+    const from = $('#mvFrom').value, to = $('#mvTo').value;
+    const today = keyFmt.format(new Date());
+    let msg = '';
+    if (!from || !to) msg = '시작일과 종료일을 모두 골라 주세요.';
+    else if (from > to) msg = '시작일이 종료일보다 늦습니다.';
+    else if ((Date.parse(to) - Date.parse(from)) / DAY > 366) msg = '한 번에 1년까지 조회할 수 있습니다.';
+    else if (from > today) msg = '시작일이 오늘보다 늦습니다.';
+    err.textContent = msg;
+    err.hidden = !msg;
+    [$('#mvFrom'), $('#mvTo')].forEach((el) => el.toggleAttribute('aria-invalid', Boolean(msg)));
+    if (msg) return;
+    f.from = from; f.to = to;
+    f.rangeLoading = true;
+    renderMovements();
+    const ticket = (f.rangeTicket = (f.rangeTicket || 0) + 1);
+    try {
+      const rows = await api.listMovementsBetween(state.branch.id, from, to);
+      if (ticket !== f.rangeTicket) return;  // a newer range was picked meanwhile
+      f.rangeRows = rows;
+    } catch (ex) {
+      if (ticket !== f.rangeTicket) return;
+      f.rangeRows = [];
+      err.textContent = api.toAppError(ex).message;
+      err.hidden = false;
+    }
+    f.rangeLoading = false;
+    renderMovements();
+  }
+  ['mvFrom', 'mvTo'].forEach((id) => $('#' + id).addEventListener('change', loadMovementRange));
+
+  // 엑셀 다운로드: what is on screen (period, 구분, search)
+  $('#mvXlsx').addEventListener('click', () => {
+    const rows = movementRows();
+    if (!rows.length) { toast('내려받을 기록이 없습니다.', { error: true }); return; }
+    const f = state.mv;
+    const today = keyFmt.format(new Date());
+    const from = f.days === 'custom' ? f.from : new Date(sinceMs(f.days) + 9 * 3600000).toISOString().slice(0, 10);
+    const to = f.days === 'custom' ? f.to : today;
+    const stamp = (iso) => { const d = new Date(iso); return `${keyFmt.format(d)} ${timeFmt.format(d)}`; };
+    const blob = window.makeXlsx({
+      sheetName: '입출고 내역',
+      columns: [
+        { header: '일시', width: 18 }, { header: '품목', width: 30 }, { header: '품목 코드', width: 12 },
+        { header: '구분', width: 11 }, { header: '변동', width: 9, type: 'number' }, { header: '변동 후 재고', width: 12, type: 'number' },
+        { header: '단위', width: 7 }, { header: '등록', width: 12 }, { header: '담당 디자이너', width: 13 },
+        { header: '매입가', width: 11, type: 'number' }, { header: '판매가', width: 11, type: 'number' },
+        { header: '메모', width: 34 }, { header: '취소', width: 10 },
+      ],
+      rows: rows.map((m) => [
+        stamp(m.created_at), m.product_name, m.sku, TYPES[m.type]?.label || m.type, m.quantity, m.stock_after, m.unit,
+        whoText(m), m.staff_name || '', m.unit_cost ?? '', m.unit_price ?? '', m.memo || '',
+        m.reverts_id ? '취소 기록' : m.reverted ? '취소됨' : '',
+      ]),
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `입출고내역_${state.branch.name}_${from}_${to}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast(`${nf.format(rows.length)}건을 엑셀 파일로 내려받았습니다.`);
+  });
 
   async function revert(id, button) {
     if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }

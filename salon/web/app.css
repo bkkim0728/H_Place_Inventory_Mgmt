@@ -420,3 +420,15 @@ a.btn { text-decoration: none; }
 .switch input:focus-visible + .switch-track { outline: 2px solid var(--ring); outline-offset: 2px; }
 .switch input:disabled + .switch-track { opacity: 0.5; }
 .switch-text { font-size: 13px; }
+
+/* 입출고 내역: custom period */
+.mv-range { border: 0; padding: 0; margin: 0; min-width: 0; }
+.mv-range-row { display: flex; align-items: flex-end; gap: var(--space-2); }
+.mv-range-sep { padding-bottom: 10px; color: var(--fg-muted); }
+.mv-range input[type="date"] { min-width: 0; }
+.mv-range .err { margin: 4px 0 0; }
+@media (max-width: 767px) {
+  .mv-range { width: 100%; }
+  .mv-range-row .field { flex: 1; }
+  .mv-range input[type="date"] { width: 100%; }
+}

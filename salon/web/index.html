@@ -325,8 +325,25 @@
                 <option value="1">오늘</option>
                 <option value="7" selected>최근 7일</option>
                 <option value="30">최근 30일</option>
+                <option value="custom">기간 직접 설정</option>
               </select>
             </div>
+            <fieldset class="field mv-range" id="mvRange" hidden>
+              <legend class="sr-only">조회 기간</legend>
+              <div class="mv-range-row">
+                <div class="field">
+                  <label for="mvFrom">시작일</label>
+                  <input id="mvFrom" type="date" aria-describedby="mvRangeErr" />
+                </div>
+                <span class="mv-range-sep" aria-hidden="true">~</span>
+                <div class="field">
+                  <label for="mvTo">종료일</label>
+                  <input id="mvTo" type="date" aria-describedby="mvRangeErr" />
+                </div>
+              </div>
+              <p class="err" id="mvRangeErr" role="alert" hidden></p>
+            </fieldset>
+            <button class="btn btn-secondary" type="button" id="mvXlsx"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>엑셀 다운로드</button>
           </div>
           <p class="muted small result-count" id="mvCount" aria-live="polite"></p>
           <div class="table-wrap">
@@ -1261,6 +1278,7 @@
 
   <script src="config.js"></script>
   <script src="vendor/supabase-2.117.1.js"></script>
+  <script src="xlsx.js"></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
 </body>

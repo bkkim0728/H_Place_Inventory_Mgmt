@@ -97,6 +97,14 @@
     return new Date(midnight - (days - 1) * DAY).toISOString();
   }
 
+  // 'YYYY-MM-DD' Korea-time dates → [start, end) as ISO instants
+  function kstRange(from, to) {
+    return {
+      start: new Date(Date.parse(`${from}T00:00:00Z`) - KST).toISOString(),
+      end: new Date(Date.parse(`${to}T00:00:00Z`) + DAY - KST).toISOString(),
+    };
+  }
+
   // Accepts an ID ("h001") or an email. IDs map to <id>@<loginDomain> so that
   // Supabase Auth, which signs in by email, can hold ID-style accounts.
   const LOGIN_DOMAIN = (cfg.loginDomain || 'hplace.local').toLowerCase();
@@ -231,6 +239,20 @@
           .map((r) => ({ ...r, catalog_active: r.active, in_use: r.in_use !== false, active: r.active && r.in_use !== false })),
       setItemInUse: (branchId, productId, inUse) =>
         run(sb.rpc('set_item_in_use', { p_branch_id: branchId, p_product_id: productId, p_in_use: inUse })),
+      // Movements between two Korea-time dates (inclusive), fetched in pages
+      async listMovementsBetween(branchId, from, to) {
+        const { start, end } = kstRange(from, to);
+        const rows = [];
+        for (let i = 0; ; i += 1000) {
+          const page = await run(sb.from('movement_view').select('*').eq('branch_id', branchId)
+            .gte('created_at', start).lt('created_at', end)
+            .order('created_at', { ascending: false }).order('id', { ascending: false })
+            .range(i, i + 999));
+          rows.push(...page);
+          if (page.length < 1000 || rows.length >= 50000) break;
+        }
+        return rows;
+      },
       listMovements: (branchId, days) =>
         run(sb.from('movement_view').select('*').eq('branch_id', branchId)
           .gte('created_at', sinceIso(days))
@@ -768,12 +790,17 @@
         });
         return delay(clone(rows));
       },
-      async listMovements(branchId, days) {
+      async listMovementsBetween(branchId, from, to) {
+        const { start, end } = kstRange(from, to);
+        return this.listMovements(branchId, null, start, end);
+      },
+      async listMovements(branchId, days, sinceArg, untilArg) {
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');
-        const since = sinceIso(days);
+        const since = sinceArg || sinceIso(days);
+        const until = untilArg || '9999';
         const reverted = new Set(state.movements.filter((m) => m.reverts_id).map((m) => m.reverts_id));
         const rows = state.movements
-          .filter((m) => m.branch_id === branchId && m.created_at >= since)
+          .filter((m) => m.branch_id === branchId && m.created_at >= since && m.created_at < until)
           .map((m) => {
             const p = product(m.product_id);
             const u = state.users.find((x) => x.user_id === m.created_by);
