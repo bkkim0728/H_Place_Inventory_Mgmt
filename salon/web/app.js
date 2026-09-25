@@ -1734,7 +1734,7 @@
       return `<li class="roster-day${d === dow ? ' is-today' : ''}${gap ? ' is-gap' : ''}">
         <div class="roster-head"><strong>${DOW[d]}</strong>${d === dow ? '<span class="roster-today">오늘</span>' : ''}</div>
         <p class="roster-count"><span class="roster-num">${nf.format(working)}</span>명 근무</p>
-        <p class="roster-des">${gap ? '<span class="tag tag-off">시술 인원 없음</span>' : `시술 ${nf.format(des)}명`}</p>
+        <p class="roster-des">${gap ? '<span class="tag tag-off">시술 인원 없음</span>' : `시술 ${nf.format(des)}명`} · 스태프 ${nf.format(working - des)}명</p>
         <p class="roster-off">${off.length ? `<span class="sr-only">휴무: </span>${off.map((x) => `<span class="off-name">${staffAvatar(x, 'st-avatar-xs')}${esc(x.name)}</span>`).join('')}` : '<span class="muted">휴무 없음</span>'}</p>
       </li>`;
     }).join('');
@@ -2178,6 +2178,7 @@
       const working = states.filter((o) => workValue(o.st) > 0).length;
       const des = states.filter((o) => DESIGNER_POS.includes(o.x.position) && workValue(o.st) > 0).length;
       const halves = states.filter((o) => o.st === 'half').length;
+      const staffOn = working - des;
       const hasDes = states.some((o) => DESIGNER_POS.includes(o.x.position));
       const gap = hasDes && des === 0;
       const away = states.filter((o) => workValue(o.st) < 1);
@@ -2186,7 +2187,7 @@
         <button type="button" class="wb-pick" data-wb-day="${d}" aria-pressed="${d === state.wb.day}" aria-label="${mdText(d)} ${DOW[w]}요일 근무 스케줄 보기">
           <span class="roster-head"><strong class="${w === 0 ? 'is-sun' : w === 6 ? 'is-sat' : ''}">${DOW[w]} <span class="wb-date">${Number(d.slice(8))}</span></strong>${d === today ? '<span class="roster-today">오늘</span>' : ''}</span>
           <span class="roster-count"><span class="roster-num">${nf.format(working)}</span>명 근무</span>
-          <span class="roster-des">${gap ? '<span class="tag tag-off">시술 인원 없음</span>' : `시술 ${nf.format(des)}명`}${halves ? ` · 반차 ${nf.format(halves)}` : ''}</span>
+          <span class="roster-des">${gap ? '<span class="tag tag-off">시술 인원 없음</span>' : `시술 ${nf.format(des)}명`} · 스태프 ${nf.format(staffOn)}명${halves ? `<span class="roster-half">반차 ${nf.format(halves)}</span>` : ''}</span>
           <span class="roster-off">${away.length ? away.map((o) => `<span class="off-name wb-off-${o.st}" title="${esc(offReason(o.st))}">${esc(o.x.name)}<small>${o.st === 'half' ? '반' : o.st === 'reg' ? '' : KIND[o.st].short}</small></span>`).join('') : '<span class="muted">휴무 없음</span>'}</span>
         </button>
       </li>`;
@@ -2201,7 +2202,7 @@
     const des = on.filter((o) => DESIGNER_POS.includes(o.x.position)).length;
     const halves = on.filter((o) => o.st === 'half').length;
     $('#wbDayHeading').textContent = `${mdText(d)} (${DOW[w]}) 근무 스케줄${d === today ? ' · 오늘' : ''}`;
-    $('#wbDaySub').textContent = `근무 ${nf.format(on.length)}명${halves ? `(반차 ${nf.format(halves)})` : ''} · 시술 ${nf.format(des)}명 · 휴무·부재 ${nf.format(off.length)}명`;
+    $('#wbDaySub').textContent = `근무 ${nf.format(on.length)}명${halves ? `(반차 ${nf.format(halves)})` : ''} · 시술 ${nf.format(des)}명 · 스태프 ${nf.format(on.length - des)}명 · 휴무·부재 ${nf.format(off.length)}명`;
     $('#wbOnCount').textContent = `${nf.format(on.length)}명`;
     $('#wbOffCount').textContent = `${nf.format(off.length)}명`;
     const item = (o) => {
