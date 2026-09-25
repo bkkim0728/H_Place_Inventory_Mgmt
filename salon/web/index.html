@@ -898,7 +898,7 @@
       </div>
       <div class="modal-body">
         <div class="error-summary" id="productErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
-        <p class="note" id="productScopeNote" hidden>품목명·브랜드·카테고리·고객 판매용은 <strong>모든 지점에 함께</strong> 바뀝니다. <strong>단위·매입가·판매가</strong>와 안전재고·보관 위치는 <strong>이 지점에만</strong> 저장됩니다. 품목 코드와 모든 지점 사용 중지는 전체 관리자가 바꿉니다.</p>
+        <p class="note" id="productScopeNote" hidden>여기서 고친 품목명·브랜드·카테고리·단위·매입가·판매가·고객 판매용과 안전재고·보관 위치는 <strong>이 지점에만</strong> 저장됩니다. 다른 지점은 그대로입니다. 품목 코드와 모든 지점 사용 중지는 전체 관리자가 바꿉니다.</p>
         <div class="form-grid">
           <div class="form-field span-2">
             <label for="pName">품목명 <span class="req" aria-hidden="true">*</span></label>
@@ -939,7 +939,7 @@
           </div>
           <div class="form-field span-2 price-scope">
             <fieldset class="scope-set" id="pScopeSet" hidden>
-              <legend>단위·매입가·판매가 적용 범위</legend>
+              <legend>적용 범위 <span class="muted small">(품목명·브랜드·카테고리·단위·가격·고객 판매용)</span></legend>
               <label class="check"><input type="radio" name="pScope" value="branch" /> <span id="pScopeBranch">이 지점만</span></label>
               <label class="check"><input type="radio" name="pScope" value="all" /> 모든 지점 같은 값 <span class="muted small">(지점별로 따로 정한 값은 없어집니다)</span></label>
             </fieldset>
