@@ -1950,7 +1950,8 @@
   const DOW = ['일', '월', '화', '수', '목', '금', '토'];
   const STATUS_RANK = { active: 0, leave: 1, left: 2 };
   state.staff = [];
-  state.st = { q: '', pos: '', status: 'current' };
+  state.st = { q: '', pos: '', status: 'current', branch: 'all' };  // branch: admins pick a branch or 'all'
+  const stAll = () => isAdmin() && state.st.branch === 'all';
 
   const todayKey = () => keyFmt.format(new Date());  // YYYY-MM-DD in Korea
   const todayDow = () => new Date(`${todayKey()}T00:00:00Z`).getUTCDay();
@@ -1978,11 +1979,36 @@
     ? `<img class="st-avatar ${cls}" src="${esc(x.photo_url)}" alt="" loading="lazy" />`
     : `<span class="st-avatar st-avatar-empty pos-${x.position} ${cls}" aria-hidden="true">${esc((x.name || '?').slice(0, 1))}</span>`);
 
+  function fillStaffBranches() {
+    if (!isAdmin()) return;
+    const sel = $('#stBranch');
+    sel.innerHTML = '<option value="all">전체 지점</option>'
+      + state.branches.map((b) => `<option value="${b.id}">${esc(b.name)}${b.active === false ? ' (중지)' : ''}</option>`).join('');
+    if (state.st.branch !== 'all' && !state.branches.some((b) => b.id === state.st.branch)) state.st.branch = 'all';
+    sel.value = state.st.branch;
+    $('#sBranch').innerHTML = state.branches.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  }
+
   async function loadStaff() {
     if (!isManager() || !state.branch) return;
+    fillStaffBranches();
     const box = $('#stError');
     try {
-      state.staff = await api.listStaff(state.branch.id);
+      if (stAll()) {
+        // Every branch; today's schedule too, for 오늘 근무 per branch
+        const today = todayKey();
+        const list = await Promise.all(state.branches.map(async (b) => {
+          const [people, sched] = await Promise.all([api.listStaff(b.id), api.listSchedule(b.id, today, today).catch(() => [])]);
+          return { b, people, sched };
+        }));
+        const name = new Map(state.branches.map((b) => [b.id, b.name]));
+        state.staff = list.flatMap((l) => l.people).map((x) => ({ ...x, branch_name: name.get(x.branch_id) }));
+        state.stSched = list.flatMap((l) => l.sched);
+      } else {
+        const id = isAdmin() ? state.st.branch : state.branch.id;
+        state.staff = await api.listStaff(id);
+        state.stSched = [];
+      }
       box.hidden = true;
     } catch (e) {
       state.staff = [];
@@ -2019,6 +2045,10 @@
     $('#stKpiToday').textContent = `${nf.format(active.length - offToday.length)}명`;
     $('#stKpiTodaySub').innerHTML = `${DOW[dow]}요일 · ${offToday.length ? `휴무 ${nameList(offToday)}` : '휴무 없음'}`;
     $('#stKpiCert').textContent = `${nf.format(all.filter(needsCert).length)}명`;
+    const every = stAll();
+    $('#stBranchPanel').hidden = !every;
+    $('#stRosterPanel').hidden = every;
+    if (every) renderStaffBranches(all);
 
     // Weekly day-off board
     $('#stRoster').innerHTML = WEEK.map((d) => {
@@ -2054,7 +2084,7 @@
         ? `<div class="svc-chips">${Object.keys(SERVICES).filter((k) => x.services.includes(k)).map((k) => `<span class="svc-chip">${SERVICES[k]}</span>`).join('')}</div>` : '<span class="muted">—</span>';
       return `<tr class="${x.status === 'left' ? 'inactive-row' : ''}">
         <td class="cell-name"><div class="st-cell">${staffAvatar(x)}<div><div class="item-name">${esc(x.name)}<span class="tag pos-tag pos-${x.position}">${POSITIONS[x.position]}</span></div>
-          <div class="item-sku">${esc(x.phone || '연락처 없음')}</div>${x.memo ? `<div class="st-memo">${esc(x.memo)}</div>` : ''}</div></div></td>
+          <div class="item-sku">${x.branch_name ? `<span class="tag st-branch-tag">${esc(x.branch_name)}</span>` : ''}${esc(x.phone || '연락처 없음')}</div>${x.memo ? `<div class="st-memo">${esc(x.memo)}</div>` : ''}</div></div></td>
         <td data-label="담당 시술">${svc}</td>
         <td data-label="정기 휴무">${daysText(x.days_off)}</td>
         <td data-label="입사·근속" class="when">${x.hired_on ? `${dateText(x.hired_on)}<small>${tenure(x.hired_on, x.status === 'left' ? x.left_on : null)}</small>` : '<span class="muted">—</span>'}</td>
@@ -2065,6 +2095,58 @@
       </tr>`;
     }).join('');
   }
+
+  // 전체 지점 (admin): head count per branch and the 직급 mix
+  function renderStaffBranches(all) {
+    const today = todayKey();
+    const sched = new Map((state.stSched || []).map((r) => [`${r.staff_id}|${r.day}`, r]));
+    const months = (x) => { if (!x.hired_on) return null; const a = new Date(`${x.hired_on}T00:00:00Z`), b = new Date(`${today}T00:00:00Z`); return (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + b.getUTCMonth() - a.getUTCMonth(); };
+    const tenureText = (list) => {
+      const m = list.map(months).filter((v) => v != null && v >= 0);
+      if (!m.length) return '—';
+      const avg = Math.round(m.reduce((s, v) => s + v, 0) / m.length);
+      return avg >= 12 ? `${Math.floor(avg / 12)}년${avg % 12 ? ` ${avg % 12}개월` : ''}` : `${avg}개월`;
+    };
+    const stats = (list) => {
+      const active = list.filter((x) => x.status === 'active');
+      const des = active.filter((x) => DESIGNER_POS.includes(x.position));
+      const on = active.filter((x) => { const st = dayState(x, today, sched); return st !== 'na' && workValue(st) > 0; });
+      return {
+        active: active.length, des: des.length, staff: active.length - des.length, on: on.length,
+        onDes: on.filter((x) => DESIGNER_POS.includes(x.position)).length,
+        leave: list.filter((x) => x.status === 'leave').length, left: list.filter((x) => x.status === 'left').length,
+        cert: list.filter(needsCert).length, tenure: tenureText(active),
+      };
+    };
+    const row = (label, s, id) => `<tr${id ? '' : ' class="hq-total-row"'}>
+      <th scope="row" class="cell-name">${id ? `<button type="button" class="link-btn hq-branch" data-st-branch="${id}">${esc(label)}</button>` : label}</th>
+      <td class="num" data-label="재직"><strong>${nf.format(s.active)}명</strong></td>
+      <td class="num" data-label="시술 인원">${nf.format(s.des)}명</td>
+      <td class="num" data-label="스태프">${nf.format(s.staff)}명</td>
+      <td class="num" data-label="오늘 근무">${nf.format(s.on)}명${s.active && s.onDes === 0 && s.des ? ' <span class="tag tag-off">시술 인원 없음</span>' : ''}</td>
+      <td class="num" data-label="휴직">${nf.format(s.leave)}명</td>
+      <td class="num" data-label="퇴사">${nf.format(s.left)}명</td>
+      <td class="num" data-label="보건증 확인">${s.cert ? `<span class="hq-warn">${nf.format(s.cert)}명</span>` : '0명'}</td>
+      <td class="num" data-label="평균 근속">${s.tenure}</td>
+    </tr>`;
+    $('#stBranchBody').innerHTML = state.branches.map((b) => row(b.name, stats(all.filter((x) => x.branch_id === b.id)), b.id)).join('')
+      || '<tr><td colspan="9" class="muted rp-empty">지점이 없습니다.</td></tr>';
+    $('#stBranchFoot').innerHTML = state.branches.length > 1 ? row('전체', stats(all)) : '';
+
+    // 직급 분포 (재직): one bar, segments in rank order, counts beside the names
+    const active = all.filter((x) => x.status === 'active');
+    const counts = Object.keys(POSITIONS).map((k) => ({ k, n: active.filter((x) => x.position === k).length })).filter((c) => c.n);
+    $('#stPosMix').innerHTML = active.length ? `<p class="st-mix-title">직급 분포 <span class="muted">· 재직 ${nf.format(active.length)}명</span></p>
+      <div class="st-mix-bar" role="img" aria-label="${counts.map((c) => `${POSITIONS[c.k]} ${c.n}명`).join(', ')}">${counts.map((c) => `<span class="pos-fill-${c.k}" style="flex:${c.n}" title="${POSITIONS[c.k]} ${c.n}명"></span>`).join('')}</div>
+      <ul class="st-mix-legend">${counts.map((c) => `<li><i class="pos-fill-${c.k}"></i>${POSITIONS[c.k]} <b>${nf.format(c.n)}</b></li>`).join('')}</ul>` : '';
+  }
+  $('#stBranchPanel').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-st-branch]');
+    if (!b) return;
+    state.st.branch = b.dataset.stBranch;
+    loadStaff();
+  });
+  $('#stBranch').addEventListener('change', (e) => { state.st.branch = e.target.value; loadStaff(); });
 
   // Filters
   $('#stPos').insertAdjacentHTML('beforeend', Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''));
@@ -2140,7 +2222,11 @@
     editingStaff = x;
     staffForm.reset();
     clearErrors(staffForm);
-    $('#staffTitle').textContent = x ? `${x.name} 정보 수정` : `직원 추가 · ${state.branch.name}`;
+    // 소속 지점 (admin): a new person joins the branch on screen; 전체 지점 → the top-bar branch
+    const home = x?.branch_id || (isAdmin() && state.st.branch !== 'all' ? state.st.branch : state.branch.id);
+    if (isAdmin()) $('#sBranch').value = home;
+    const homeName = state.branches.find((b) => b.id === home)?.name || state.branch.name;
+    $('#staffTitle').textContent = x ? `${x.name} 정보 수정` : `직원 추가${isAdmin() ? '' : ` · ${homeName}`}`;
     $('#sName').value = x?.name || '';
     $('#sPosition').value = x?.position || 'designer';
     $('#sPhone').value = x?.phone || '';
@@ -2194,7 +2280,9 @@
     const btn = $('#staffSubmit');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
-      const branchId = editingStaff?.branch_id || state.branch.id;
+      const branchId = isAdmin() ? $('#sBranch').value : editingStaff?.branch_id || state.branch.id;
+      const branchName = state.branches.find((b) => b.id === branchId)?.name || state.branch.name;
+      const moved = editingStaff && editingStaff.branch_id !== branchId;
       const id = await api.saveStaff({
         id: editingStaff?.id || null, branch_id: branchId, name,
         position: $('#sPosition').value, phone: $('#sPhone').value, hired_on: hired || null, status, left_on: left || null,
@@ -2211,7 +2299,8 @@
       } catch (px) { photoError = api.toAppError(px).message; }
       $('#staffDialog').close();
       setStaffPhotoDraft(null);
-      const saved = editingStaff ? `${name} 정보를 저장했습니다.` : `${name} 님을 ${state.branch.name} 직원으로 추가했습니다.`;
+      const saved = !editingStaff ? `${name} 님을 ${branchName} 직원으로 추가했습니다.`
+        : moved ? `${name} 님을 ${branchName}(으)로 옮겼습니다.` : `${name} 정보를 저장했습니다.`;
       if (photoError) toast(`${saved} 사진은 올리지 못했습니다: ${photoError}`, { error: true });
       else toast(saved);
       await loadStaff();
