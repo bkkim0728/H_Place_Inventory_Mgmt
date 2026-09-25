@@ -57,6 +57,7 @@ create table if not exists public.branches (
 alter table public.branches add column if not exists phone   text;
 alter table public.branches add column if not exists address text;
 alter table public.branches add column if not exists active  boolean not null default true;
+alter table public.branches add column if not exists photo_path text;  -- file in the branch-photos bucket
 
 create table if not exists public.profiles (
   user_id     uuid primary key references auth.users(id) on delete cascade,
@@ -757,6 +758,48 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Branch photos. The file goes to the public Storage bucket `branch-photos`
+-- under "<branch id>/<file>" (see the storage policies below); this function
+-- records it on the branch and returns the previous path so the app can delete
+-- the old file. Pass null to remove the photo. Admins, or the branch's manager.
+-- Errors: FORBIDDEN, INVALID_PHOTO, BRANCH_NOT_FOUND
+-- ---------------------------------------------------------------------------
+create or replace function public.set_branch_photo(p_branch_id uuid, p_path text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_old text;
+begin
+  if p_branch_id is null or not public.is_branch_manager(p_branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if p_path is not null
+     and p_path !~ ('^' || p_branch_id::text || '/[A-Za-z0-9._-]{1,80}$') then
+    raise exception 'INVALID_PHOTO' using errcode = '22023';
+  end if;
+  select photo_path into v_old from public.branches where id = p_branch_id for update;
+  if not found then
+    raise exception 'BRANCH_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  update public.branches set photo_path = p_path where id = p_branch_id;
+  return v_old;
+end;
+$$;
+
+-- Photos for the sign-in screen, readable before sign-in: only the name and
+-- photo of operating branches that have one.
+create or replace function public.login_photos()
+returns table (id uuid, name text, photo_path text)
+language sql stable security definer set search_path = public
+as $$
+  select b.id, b.name, b.photo_path
+  from public.branches b
+  where b.active and b.photo_path is not null
+  order by b.code;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Function privileges: signed-in users only (each function checks the role)
 -- ---------------------------------------------------------------------------
 revoke all on function public.record_movement(uuid, uuid, public.movement_type, integer, text) from public, anon;
@@ -769,6 +812,8 @@ revoke all on function public.delete_category(uuid) from public, anon;
 revoke all on function public.reorder_categories(uuid[]) from public, anon;
 revoke all on function public.list_users(uuid) from public, anon;
 revoke all on function public.update_user(uuid, text, uuid, public.app_role, boolean) from public, anon;
+revoke all on function public.set_branch_photo(uuid, text) from public, anon;
+revoke all on function public.login_photos() from public;
 grant execute on function public.record_movement(uuid, uuid, public.movement_type, integer, text) to authenticated;
 grant execute on function public.revert_movement(bigint) to authenticated;
 grant execute on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) to authenticated;
@@ -779,6 +824,49 @@ grant execute on function public.delete_category(uuid) to authenticated;
 grant execute on function public.reorder_categories(uuid[]) to authenticated;
 grant execute on function public.list_users(uuid) to authenticated;
 grant execute on function public.update_user(uuid, text, uuid, public.app_role, boolean) to authenticated;
+grant execute on function public.set_branch_photo(uuid, text) to authenticated;
+grant execute on function public.login_photos() to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Storage bucket for branch photos. Public: anyone with the URL can view a
+-- photo (the sign-in screen shows them). Uploading and deleting follow the
+-- same rule as set_branch_photo: admins, or the manager of the branch whose
+-- id is the first folder of the file name. JPG/PNG/WEBP up to 5 MB.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('branch-photos', 'branch-photos', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = excluded.public, file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+-- "<uuid>/file.jpg" → the uuid; anything else → null
+create or replace function public.photo_branch_id(p_name text)
+returns uuid
+language sql immutable
+as $$
+  select case
+    when split_part(p_name, '/', 1) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then split_part(p_name, '/', 1)::uuid
+  end;
+$$;
+
+drop policy if exists "branch photos: signed-in read" on storage.objects;
+create policy "branch photos: signed-in read" on storage.objects
+  for select to authenticated using (bucket_id = 'branch-photos');
+
+drop policy if exists "branch photos: managers upload" on storage.objects;
+create policy "branch photos: managers upload" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'branch-photos'
+              and public.photo_branch_id(name) is not null
+              and public.is_branch_manager(public.photo_branch_id(name)));
+
+drop policy if exists "branch photos: managers delete" on storage.objects;
+create policy "branch photos: managers delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'branch-photos'
+         and public.photo_branch_id(name) is not null
+         and public.is_branch_manager(public.photo_branch_id(name)));
 
 -- ---------------------------------------------------------------------------
 -- New auth users get a profile with no branch (no data access). The

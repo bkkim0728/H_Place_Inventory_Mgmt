@@ -17,6 +17,13 @@ await db.exec(`
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema public, auth to anon, authenticated;
   grant execute on function auth.uid() to anon, authenticated;
+  -- Supabase Storage tables (just the columns the schema touches)
+  create schema storage;
+  create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text);
+  alter table storage.objects enable row level security;
+  grant usage on schema storage to anon, authenticated;
+  grant select, insert, delete on storage.objects to authenticated;
 `);
 await db.exec(readFileSync(root + 'schema.sql', 'utf8'));
 await db.exec(readFileSync(root + 'schema.sql', 'utf8'));   // must be re-runnable
@@ -212,6 +219,37 @@ await as(admin, () => q(`select update_user($1,null,$2,'staff',true)`, [admin2, 
 ok((await one(`select role from profiles where user_id=$1`, [admin2])).role === 'staff', 'admin demotes another admin while one remains');
 ok((await err(admin2, () => q(`select update_user($1,null,null,'staff',true)`, [admin])))?.includes('FORBIDDEN'), 'demoted admin (now staff) cannot touch the admin');
 ok((await err(admin2, () => q(`select * from list_users(null)`)))?.includes('FORBIDDEN'), 'demoted admin loses user management');
+
+console.log('branch photos');
+ok((await one(`select public from storage.buckets where id='branch-photos'`)).public === true, 'public branch-photos bucket exists');
+const put = (uid, name) => as(uid, () => q(`insert into storage.objects(bucket_id,name) values('branch-photos',$1)`, [name]));
+await put(mgr, `${b1}/a.jpg`);
+ok((await one(`select count(*)::int n from storage.objects where name=$1`, [`${b1}/a.jpg`])).n === 1, 'manager uploads a photo for own branch');
+ok((await err(staff, () => put(staff, `${b1}/b.jpg`)))?.includes('row-level security'), 'staff cannot upload branch photos');
+ok((await err(mgr, () => put(mgr, `${b2}/b.jpg`)))?.includes('row-level security'), 'manager cannot upload for another branch');
+ok((await err(mgr, () => put(mgr, `misc/b.jpg`)))?.includes('row-level security'), 'files outside a branch folder are rejected');
+await put(admin, `${b2}/c.jpg`);
+ok((await one(`select count(*)::int n from storage.objects where name=$1`, [`${b2}/c.jpg`])).n === 1, 'admin uploads for any branch');
+ok((await as(other, () => q(`delete from storage.objects where name=$1 returning id`, [`${b1}/a.jpg`]))).length === 0, 'manager cannot delete another branch photo');
+
+ok((await as(mgr, () => one(`select set_branch_photo($1,$2) old`, [b1, `${b1}/a.jpg`]))).old === null, 'set_branch_photo records the path');
+ok((await one(`select photo_path from branches where id=$1`, [b1])).photo_path === `${b1}/a.jpg`, 'branch keeps the photo path');
+ok((await err(staff, () => q(`select set_branch_photo($1,$2)`, [b1, `${b1}/x.jpg`])))?.includes('FORBIDDEN'), 'staff cannot set the photo');
+ok((await err(mgr, () => q(`select set_branch_photo($1,$2)`, [b2, `${b2}/x.jpg`])))?.includes('FORBIDDEN'), 'manager cannot set another branch photo');
+ok((await err(mgr, () => q(`select set_branch_photo($1,$2)`, [b1, `${b2}/c.jpg`])))?.includes('INVALID_PHOTO'), 'path must be in the branch folder');
+ok((await err(mgr, () => q(`select set_branch_photo($1,$2)`, [b1, `${b1}/../x.jpg`])))?.includes('INVALID_PHOTO'), 'path traversal rejected');
+await as(admin, () => q(`select set_branch_photo($1,$2)`, [b2, `${b2}/c.jpg`]));
+
+const lp = await as(null, () => q(`select * from login_photos()`));
+ok(lp.length === 2 && lp.every(r => r.photo_path && r.name), 'anon reads sign-in photos (name + path only)');
+ok(Object.keys(lp[0]).sort().join() === 'id,name,photo_path', 'login_photos exposes no other branch data');
+await as(admin, () => q(`select save_branch($1,'BR02','2호점',null,null,false)`, [b2]));
+ok((await as(null, () => q(`select * from login_photos()`))).length === 1, 'closed branches are left out of sign-in photos');
+await as(admin, () => q(`select save_branch($1,'BR02','2호점',null,null,true)`, [b2]));
+ok((await err(null, () => q(`select set_branch_photo($1,null)`, [b1])))?.includes('permission denied'), 'anon cannot change photos');
+ok((await as(mgr, () => one(`select set_branch_photo($1,null) old`, [b1]))).old === `${b1}/a.jpg`, 'removing returns the old path for cleanup');
+ok((await one(`select photo_path from branches where id=$1`, [b1])).photo_path === null, 'photo removed from the branch');
+ok((await as(mgr, () => q(`delete from storage.objects where name=$1 returning id`, [`${b1}/a.jpg`]))).length === 1, 'manager deletes the old file');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -89,9 +89,31 @@
   const SCREENS = ['screenLoading', 'screenLogin', 'screenPending', 'screenApp'];
   function show(id) { SCREENS.forEach((s) => { $('#' + s).hidden = s !== id; }); }
 
+  // Sign-in background: the photo of the branch last used on this device,
+  // otherwise a random branch photo. Fades in once loaded; no photo → default.
+  async function loadLoginPhoto() {
+    const layer = $('#loginPhoto');
+    const photos = await api.loginPhotos();
+    if (!photos.length) { layer.classList.remove('is-on'); $('#screenLogin').classList.remove('has-photo'); return; }
+    let last = null;
+    try { last = localStorage.getItem('hp-login-branch'); } catch (e) {}
+    const pick = photos.find((p) => p.id === last) || photos[Math.floor(Math.random() * photos.length)];
+    if (layer.dataset.url === pick.url) return;
+    const img = new Image();
+    img.onload = () => {
+      layer.dataset.url = pick.url;
+      layer.style.backgroundImage = `url("${pick.url.replace(/"/g, '%22')}")`;
+      $('#loginPhotoName').textContent = `H Place ${pick.name}`;
+      $('#screenLogin').classList.add('has-photo');
+      requestAnimationFrame(() => layer.classList.add('is-on'));
+    };
+    img.src = pick.url;
+  }
+
   function showLogin(message) {
     state.user = null;
     show('screenLogin');
+    loadLoginPhoto();
     const err = $('#loginError');
     err.hidden = !message;
     err.textContent = message || '';
@@ -182,6 +204,7 @@
     state.branch = state.branches.find((b) => b.id === saved && state.profile.role === 'admin')
       || state.branches.find((b) => b.id === state.profile.branch_id)
       || state.branches[0];
+    try { localStorage.setItem('hp-login-branch', state.branch.id); } catch (e) {}
 
     document.body.dataset.role = state.profile.role;
     const name = state.profile.full_name || (user.email || '').split('@')[0];
@@ -205,7 +228,7 @@
 
   $('#branchSelect').addEventListener('change', (e) => {
     state.branch = state.branches.find((b) => b.id === e.target.value);
-    try { localStorage.setItem('hp-branch', state.branch.id); } catch (err) {}
+    try { localStorage.setItem('hp-branch', state.branch.id); localStorage.setItem('hp-login-branch', state.branch.id); } catch (err) {}
     loadData();
     if (state.route === 'users') loadUsers();
   });
@@ -1280,7 +1303,10 @@
       ? '전체 관리자는 지점을 추가하고 모든 지점의 정보와 운영 여부를 바꿀 수 있습니다. 새 지점에는 모든 품목이 재고 0으로 준비됩니다.'
       : '지점 관리자는 이 지점의 이름, 전화번호, 주소를 수정할 수 있습니다. 지점 코드와 운영 여부는 전체 관리자가 바꿉니다.';
     $('#brBody').innerHTML = state.branches.map((b) => `<tr class="${b.active === false ? 'inactive-row' : ''}">
-      <td class="cell-name"><div class="item-name">${esc(b.name)}</div><div class="item-sku">${esc(b.code)}</div></td>
+      <td class="cell-name"><div class="branch-cell">${b.photo_url
+        ? `<img class="branch-thumb" src="${esc(b.photo_url)}" alt="" loading="lazy" />`
+        : `<span class="branch-thumb branch-thumb-empty" aria-hidden="true">${svgIcon('i-image')}</span>`}
+        <div><div class="item-name">${esc(b.name)}</div><div class="item-sku">${esc(b.code)}</div></div></div></td>
       <td data-label="연락처">${esc(b.phone || '—')}</td>
       <td data-label="주소"><span class="memo">${esc(b.address || '—')}</span></td>
       <td data-label="상태">${b.active === false ? '<span class="tag tag-off">중지</span>' : '운영 중'}</td>
@@ -1303,9 +1329,69 @@
     $('#bAddress').value = b?.address || '';
     $('#bActive').checked = b ? b.active !== false : true;
     $('#bCode').disabled = !isAdmin();
+    setPhotoDraft(null);
     branchDialog.open();
     (isAdmin() && !b ? $('#bCode') : $('#bName')).focus();
   }
+
+  // Branch photo: chosen in the dialog, resized in the browser, uploaded on save.
+  // photoDraft: null = unchanged, { blob, url } = new photo, 'remove' = delete.
+  let photoDraft = null;
+  function setPhotoDraft(draft) {
+    if (photoDraft?.url) URL.revokeObjectURL(photoDraft.url);
+    photoDraft = draft;
+    const current = draft === 'remove' ? null : draft?.url || editingBranch?.photo_url || null;
+    const box = $('#bPhotoPreview');
+    box.style.backgroundImage = current ? `url("${current.replace(/"/g, '%22')}")` : '';
+    box.classList.toggle('is-empty', !current);
+    $('#bPhotoRemove').hidden = !current;
+    $('#bPhotoPick').textContent = current ? '사진 바꾸기' : '사진 선택';
+    $('#bPhotoFile').value = '';
+    $('#bPhotoFileErr').hidden = true;
+    $('#bPhotoFile').removeAttribute('aria-invalid');
+  }
+
+  // Longest side at most 1920px, re-encoded as JPEG (~200-500 KB): quick to
+  // load on the sign-in screen and small enough for the free storage tier.
+  async function preparePhoto(file) {
+    if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) throw new Error('이미지 파일만 올릴 수 있습니다.');
+    if (file.size > 30 * 1024 * 1024) throw new Error('30MB 이하의 사진을 선택해 주세요.');
+    const src = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = src;
+      try { await img.decode(); } catch (e) { throw new Error('이 사진 형식을 읽을 수 없습니다. JPG나 PNG 사진으로 올려 주세요.'); }
+      const scale = Math.min(1, 1920 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.82));
+      if (!blob) throw new Error('사진을 처리하지 못했습니다. 다른 사진으로 시도해 주세요.');
+      return blob;
+    } finally {
+      URL.revokeObjectURL(src);
+    }
+  }
+
+  $('#bPhotoFile').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const pick = $('#bPhotoPick');
+    pick.setAttribute('aria-busy', 'true');
+    try {
+      const blob = await preparePhoto(file);
+      setPhotoDraft({ blob, url: URL.createObjectURL(blob) });
+    } catch (ex) {
+      $('#bPhotoFile').value = '';
+      fieldError($('#bPhotoFile'), ex.message);
+      $('#bPhotoPick').focus();
+    } finally {
+      pick.removeAttribute('aria-busy');
+    }
+  });
+  $('#bPhotoRemove').addEventListener('click', () => { setPhotoDraft('remove'); $('#bPhotoPick').focus(); });
+  $('#bPhotoPick').addEventListener('click', () => $('#bPhotoFile').click());
 
   branchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1319,12 +1405,20 @@
     const btn = $('#branchSubmit');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
-      await api.saveBranch({
+      const id = await api.saveBranch({
         id: editingBranch?.id || null, code: code || editingBranch?.code, name: $('#bName').value,
         phone: $('#bPhone').value, address: $('#bAddress').value, active: $('#bActive').checked,
       });
+      let photoError = null;
+      try {
+        if (photoDraft === 'remove') await api.removeBranchPhoto(id);
+        else if (photoDraft?.blob) await api.setBranchPhoto(id, photoDraft.blob);
+      } catch (px) { photoError = api.toAppError(px).message; }
       $('#branchDialog').close();
-      toast(editingBranch ? `${$('#bName').value.trim()} 정보를 저장했습니다.` : `새 지점 "${$('#bName').value.trim()}"을 추가했습니다. 모든 품목이 재고 0으로 준비되었습니다.`);
+      setPhotoDraft(null);
+      const saved = editingBranch ? `${$('#bName').value.trim()} 정보를 저장했습니다.` : `새 지점 "${$('#bName').value.trim()}"을 추가했습니다. 모든 품목이 재고 0으로 준비되었습니다.`;
+      if (photoError) toast(`${saved} 사진은 올리지 못했습니다: ${photoError}`, { error: true });
+      else toast(saved);
       state.branches = await api.listBranches();
       state.branch = state.branches.find((b) => b.id === state.branch.id) || state.branches[0];
       fillBranchSelect();
