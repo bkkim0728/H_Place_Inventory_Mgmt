@@ -645,7 +645,7 @@ a.btn { text-decoration: none; }
   #slXlsx, .sl-list .cell-action { display: none !important; }
 }
 
-/* 본사 대시보드 — branch identity colors (validated categorical order, dark / light steps) */
+/* 전체현황 — branch identity colors (validated categorical order, dark / light steps) */
 :root { --br-1: #3987e5; --br-2: #d95926; --br-3: #199e70; --br-4: #c98500; --br-5: #d55181; --br-6: #008300; --br-7: #9085e9; --br-8: #e66767; }
 :root[data-theme="light"] { --br-1: #2a78d6; --br-2: #eb6834; --br-3: #1baf7a; --br-4: #eda100; --br-5: #e87ba4; --br-6: #008300; --br-7: #4a3aa7; --br-8: #e34948; }
 .hq-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
@@ -708,7 +708,7 @@ a.btn { text-decoration: none; }
   .topbar-actions { gap: 6px; }
   .branch-select { width: 92px; max-width: 92px; padding: 0 8px; }
 }
-/* 본사 대시보드 covers every branch: no branch picker there */
+/* 전체현황 covers every branch: no branch picker there */
 body[data-route="hq"] #branchSelect { display: none; }
 
 /* 직원 관리 · 전체 지점 (admin) */

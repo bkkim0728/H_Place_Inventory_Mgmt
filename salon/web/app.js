@@ -54,7 +54,7 @@
     users: '사용자 관리',
     branches: '지점 관리',
     manual: '사용 매뉴얼',
-    hq: '본사 대시보드',
+    hq: '전체현황',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users', 'hq'];  // branch managers use 직원 관리 and 지점 관리 instead
@@ -2942,7 +2942,7 @@
   });
 
   // ------------------------------------------------------------------
-  // 본사 대시보드 (admin): every branch, one period against the one before
+  // 전체현황 (admin): every branch, one period against the one before
   // ------------------------------------------------------------------
   state.hq = { period: '7', data: [], loading: false, ticket: 0 };
   const BRANCH_COLORS = 8;  // --br-1 … --br-8 (validated categorical order); more branches reuse none
@@ -3270,7 +3270,7 @@
     });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `본사대시보드_${r.from}_${r.to}.xlsx`;
+    a.download = `전체현황_${r.from}_${r.to}.xlsx`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast('지점별 성과를 엑셀 파일로 내려받았습니다.');
