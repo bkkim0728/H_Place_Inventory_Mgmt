@@ -522,6 +522,18 @@
     if (!Array.isArray(state.staff)) state.staff = buildDemoStaff();  // saved before 직원 관리 existed
     ['schedule', 'staffMonthly', 'payrollMonths'].forEach((k) => { if (!Array.isArray(state[k])) state[k] = []; });
     if (!Array.isArray(state.dailySales)) state.dailySales = buildDemoDailySales();
+    // Sample 지점 설정 prices so 지점별 가격 비교 has something to show (once per saved demo)
+    if (!state.branchPricesSeeded) {
+      [['br02', 'CL-OX6', { cost_price: 8200 }], ['br02', 'RT-OIL', { retail_price: 24000 }], ['br02', 'RT-ESS', { cost_price: 9200, retail_price: 25000 }],
+        ['br01', 'SH-PRO', { cost_price: 19800 }], ['br02', 'SP-GLV', { cost_price: 8600 }]].forEach(([bid, sku, v]) => {
+        const p = state.products.find((x) => x.sku === sku);
+        const row = p && state.inventory.find((i) => i.branch_id === bid && i.product_id === p.id);
+        if (!row || row.own_prices) return;
+        Object.assign(row, { own_prices: true, name: p.name, brand: p.brand ?? null, category: p.category, is_retail: Boolean(p.is_retail),
+          unit: p.unit, cost_price: p.cost_price, retail_price: p.retail_price ?? null }, v);
+      });
+      state.branchPricesSeeded = true;
+    }
     const save = () => {
       if (memoryOnly) return;
       try { localStorage.setItem(DEMO_KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; }
