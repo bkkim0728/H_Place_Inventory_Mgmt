@@ -61,6 +61,7 @@
       <symbol id="i-report" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></symbol>
       <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/><path d="M9 7h7M9 11h5"/></symbol>
       <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16v-4M11 16V8M15 16v-6M19 16V5"/></symbol>
       <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7"/></symbol>
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
@@ -131,6 +132,7 @@
         </ul>
         <p class="nav-section">관리</p>
         <ul class="nav-list">
+          <li data-admin-only><a href="#/hq" class="nav-link" data-route="hq"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>본사 대시보드</a></li>
           <li data-manager-only><a href="#/report" class="nav-link" data-route="report"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg>매장 레포트</a></li>
           <li><a href="#/products" class="nav-link" data-route="products"><svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>제품 관리</a></li>
           <li data-admin-only><a href="#/categories" class="nav-link" data-route="categories"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>카테고리 관리</a></li>
@@ -307,6 +309,122 @@
               <p class="muted small">검색어나 필터를 바꿔 보세요.</p>
               <button type="button" class="btn btn-secondary" id="invClear">필터 초기화</button>
             </div>
+          </div>
+        </section>
+
+        <!-- 본사 대시보드 (admin): every branch at once -->
+        <section class="view" data-view="hq" hidden aria-labelledby="pageTitle">
+          <div class="card panel hq-head">
+            <div>
+              <h2 class="hq-title">전체 지점 현황</h2>
+              <p class="muted small" id="hqSub">—</p>
+            </div>
+            <div class="hq-tools">
+              <div class="segmented" role="group" aria-label="기간 선택" id="hqPeriod">
+                <button type="button" data-hq-period="7" aria-pressed="true">최근 7일</button>
+                <button type="button" data-hq-period="30" aria-pressed="false">최근 30일</button>
+                <button type="button" data-hq-period="month" aria-pressed="false">이번 달</button>
+                <button type="button" data-hq-period="lastmonth" aria-pressed="false">지난달</button>
+              </div>
+              <button type="button" class="btn btn-secondary" id="hqXlsx"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>엑셀</button>
+              <button type="button" class="btn btn-secondary" id="hqPrint"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>인쇄</button>
+            </div>
+          </div>
+          <p class="err-box" id="hqError" hidden></p>
+
+          <div class="hq-kpis">
+            <article class="card kpi rp-kpi-main hq-kpi-wide">
+              <div class="kpi-head"><span class="kpi-label">전체 총매출</span><span class="delta" id="hqTotalDelta"></span></div>
+              <p class="kpi-value" id="hqTotal">₩0</p>
+              <p class="kpi-sub muted" id="hqTotalSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">시술 매출</span><span class="delta" id="hqSvcDelta"></span></div>
+              <p class="kpi-value" id="hqSvc">₩0</p>
+              <p class="kpi-sub muted" id="hqSvcSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">제품 판매</span><span class="delta" id="hqProdDelta"></span></div>
+              <p class="kpi-value" id="hqProd">₩0</p>
+              <p class="kpi-sub muted" id="hqProdSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">재료비율</span><span class="delta" id="hqRatioDelta"></span></div>
+              <p class="kpi-value" id="hqRatio">—</p>
+              <p class="kpi-sub muted" id="hqRatioSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">재고 금액</span></div>
+              <p class="kpi-value" id="hqStock">₩0</p>
+              <p class="kpi-sub muted" id="hqStockSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">재고 경고</span></div>
+              <p class="kpi-value" id="hqWarn">0개</p>
+              <p class="kpi-sub muted" id="hqWarnSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">오늘 근무</span></div>
+              <p class="kpi-value" id="hqWork">0명</p>
+              <p class="kpi-sub muted" id="hqWorkSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">시술 매출 입력</span></div>
+              <p class="kpi-value" id="hqEntry">—</p>
+              <p class="kpi-sub muted" id="hqEntrySub">—</p>
+            </article>
+          </div>
+
+          <section class="card panel hq-trend" aria-labelledby="hqTrendHeading">
+            <div class="panel-head">
+              <div>
+                <h2 id="hqTrendHeading" class="rp-title">일별 총매출 · 지점별</h2>
+                <p class="muted small">시술 매출 + 제품 판매. 막대에 마우스를 올리면 지점별 금액이 보입니다.</p>
+              </div>
+              <ul class="hq-legend" id="hqLegend"></ul>
+            </div>
+            <div class="hq-chart" id="hqChart"></div>
+            <div class="hq-tip" id="hqTip" role="status" hidden></div>
+          </section>
+
+          <section class="card panel" aria-labelledby="hqBranchHeading">
+            <div class="panel-head">
+              <h2 id="hqBranchHeading" class="rp-title">지점별 성과</h2>
+              <p class="muted small">지점명을 누르면 그 지점의 매장 레포트로 이동합니다.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="inv-table rp-table hq-table">
+                <caption class="sr-only">지점별 성과 비교</caption>
+                <thead><tr>
+                  <th scope="col" class="th-plain">지점</th>
+                  <th scope="col" class="th-plain num">총매출</th>
+                  <th scope="col" class="th-plain num">이전 대비</th>
+                  <th scope="col" class="th-plain num">매출 비중</th>
+                  <th scope="col" class="th-plain num">시술 매출</th>
+                  <th scope="col" class="th-plain num">시술 건수</th>
+                  <th scope="col" class="th-plain num">객단가</th>
+                  <th scope="col" class="th-plain num">제품 판매</th>
+                  <th scope="col" class="th-plain num">재료비율</th>
+                  <th scope="col" class="th-plain num">재고 금액</th>
+                  <th scope="col" class="th-plain num">부족·품절</th>
+                  <th scope="col" class="th-plain num">오늘 근무</th>
+                  <th scope="col" class="th-plain num">매출 입력</th>
+                </tr></thead>
+                <tbody id="hqBody"></tbody>
+                <tfoot id="hqFoot"></tfoot>
+              </table>
+            </div>
+          </section>
+
+          <div class="rp-grid hq-grid">
+            <section class="card panel" aria-labelledby="hqTopHeading">
+              <h2 id="hqTopHeading" class="rp-title">전 지점 인기 제품 (판매 금액)</h2>
+              <ol class="sl-bars" id="hqTop"></ol>
+            </section>
+            <section class="card panel" aria-labelledby="hqAlertHeading">
+              <h2 id="hqAlertHeading" class="rp-title">확인이 필요한 항목</h2>
+              <ul class="rp-alerts" id="hqAlerts"></ul>
+            </section>
           </div>
         </section>
 
@@ -1103,6 +1221,13 @@
 
           <section class="card panel man-group" id="man-admin" aria-labelledby="man-admin-h" data-admin-only>
             <h2 class="rp-title man-group-title" id="man-admin-h"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>전체 관리자 업무</h2>
+            <details class="man-item" id="man-hq" data-admin-only>
+              <summary><span class="man-q">본사 대시보드로 전체 지점 한눈에 보기</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>본사 대시보드</b>에서 기간(최근 7일, 최근 30일, 이번 달, 지난달)을 고릅니다.</li><li>위쪽 카드에서 전체 총매출·시술 매출·제품 판매·재료비율과 <b>이전 기간 대비</b> 증감, 재고 금액·재고 경고·오늘 근무·시술 매출 입력률을 확인합니다.</li><li><b>일별 총매출 · 지점별</b> 그래프에 마우스를 올리면 그날 지점별 금액이 보입니다.</li><li><b>지점별 성과</b> 표에서 매출 비중, 객단가, 재료비율, 재고, 근무를 비교합니다. 지점명을 누르면 그 지점의 매장 레포트로 이동합니다.</li><li><b>확인이 필요한 항목</b>(품절, 매출 미입력, 보건증 만료, 매출 급감 등)을 눌러 해당 화면으로 바로 갑니다. <b>엑셀</b>로 지점별 성과를 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출은 각 지점이 매장 레포트에서 입력한 값으로 계산합니다. 입력률이 낮으면 총매출이 실제보다 적게 보입니다.</p>
+                <a href="#/hq" class="btn btn-secondary btn-sm man-go">본사 대시보드(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
             <details class="man-item" id="man-users" data-admin-only>
               <summary><span class="man-q">사용자(로그인 계정) 만들기 · 비밀번호 초기화</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
               <div class="man-body">
