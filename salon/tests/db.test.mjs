@@ -251,5 +251,39 @@ ok((await as(mgr, () => one(`select set_branch_photo($1,null) old`, [b1]))).old 
 ok((await one(`select photo_path from branches where id=$1`, [b1])).photo_path === null, 'photo removed from the branch');
 ok((await as(mgr, () => q(`delete from storage.objects where name=$1 returning id`, [`${b1}/a.jpg`]))).length === 1, 'manager deletes the old file');
 
+console.log('staff');
+ok((await one(`select count(*)::int n from staff where branch_id=$1`, [b1])).n === 6, 'seed adds 6 sample staff to 1호점 once');
+const sv = (uid, a) => as(uid, () => one(`select save_staff($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) id`, a));
+const base = (id, br, over = {}) => { const o = { name: '신입 디자이너', position: 'designer', phone: '010-0000-0000', hired: '2025-03-02', status: 'active', left: null,
+  services: ['perm', 'cut', 'cut'], days: [3, 1, 1], s: 30, r: 5, lic: ' 서울-2025-1 ', cert: '2027-01-31', memo: '  ', ...over };
+  return [id, br, o.name, o.position, o.phone, o.hired, o.status, o.left, o.services, o.days, o.s, o.r, o.lic, o.cert, o.memo]; };
+const st1 = (await sv(mgr, base(null, b1))).id;
+const r1 = await one(`select * from staff where id=$1`, [st1]);
+ok(r1.services.join() === 'cut,perm' && r1.days_off.join() === '1,3', 'services and days off are de-duplicated and sorted');
+ok(r1.license_no === '서울-2025-1' && r1.memo === null && Number(r1.incentive_service) === 30, 'text is trimmed, blanks become null');
+ok((await as(staff, () => q(`select * from staff`))).length === 0, 'staff (직원 role) cannot read staff records');
+ok((await as(mgr, () => q(`select * from staff`))).every(r => r.branch_id === b1), 'manager reads only own branch staff');
+ok((await as(admin, () => q(`select distinct branch_id from staff`))).length >= 1, 'admin reads staff records');
+ok((await err(staff, () => sv(staff, base(null, b1))))?.includes('FORBIDDEN'), 'staff role cannot add staff');
+ok((await err(mgr, () => sv(mgr, base(null, b2))))?.includes('FORBIDDEN'), 'manager cannot add staff to another branch');
+ok((await err(mgr, () => sv(mgr, base(st1, b2))))?.includes('FORBIDDEN'), 'manager cannot move staff to another branch');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { position: 'boss' }))))?.includes('INVALID_STAFF'), 'unknown position rejected');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { services: ['massage'] }))))?.includes('INVALID_STAFF'), 'unknown service rejected');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { days: [7] }))))?.includes('INVALID_STAFF'), 'invalid weekday rejected');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { s: 120 }))))?.includes('INVALID_STAFF'), 'incentive over 100% rejected');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { name: ' ' }))))?.includes('INVALID_STAFF'), 'blank name rejected');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { status: 'left', left: '2024-01-01' }))))?.includes('INVALID_STAFF'), 'leave date before hire date rejected');
+await sv(mgr, base(st1, b1, { status: 'left' }));
+const r2 = await one(`select status, left_on::text d from staff where id=$1`, [st1]);
+ok(r2.status === 'left' && r2.d === (await one(`select current_date::text d`)).d, 'marking 퇴사 without a date records today');
+await sv(mgr, base(st1, b1, { status: 'active', left: '2026-01-01' }));
+ok((await one(`select left_on from staff where id=$1`, [st1])).left_on === null, 'returning to 재직 clears the leave date');
+ok((await err(staff, () => q(`update staff set name='x'`)))?.includes('permission denied'), 'no direct writes to staff');
+ok((await err(other, () => q(`select delete_staff($1)`, [st1])))?.includes('FORBIDDEN'), 'other branch manager cannot delete');
+await as(mgr, () => q(`select delete_staff($1)`, [st1]));
+ok((await one(`select count(*)::int n from staff where id=$1`, [st1])).n === 0, 'manager deletes a mistaken record');
+ok((await err(mgr, () => q(`select delete_staff($1)`, [st1])))?.includes('STAFF_NOT_FOUND'), 'deleting twice → STAFF_NOT_FOUND');
+ok((await err(null, () => q(`select * from staff`)))?.includes('permission denied'), 'anon cannot read staff');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

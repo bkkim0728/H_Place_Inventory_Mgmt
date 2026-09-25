@@ -46,10 +46,11 @@
     movements: '입출고 내역',
     products: '제품 관리',
     categories: '카테고리 관리',
+    staff: '직원 관리',
     users: '사용자 관리',
     branches: '지점 관리',
   };
-  const MANAGER_ROUTES = ['products', 'users', 'branches'];
+  const MANAGER_ROUTES = ['products', 'staff', 'users', 'branches'];
   const ADMIN_ROUTES = ['categories'];
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
@@ -231,6 +232,7 @@
     try { localStorage.setItem('hp-branch', state.branch.id); localStorage.setItem('hp-login-branch', state.branch.id); } catch (err) {}
     loadData();
     if (state.route === 'users') loadUsers();
+    if (state.route === 'staff') loadStaff();
   });
 
   $('#demoRole').addEventListener('change', async (e) => {
@@ -309,6 +311,7 @@
     if (route === 'dashboard') renderChart(state.chartBranch != null);  // animate once data is in
     if (route === 'users') loadUsers();
     if (route === 'branches') { renderBranches(); loadBranchManagers(); }
+    if (route === 'staff') loadStaff();
     if (route === 'categories') renderCategories();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
@@ -624,7 +627,7 @@
     }).observe($('#chart'));
   })();
 
-  $$('.kpi-action').forEach((b) => b.addEventListener('click', () => {
+  $$('.kpi-action[data-filter]').forEach((b) => b.addEventListener('click', () => {
     state.inv.status = b.dataset.filter;
     $('#invStatus').value = state.inv.status;
     location.hash = '#/inventory';
@@ -1451,6 +1454,236 @@
   });
 
   // ------------------------------------------------------------------
+  // Staff (직원 관리 · admin and the branch's manager)
+  // ------------------------------------------------------------------
+  const POSITIONS = { director: '원장', chief: '실장', designer: '디자이너', intern: '인턴', desk: '데스크' };
+  const POS_RANK = { director: 0, chief: 1, designer: 2, intern: 3, desk: 4 };
+  const DESIGNER_POS = ['director', 'chief', 'designer'];  // take their own clients
+  const SERVICES = { cut: '컷', perm: '펌', color: '염색', clinic: '클리닉', scalp: '두피 케어', styling: '드라이·스타일링', updo: '업스타일' };
+  const WEEK = [1, 2, 3, 4, 5, 6, 0];  // 월 … 일
+  const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+  const STATUS_RANK = { active: 0, leave: 1, left: 2 };
+  state.staff = [];
+  state.st = { q: '', pos: '', status: 'current' };
+
+  const todayKey = () => keyFmt.format(new Date());  // YYYY-MM-DD in Korea
+  const todayDow = () => new Date(`${todayKey()}T00:00:00Z`).getUTCDay();
+  const daysUntil = (date) => Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${todayKey()}T00:00:00Z`)) / DAY);
+  const isOff = (x, dow) => (x.days_off || []).includes(dow);
+  function certState(x) {
+    if (!x.health_cert_expires) return 'none';
+    const d = daysUntil(x.health_cert_expires);
+    return d < 0 ? 'expired' : d <= 30 ? 'soon' : 'ok';
+  }
+  const needsCert = (x) => x.status !== 'left' && certState(x) !== 'ok';
+  function tenure(from, to) {
+    if (!from) return '';
+    const a = new Date(`${from}T00:00:00Z`), b = new Date(`${to || todayKey()}T00:00:00Z`);
+    let m = (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + b.getUTCMonth() - a.getUTCMonth();
+    if (b.getUTCDate() < a.getUTCDate()) m -= 1;
+    if (m < 1) return '1개월 미만';
+    return m >= 12 ? `${Math.floor(m / 12)}년${m % 12 ? ` ${m % 12}개월` : ''}` : `${m}개월`;
+  }
+  const dateText = (d) => d.replace(/-/g, '.');
+  const daysText = (days) => (days && days.length ? WEEK.filter((d) => days.includes(d)).map((d) => DOW[d]).join('·') : '없음');
+  const rateText = (v) => (v == null ? '—' : `${Number(v)}%`);
+  const nameList = (xs) => xs.map((x) => esc(x.name)).join(', ');
+
+  async function loadStaff() {
+    if (!isManager() || !state.branch) return;
+    const box = $('#stError');
+    try {
+      state.staff = await api.listStaff(state.branch.id);
+      box.hidden = true;
+    } catch (e) {
+      state.staff = [];
+      box.textContent = api.toAppError(e).message;
+      box.hidden = false;
+    }
+    renderStaff();
+  }
+
+  function certCell(x) {
+    const c = certState(x);
+    if (c === 'none') return x.status === 'left' ? '—' : '<span class="tag tag-warn">미등록</span>';
+    const d = daysUntil(x.health_cert_expires);
+    const date = `<small class="muted">${dateText(x.health_cert_expires)}</small>`;
+    if (x.status === 'left') return date;
+    if (c === 'expired') return `<span class="tag tag-off">만료 ${nf.format(-d)}일 지남</span>${date}`;
+    if (c === 'soon') return `<span class="tag tag-warn">D-${d}</span>${date}`;
+    return `<span class="cert-ok">${dateText(x.health_cert_expires)}</span>`;
+  }
+
+  function renderStaff() {
+    if (!isManager()) return;
+    const all = state.staff;
+    const active = all.filter((x) => x.status === 'active');
+    const dow = todayDow();
+
+    // Summary cards
+    $('#stKpiActive').textContent = `${nf.format(active.length)}명`;
+    $('#stKpiActiveSub').textContent = `휴직 ${nf.format(all.filter((x) => x.status === 'leave').length)}명 · 퇴사 ${nf.format(all.filter((x) => x.status === 'left').length)}명`;
+    const designers = active.filter((x) => DESIGNER_POS.includes(x.position));
+    $('#stKpiDesigners').textContent = `${nf.format(designers.length)}명`;
+    $('#stKpiDesignersSub').textContent = `원장·실장 포함 · 인턴 ${nf.format(active.filter((x) => x.position === 'intern').length)}명`;
+    const offToday = active.filter((x) => isOff(x, dow));
+    $('#stKpiToday').textContent = `${nf.format(active.length - offToday.length)}명`;
+    $('#stKpiTodaySub').innerHTML = `${DOW[dow]}요일 · ${offToday.length ? `휴무 ${nameList(offToday)}` : '휴무 없음'}`;
+    $('#stKpiCert').textContent = `${nf.format(all.filter(needsCert).length)}명`;
+
+    // Weekly day-off board
+    $('#stRoster').innerHTML = WEEK.map((d) => {
+      const off = active.filter((x) => isOff(x, d));
+      const working = active.length - off.length;
+      const des = designers.filter((x) => !isOff(x, d)).length;
+      const gap = active.length > 0 && des === 0;
+      return `<li class="roster-day${d === dow ? ' is-today' : ''}${gap ? ' is-gap' : ''}">
+        <div class="roster-head"><strong>${DOW[d]}</strong>${d === dow ? '<span class="roster-today">오늘</span>' : ''}</div>
+        <p class="roster-count"><span class="roster-num">${nf.format(working)}</span>명 근무</p>
+        <p class="roster-des">${gap ? '<span class="tag tag-off">디자이너 없음</span>' : `디자이너 ${nf.format(des)}명`}</p>
+        <p class="roster-off">${off.length ? `<span class="sr-only">휴무: </span>${off.map((x) => `<span class="off-name">${esc(x.name)}</span>`).join('')}` : '<span class="muted">휴무 없음</span>'}</p>
+      </li>`;
+    }).join('');
+
+    // List
+    const q = state.st.q.trim().toLowerCase();
+    const f = state.st.status;
+    const rows = all
+      .filter((x) => (!q || x.name.toLowerCase().includes(q) || (x.phone || '').replace(/-/g, '').includes(q.replace(/-/g, '')))
+        && (!state.st.pos || x.position === state.st.pos)
+        && (f === '' || (f === 'current' && x.status !== 'left') || (f === 'left' && x.status === 'left') || (f === 'cert' && needsCert(x))))
+      .sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || POS_RANK[a.position] - POS_RANK[b.position] || a.name.localeCompare(b.name, 'ko'));
+    $('#stCount').textContent = `${nf.format(rows.length)}명`;
+    $('#stEmpty').hidden = rows.length > 0;
+    $('#stTable').hidden = rows.length === 0;
+    $('#stEmptyText').textContent = all.length ? '조건에 맞는 직원이 없습니다.' : '아직 등록된 직원이 없습니다. 직원 추가로 시작해 보세요.';
+    $('#stBody').innerHTML = rows.map((x) => {
+      const status = x.status === 'active' ? '재직'
+        : x.status === 'leave' ? '<span class="tag tag-warn">휴직</span>'
+        : `<span class="tag tag-off">퇴사</span><small class="muted">${x.left_on ? dateText(x.left_on) : ''}</small>`;
+      const svc = (x.services || []).length
+        ? `<div class="svc-chips">${Object.keys(SERVICES).filter((k) => x.services.includes(k)).map((k) => `<span class="svc-chip">${SERVICES[k]}</span>`).join('')}</div>` : '<span class="muted">—</span>';
+      return `<tr class="${x.status === 'left' ? 'inactive-row' : ''}">
+        <td class="cell-name"><div class="item-name">${esc(x.name)}<span class="tag pos-tag pos-${x.position}">${POSITIONS[x.position]}</span></div>
+          <div class="item-sku">${esc(x.phone || '연락처 없음')}</div>${x.memo ? `<div class="st-memo">${esc(x.memo)}</div>` : ''}</td>
+        <td data-label="담당 시술">${svc}</td>
+        <td data-label="정기 휴무">${daysText(x.days_off)}</td>
+        <td data-label="입사·근속" class="when">${x.hired_on ? `${dateText(x.hired_on)}<small>${tenure(x.hired_on, x.status === 'left' ? x.left_on : null)}</small>` : '<span class="muted">—</span>'}</td>
+        <td data-label="인센티브"><span class="rates">시술 ${rateText(x.incentive_service)}<br>제품 ${rateText(x.incentive_retail)}</span></td>
+        <td data-label="보건증"><div class="cert-cell">${certCell(x)}</div></td>
+        <td data-label="상태"><div class="cert-cell">${status}</div></td>
+        <td class="cell-action"><button type="button" class="btn btn-secondary btn-sm" data-edit-staff="${x.id}" aria-label="${esc(x.name)} 수정">${svgIcon('i-edit')}수정</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Filters
+  $('#stPos').insertAdjacentHTML('beforeend', Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''));
+  let stTimer = 0;
+  $('#stQ').addEventListener('input', (e) => { clearTimeout(stTimer); stTimer = setTimeout(() => { state.st.q = e.target.value; renderStaff(); }, 150); });
+  $('#stPos').addEventListener('change', (e) => { state.st.pos = e.target.value; renderStaff(); });
+  $('#stStatus').addEventListener('change', (e) => { state.st.status = e.target.value; renderStaff(); });
+  $('#stKpiCertBtn').addEventListener('click', () => {
+    state.st.status = 'cert'; $('#stStatus').value = 'cert';
+    renderStaff();
+    $('#stStatus').focus();
+    $('#stTable').scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'start' });
+  });
+
+  // Dialog
+  const staffDialog = setupDialog($('#staffDialog'));
+  const staffForm = $('#staffForm');
+  let editingStaff = null;
+  $('#sPosition').innerHTML = Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+  $('#sServices').innerHTML = Object.entries(SERVICES).map(([k, v]) => `<label class="radio"><input type="checkbox" name="sSvc" value="${k}" /> ${v}</label>`).join('');
+  $('#sDays').innerHTML = WEEK.map((d) => `<label class="radio day-chip"><input type="checkbox" name="sDay" value="${d}" /> ${DOW[d]}</label>`).join('');
+  const syncLeftField = () => { $('#sLeftField').hidden = staffForm.elements.sStatus.value !== 'left'; };
+  $$('input[name="sStatus"]').forEach((r) => r.addEventListener('change', syncLeftField));
+
+  function openStaff(x) {
+    editingStaff = x;
+    staffForm.reset();
+    clearErrors(staffForm);
+    $('#staffTitle').textContent = x ? `${x.name} 정보 수정` : `직원 추가 · ${state.branch.name}`;
+    $('#sName').value = x?.name || '';
+    $('#sPosition').value = x?.position || 'designer';
+    $('#sPhone').value = x?.phone || '';
+    $('#sHired').value = x?.hired_on || '';
+    staffForm.elements.sStatus.value = x?.status || 'active';
+    $('#sLeftOn').value = x?.left_on || '';
+    $$('input[name="sSvc"]').forEach((c) => { c.checked = !!x?.services?.includes(c.value); });
+    $$('input[name="sDay"]').forEach((c) => { c.checked = !!x?.days_off?.includes(Number(c.value)); });
+    $('#sIncS').value = x?.incentive_service ?? '';
+    $('#sIncR').value = x?.incentive_retail ?? '';
+    $('#sLicense').value = x?.license_no || '';
+    $('#sCert').value = x?.health_cert_expires || '';
+    $('#sMemo').value = x?.memo || '';
+    $('#staffDelete').hidden = !x;
+    syncLeftField();
+    staffDialog.open();
+    $('#sName').focus();
+  }
+
+  staffForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(staffForm);
+    const errors = [];
+    const name = $('#sName').value.trim();
+    if (!name) { fieldError($('#sName'), '이름을 입력해 주세요.'); errors.push({ id: 'sName', msg: '이름을 입력해 주세요.' }); }
+    const rate = (id, label) => {
+      const raw = $('#' + id).value.trim();
+      if (raw === '') return null;
+      const v = Number(raw);
+      if (!Number.isFinite(v) || v < 0 || v > 100) {
+        fieldError($('#' + id), `${label}는 0~100 사이로 입력해 주세요.`);
+        errors.push({ id, msg: `${label}를 확인해 주세요.` });
+      }
+      return v;
+    };
+    const incS = rate('sIncS', '시술 인센티브'), incR = rate('sIncR', '제품 판매 인센티브');
+    const status = staffForm.elements.sStatus.value;
+    const hired = $('#sHired').value, left = status === 'left' ? $('#sLeftOn').value : '';
+    if (left && hired && left < hired) { fieldError($('#sLeftOn'), '퇴사일은 입사일 이후여야 합니다.'); errors.push({ id: 'sLeftOn', msg: '퇴사일을 확인해 주세요.' }); }
+    if (errors.length) return showSummary(staffForm, errors);
+
+    const btn = $('#staffSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      await api.saveStaff({
+        id: editingStaff?.id || null, branch_id: editingStaff?.branch_id || state.branch.id, name,
+        position: $('#sPosition').value, phone: $('#sPhone').value, hired_on: hired || null, status, left_on: left || null,
+        services: $$('input[name="sSvc"]:checked').map((c) => c.value),
+        days_off: $$('input[name="sDay"]:checked').map((c) => Number(c.value)),
+        incentive_service: incS, incentive_retail: incR,
+        license_no: $('#sLicense').value, health_cert_expires: $('#sCert').value || null, memo: $('#sMemo').value,
+      });
+      $('#staffDialog').close();
+      toast(editingStaff ? `${name} 정보를 저장했습니다.` : `${name} 님을 ${state.branch.name} 직원으로 추가했습니다.`);
+      await loadStaff();
+    } catch (ex) {
+      showServerError(staffForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  $('#staffDelete').addEventListener('click', () => {
+    const x = editingStaff;
+    if (!x) return;
+    $('#staffDialog').close();
+    askConfirm({
+      title: '직원 기록 삭제',
+      text: `${x.name} 님의 기록을 삭제할까요? 잘못 등록한 경우에만 삭제하세요. 그만둔 직원은 '퇴사'로 바꾸면 기록이 남습니다.`,
+      run: async () => {
+        await api.deleteStaff(x.id);
+        toast(`${x.name} 님의 기록을 삭제했습니다.`);
+        await loadStaff();
+      },
+    });
+  });
+  $('#addStaffBtn').addEventListener('click', () => openStaff(null));
+
+  // ------------------------------------------------------------------
   // Categories (admin)
   // ------------------------------------------------------------------
   function renderCategories() {
@@ -1653,6 +1886,8 @@
     if (ce) return openCategory(state.categories.find((c) => c.id === ce.dataset.catEdit));
     const cd = e.target.closest('[data-cat-delete]');
     if (cd) return deleteCategory(state.categories.find((c) => c.id === cd.dataset.catDelete));
+    const es = e.target.closest('[data-edit-staff]');
+    if (es) return openStaff(state.staff.find((x) => x.id === es.dataset.editStaff));
     const eb = e.target.closest('[data-edit-branch]');
     if (eb) return openBranch(state.branches.find((b) => b.id === eb.dataset.editBranch));
   });

@@ -800,6 +800,152 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Staff (직원 관리): everyone who works at a branch, with or without an app
+-- account. Holds pay rates, so only admins and the branch's manager can see it.
+--   position  director 원장 · chief 실장 · designer 디자이너 · intern 인턴 · desk 데스크
+--   status    active 재직 · leave 휴직 · left 퇴사 (records are kept, not deleted)
+--   services  cut · perm · color · clinic · scalp · styling · updo
+--   days_off  regular weekly days off, 0 = Sunday … 6 = Saturday
+--   health_cert_expires  건강진단결과서(보건증) expiry — renewed every year
+-- ---------------------------------------------------------------------------
+create table if not exists public.staff (
+  id                   uuid primary key default gen_random_uuid(),
+  branch_id            uuid not null references public.branches(id) on delete cascade,
+  name                 text not null,
+  position             text not null default 'designer',
+  phone                text,
+  hired_on             date,
+  status               text not null default 'active',
+  left_on              date,
+  services             text[] not null default '{}',
+  days_off             smallint[] not null default '{}',
+  incentive_service    numeric(4,1),
+  incentive_retail     numeric(4,1),
+  license_no           text,
+  health_cert_expires  date,
+  memo                 text,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  constraint staff_position_chk check (position in ('director', 'chief', 'designer', 'intern', 'desk')),
+  constraint staff_status_chk check (status in ('active', 'leave', 'left')),
+  constraint staff_services_chk check (services <@ array['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo']::text[]),
+  constraint staff_days_chk check (days_off <@ array[0, 1, 2, 3, 4, 5, 6]::smallint[]),
+  constraint staff_rates_chk check (coalesce(incentive_service, 0) between 0 and 100
+                                    and coalesce(incentive_retail, 0) between 0 and 100)
+);
+create index if not exists staff_branch_idx on public.staff (branch_id);
+
+alter table public.staff enable row level security;
+drop policy if exists "staff: managers read" on public.staff;
+create policy "staff: managers read" on public.staff
+  for select to authenticated using (public.is_branch_manager(branch_id));
+revoke all on public.staff from anon, authenticated;
+grant select on public.staff to authenticated;
+
+-- save_staff: create (p_id null) or update a staff record. Admins, or the
+-- manager of the branch (and, on update, of the record's current branch).
+-- Leaving (status 'left') without a date records today.
+-- Errors: FORBIDDEN, INVALID_STAFF, STAFF_NOT_FOUND
+create or replace function public.save_staff(
+  p_id                  uuid,
+  p_branch_id           uuid,
+  p_name                text,
+  p_position            text,
+  p_phone               text,
+  p_hired_on            date,
+  p_status              text,
+  p_left_on             date,
+  p_services            text[],
+  p_days_off            integer[],
+  p_incentive_service   numeric,
+  p_incentive_retail    numeric,
+  p_license_no          text,
+  p_health_cert_expires date,
+  p_memo                text
+)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id     uuid;
+  v_branch uuid;
+  v_status text := coalesce(p_status, 'active');
+begin
+  if p_branch_id is null or not public.is_branch_manager(p_branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if p_id is not null then
+    select branch_id into v_branch from public.staff where id = p_id;
+    if not found then
+      raise exception 'STAFF_NOT_FOUND' using errcode = 'P0002';
+    end if;
+    if not public.is_branch_manager(v_branch) then
+      raise exception 'FORBIDDEN' using errcode = '42501';
+    end if;
+  end if;
+  if coalesce(btrim(p_name), '') = '' or length(btrim(p_name)) > 30
+     or coalesce(p_position, '') not in ('director', 'chief', 'designer', 'intern', 'desk')
+     or v_status not in ('active', 'leave', 'left')
+     or not coalesce(p_services, '{}') <@ array['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo']::text[]
+     or not coalesce(p_days_off, '{}') <@ array[0, 1, 2, 3, 4, 5, 6]
+     or coalesce(p_incentive_service, 0) not between 0 and 100
+     or coalesce(p_incentive_retail, 0) not between 0 and 100
+     or (p_left_on is not null and p_hired_on is not null and p_left_on < p_hired_on) then
+    raise exception 'INVALID_STAFF' using errcode = '22023';
+  end if;
+
+  if p_id is null then
+    insert into public.staff (branch_id, name) values (p_branch_id, btrim(p_name))
+    returning id into v_id;
+  else
+    v_id := p_id;
+  end if;
+  update public.staff
+     set branch_id = p_branch_id,
+         name = btrim(p_name),
+         position = p_position,
+         phone = nullif(btrim(p_phone), ''),
+         hired_on = p_hired_on,
+         status = v_status,
+         left_on = case when v_status = 'left' then coalesce(p_left_on, current_date) end,
+         services = coalesce((select array_agg(distinct s order by s) from unnest(p_services) s), '{}'),
+         days_off = coalesce((select array_agg(distinct d::smallint order by d::smallint) from unnest(p_days_off) d), '{}'),
+         incentive_service = p_incentive_service,
+         incentive_retail = p_incentive_retail,
+         license_no = nullif(btrim(p_license_no), ''),
+         health_cert_expires = p_health_cert_expires,
+         memo = nullif(btrim(p_memo), ''),
+         updated_at = now()
+   where id = v_id;
+  return v_id;
+end;
+$$;
+
+-- delete_staff: for records entered by mistake (people who leave are marked 퇴사).
+create or replace function public.delete_staff(p_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_branch uuid;
+begin
+  select branch_id into v_branch from public.staff where id = p_id;
+  if not found then
+    raise exception 'STAFF_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if not public.is_branch_manager(v_branch) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  delete from public.staff where id = p_id;
+end;
+$$;
+
+revoke all on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text) from public, anon;
+revoke all on function public.delete_staff(uuid) from public, anon;
+grant execute on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text) to authenticated;
+grant execute on function public.delete_staff(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Function privileges: signed-in users only (each function checks the role)
 -- ---------------------------------------------------------------------------
 revoke all on function public.record_movement(uuid, uuid, public.movement_type, integer, text) from public, anon;
