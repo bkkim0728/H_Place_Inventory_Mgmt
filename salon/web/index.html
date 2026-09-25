@@ -688,7 +688,35 @@
             </button>
           </div>
 
-          <section class="card panel" aria-labelledby="rosterHeading">
+          <section class="card panel st-branches" id="stBranchPanel" aria-labelledby="stBranchHeading" hidden>
+            <div class="panel-head">
+              <div>
+                <h2 id="stBranchHeading">지점별 인원</h2>
+                <p class="muted small">재직 기준 · 오늘 근무는 정기 휴무와 근무표를 반영 · 지점명을 누르면 그 지점만 봅니다</p>
+              </div>
+            </div>
+            <div class="st-pos-mix" id="stPosMix"></div>
+            <div class="table-wrap">
+              <table class="inv-table rp-table st-branch-table">
+                <caption class="sr-only">지점별 직원 인원</caption>
+                <thead><tr>
+                  <th scope="col" class="th-plain">지점</th>
+                  <th scope="col" class="th-plain num">재직</th>
+                  <th scope="col" class="th-plain num">시술 인원</th>
+                  <th scope="col" class="th-plain num">스태프</th>
+                  <th scope="col" class="th-plain num">오늘 근무</th>
+                  <th scope="col" class="th-plain num">휴직</th>
+                  <th scope="col" class="th-plain num">퇴사</th>
+                  <th scope="col" class="th-plain num">보건증 확인</th>
+                  <th scope="col" class="th-plain num">평균 근속</th>
+                </tr></thead>
+                <tbody id="stBranchBody"></tbody>
+                <tfoot id="stBranchFoot"></tfoot>
+              </table>
+            </div>
+          </section>
+
+          <section class="card panel" id="stRosterPanel" aria-labelledby="rosterHeading">
             <div class="panel-head">
               <div>
                 <h2 id="rosterHeading">주간 근무 현황</h2>
@@ -700,6 +728,10 @@
 
           <div class="card panel">
             <div class="toolbar">
+              <div class="field" data-admin-only>
+                <label for="stBranch">지점</label>
+                <select id="stBranch"></select>
+              </div>
               <div class="field field-search">
                 <label for="stQ" class="sr-only">이름, 연락처 검색</label>
                 <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
@@ -1228,6 +1260,13 @@
                 <a href="#/hq" class="btn btn-secondary btn-sm man-go">본사 대시보드(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>
+            <details class="man-item" id="man-allstaff" data-admin-only>
+              <summary><span class="man-q">전체 지점 직원 현황 보기 · 직원 지점 이동</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>직원 관리</b>의 <b>지점</b>에서 <b>전체 지점</b>을 고르면 모든 지점 직원이 한 목록에 나옵니다. 이름 옆에 소속 지점이 표시됩니다.</li><li><b>지점별 인원</b> 표에서 재직·시술 인원·스태프·오늘 근무·휴직·퇴사·보건증 확인·평균 근속을 비교하고, 위 막대로 직급 분포를 봅니다.</li><li>지점명을 누르면 그 지점 직원만 보고, 주간 근무 현황도 볼 수 있습니다.</li><li>직원을 다른 지점으로 보내려면 <b>수정</b> → <b>소속 지점</b>을 바꾸고 저장합니다.</li></ol><p class="man-tip"><strong>참고</strong> 이미 등록된 입출고·근무 기록은 원래 지점에 그대로 남습니다.</p>
+                <a href="#/staff" class="btn btn-secondary btn-sm man-go">직원 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
             <details class="man-item" id="man-users" data-admin-only>
               <summary><span class="man-q">사용자(로그인 계정) 만들기 · 비밀번호 초기화</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
               <div class="man-body">
@@ -1680,6 +1719,11 @@
             </div>
             <p class="help" id="sPhotoHelp">얼굴이 가운데 오도록 정사각형으로 잘라 저장합니다. 전체 관리자와 이 지점 관리자만 볼 수 있습니다.</p>
             <p class="err" id="sPhotoFileErr" hidden></p>
+          </div>
+          <div class="form-field span-2" data-admin-only>
+            <label for="sBranch">소속 지점 <span class="req" aria-hidden="true">*</span></label>
+            <select id="sBranch" aria-describedby="sBranchHelp"></select>
+            <p class="help" id="sBranchHelp">다른 지점으로 바꾸면 그 지점 직원으로 옮겨집니다. 이미 등록된 입출고·근무 기록은 그대로 남습니다.</p>
           </div>
           <div class="form-field">
             <label for="sName">이름 <span class="req" aria-hidden="true">*</span></label>
