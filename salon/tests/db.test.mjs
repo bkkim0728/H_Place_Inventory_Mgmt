@@ -267,12 +267,12 @@ ok((await as(admin, () => q(`select distinct branch_id from staff`))).length >= 
 ok((await err(staff, () => sv(staff, base(null, b1))))?.includes('FORBIDDEN'), 'staff role cannot add staff');
 ok((await err(mgr, () => sv(mgr, base(null, b2))))?.includes('FORBIDDEN'), 'manager cannot add staff to another branch');
 ok((await err(mgr, () => sv(mgr, base(st1, b2))))?.includes('FORBIDDEN'), 'manager cannot move staff to another branch');
-ok((await err(mgr, () => sv(mgr, base(null, b1, { position: 'boss' }))))?.includes('INVALID_STAFF'), 'unknown position rejected');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { position: 'boss' }))))?.includes('INVALID_STAFF_POSITION'), 'unknown position rejected with its own code');
 ok((await err(mgr, () => sv(mgr, base(null, b1, { services: ['massage'] }))))?.includes('INVALID_STAFF'), 'unknown service rejected');
 ok((await err(mgr, () => sv(mgr, base(null, b1, { days: [7] }))))?.includes('INVALID_STAFF'), 'invalid weekday rejected');
-ok((await err(mgr, () => sv(mgr, base(null, b1, { s: 120 }))))?.includes('INVALID_STAFF'), 'incentive over 100% rejected');
-ok((await err(mgr, () => sv(mgr, base(null, b1, { name: ' ' }))))?.includes('INVALID_STAFF'), 'blank name rejected');
-ok((await err(mgr, () => sv(mgr, base(null, b1, { status: 'left', left: '2024-01-01' }))))?.includes('INVALID_STAFF'), 'leave date before hire date rejected');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { s: 120 }))))?.includes('INVALID_STAFF_RATE'), 'incentive over 100% rejected with its own code');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { name: ' ' }))))?.includes('INVALID_STAFF_NAME'), 'blank name rejected with its own code');
+ok((await err(mgr, () => sv(mgr, base(null, b1, { status: 'left', left: '2024-01-01' }))))?.includes('INVALID_STAFF_DATES'), 'leave date before hire date rejected with its own code');
 await sv(mgr, base(st1, b1, { status: 'left' }));
 const r2 = await one(`select status, left_on::text d from staff where id=$1`, [st1]);
 ok(r2.status === 'left' && r2.d === (await one(`select current_date::text d`)).d, 'marking 퇴사 without a date records today');

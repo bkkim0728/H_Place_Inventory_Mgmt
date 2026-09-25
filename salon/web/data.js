@@ -43,7 +43,14 @@
     CANNOT_CHANGE_SELF: '본인의 역할·지점·사용 여부는 바꿀 수 없습니다. 다른 관리자에게 요청해 주세요.',
     LAST_ADMIN: '마지막 전체 관리자는 역할을 바꾸거나 중지할 수 없습니다.',
     INVALID_PHOTO: '사진은 JPG·PNG·WEBP 이미지로, 5MB 이하만 올릴 수 있습니다.',
-    INVALID_STAFF: '직원 정보를 확인해 주세요. 이름은 1~30자, 인센티브는 0~100%, 퇴사일은 입사일 이후여야 합니다.',
+    // Specific codes first: toAppError picks the first key found in the error text.
+    INVALID_STAFF_NAME: '이름을 1~30자로 입력해 주세요.',
+    INVALID_STAFF_POSITION: '이 직급을 저장할 수 없습니다. 직급 이름이 바뀐 뒤 데이터베이스가 아직 옛 설정이면 생기는 문제입니다. Supabase SQL Editor에서 최신 schema.sql을 다시 실행해 주세요.',
+    INVALID_STAFF_RATE: '인센티브는 0~100% 사이로 입력해 주세요.',
+    INVALID_STAFF_DATES: '퇴사일은 입사일과 같거나 그 이후여야 합니다.',
+    INVALID_STAFF_LEAVE: '연차 일수는 0~60일 사이로 입력해 주세요.',
+    INVALID_STAFF_PICK: '선택한 담당 디자이너를 이 지점에서 찾을 수 없습니다. 새로고침 후 다시 선택해 주세요.',
+    INVALID_STAFF: '직원 정보를 저장하지 못했습니다. 직급·근무 상태·담당 시술·휴무 요일을 확인해 주세요. 계속되면 데이터베이스가 최신이 아닐 수 있으니 Supabase SQL Editor에서 최신 schema.sql을 다시 실행해 주세요.',
     STAFF_NOT_FOUND: '직원 정보를 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.',
     INVALID_SCHEDULE: '근무표 항목을 다시 선택해 주세요.',
     INVALID_AMOUNT: '금액과 건수는 0 이상으로 입력해 주세요. 조정액은 ±1억 원까지입니다.',
@@ -550,13 +557,14 @@
         const name = String(x.name || '').trim();
         const rate = (v) => v == null || (v >= 0 && v <= 100);
         const status = x.status || 'active';
-        must(x.annual_leave_days == null || (x.annual_leave_days >= 0 && x.annual_leave_days <= 60), 'INVALID_STAFF');
-        must(name && name.length <= 30 && ['head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff'].includes(x.position)
-          && ['active', 'leave', 'left'].includes(status)
+        must(name && name.length <= 30, 'INVALID_STAFF_NAME');
+        must(['head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff'].includes(x.position), 'INVALID_STAFF_POSITION');
+        must(rate(x.incentive_service) && rate(x.incentive_retail), 'INVALID_STAFF_RATE');
+        must(!(x.left_on && x.hired_on && x.left_on < x.hired_on), 'INVALID_STAFF_DATES');
+        must(x.annual_leave_days == null || (x.annual_leave_days >= 0 && x.annual_leave_days <= 60), 'INVALID_STAFF_LEAVE');
+        must(['active', 'leave', 'left'].includes(status)
           && (x.services || []).every((v) => ['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo'].includes(v))
-          && (x.days_off || []).every((v) => Number.isInteger(v) && v >= 0 && v <= 6)
-          && rate(x.incentive_service) && rate(x.incentive_retail)
-          && !(x.left_on && x.hired_on && x.left_on < x.hired_on), 'INVALID_STAFF');
+          && (x.days_off || []).every((v) => Number.isInteger(v) && v >= 0 && v <= 6), 'INVALID_STAFF');
         const today = new Date(Date.now() + KST).toISOString().slice(0, 10);
         const next = {
           id: row ? row.id : `st${Date.now()}`, branch_id: x.branch_id, name, position: x.position, phone: trimOrNull(x.phone),
@@ -752,7 +760,7 @@
       },
       async recordMovement({ branchId, productId, type, quantity, memo, staffId }) {
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');
-        must(!staffId || state.staff.some((x) => x.id === staffId && x.branch_id === branchId && x.status !== 'left'), 'INVALID_STAFF');
+        must(!staffId || state.staff.some((x) => x.id === staffId && x.branch_id === branchId && x.status !== 'left'), 'INVALID_STAFF_PICK');
         must(type !== 'adjust' || isManager(branchId), 'MANAGER_ONLY');
         must(Number.isInteger(quantity) && quantity >= 0 && (type === 'adjust' || quantity > 0), 'INVALID_QUANTITY');
         const p = product(productId);

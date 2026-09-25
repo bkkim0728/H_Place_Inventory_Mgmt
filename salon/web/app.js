@@ -1631,7 +1631,12 @@
   $('#sPosition').innerHTML = Object.entries(POSITIONS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   $('#sServices').innerHTML = Object.entries(SERVICES).map(([k, v]) => `<label class="radio"><input type="checkbox" name="sSvc" value="${k}" /> ${v}</label>`).join('');
   $('#sDays').innerHTML = WEEK.map((d) => `<label class="radio day-chip"><input type="checkbox" name="sDay" value="${d}" /> ${DOW[d]}</label>`).join('');
-  const syncLeftField = () => { $('#sLeftField').hidden = staffForm.elements.sStatus.value !== 'left'; };
+  // 퇴사일 is always shown; it can be filled in only when 퇴사 is chosen.
+  const syncLeftField = () => {
+    const left = staffForm.elements.sStatus.value === 'left';
+    $('#sLeftOn').disabled = !left;
+    $('#sLeftOnHelp').textContent = left ? '비워 두면 오늘 날짜로 기록합니다. 입사일보다 앞설 수 없습니다.' : "근무 상태를 '퇴사'로 고르면 입력할 수 있습니다.";
+  };
   $$('input[name="sStatus"]').forEach((r) => r.addEventListener('change', syncLeftField));
 
   // Portrait: square-cropped to 480px JPEG in the browser, uploaded on save.
@@ -1748,7 +1753,14 @@
       else toast(saved);
       await loadStaff();
     } catch (ex) {
-      showServerError(staffForm, api.toAppError(ex).message);
+      const err = api.toAppError(ex);
+      const field = { INVALID_STAFF_NAME: 'sName', INVALID_STAFF_POSITION: 'sPosition', INVALID_STAFF_RATE: 'sIncS', INVALID_STAFF_DATES: 'sLeftOn', INVALID_STAFF_LEAVE: 'sLeave' }[err.code];
+      if (field) {
+        fieldError($('#' + field), err.message);
+        showSummary(staffForm, [{ id: field, msg: err.message }]);
+      } else {
+        showServerError(staffForm, err.message);
+      }
     } finally {
       btn.disabled = false; btn.removeAttribute('aria-busy');
     }
