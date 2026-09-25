@@ -490,7 +490,13 @@ as $$
 declare
   v_id uuid;
 begin
-  if not public.is_admin() then
+  -- New products: admins, or a branch manager (registered for every branch).
+  -- Changing an existing product (shared by all branches): admins only.
+  if p_product_id is null then
+    if not (public.is_admin() or (p_branch_id is not null and public.is_branch_manager(p_branch_id))) then
+      raise exception 'MANAGER_ONLY' using errcode = '42501';
+    end if;
+  elsif not public.is_admin() then
     raise exception 'ADMIN_ONLY' using errcode = '42501';
   end if;
   if coalesce(btrim(p_sku), '') = '' or coalesce(btrim(p_name), '') = ''

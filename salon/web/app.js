@@ -972,7 +972,7 @@
     productForm.reset();
     clearErrors(productForm);
     editingId = item ? item.product_id : null;
-    $('#productTitle').textContent = item ? '품목 수정' : '품목 추가';
+    $('#productTitle').textContent = item ? '제품 수정' : `제품 등록${isAdmin() ? '' : ` · ${state.branch.name}`}`;
     $('#pName').value = item?.name || '';
     $('#pSku').value = item?.sku || '';
     $('#pBrand').value = item?.brand || '';
@@ -986,10 +986,11 @@
     $('#pLocation').value = item?.location || '';
     $('#pRetailFlag').checked = Boolean(item?.is_retail);
     $('#pActive').checked = item ? item.active : true;
-    const catalogLocked = !isAdmin();
+    // Managers register new products; changing an existing one is admin-only.
+    const catalogLocked = !isAdmin() && Boolean(item);
     $$('[data-catalog]', productForm).forEach((el) => { el.disabled = catalogLocked; });
     $('#productScopeNote').hidden = !catalogLocked;
-    if (catalogLocked) $('#productTitle').textContent = `${state.branch.name} 품목 설정`;
+    if (catalogLocked) $('#productTitle').textContent = `${state.branch.name} 제품 설정`;
     productDialog.open();
     (catalogLocked ? $('#pSafety') : $('#pName')).focus();
   }
@@ -998,7 +999,7 @@
     e.preventDefault();
     clearErrors(productForm);
     const errors = [];
-    if (!isAdmin()) {
+    if (!isAdmin() && editingId) {
       const raw = $('#pSafety').value.trim();
       const n = Number(raw);
       if (raw === '' || !Number.isInteger(n) || n < 0) {
@@ -1057,7 +1058,7 @@
         active: $('#pActive').checked,
       });
       $('#productDialog').close();
-      toast(editingId ? `${$('#pName').value.trim()} 품목을 수정했습니다.` : `${$('#pName').value.trim()} 품목을 추가했습니다.`);
+      toast(editingId ? `${$('#pName').value.trim()} 제품을 수정했습니다.` : `${$('#pName').value.trim()} 제품을 등록했습니다. 모든 지점에 재고 0으로 준비되었습니다.`);
       await loadData();
     } catch (ex) {
       const err = api.toAppError(ex);
