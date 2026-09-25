@@ -2989,7 +2989,11 @@
     $('#hqWorkSub').textContent = `시술 ${nf.format(T.onDes)} · 스태프 ${nf.format(T.on - T.onDes)} · 휴무 ${nf.format(T.off)} · 재직 ${nf.format(T.staffN)}`;
     const entered = Math.min(T.entered, T.due);
     $('#hqEntry').innerHTML = T.due ? `${pct1.format((entered / T.due) * 100)}<small>%</small>` : '—';
-    $('#hqEntrySub').textContent = T.due ? `${nf.format(entered)}/${nf.format(T.due)}일 · 어제까지 기준 · 지점 ${nf.format(rows.filter((x) => Math.min(x.due, days) > x.cur.entered).length)}곳 미입력` : '입력할 날이 아직 없습니다';
+    const perBranch = rows.length ? Math.min(rows[0].due, days) : 0;
+    const missingN = rows.filter((x) => Math.min(x.due, days) > x.cur.entered).length;
+    $('#hqEntrySub').textContent = T.due
+      ? `입력 ${nf.format(entered)}건 / ${nf.format(T.due)}건 (${nf.format(rows.length)}개 지점 × ${nf.format(perBranch)}일)${r.to >= today ? ' · 오늘 제외' : ''}${missingN ? ` · 빠진 날이 있는 지점 ${nf.format(missingN)}곳` : ' · 모두 입력'}`
+      : '입력할 날이 아직 없습니다 (오늘은 제외)';
 
     // Legend (a single branch needs none)
     $('#hqLegend').innerHTML = rows.length > 1 ? rows.map((x) => `<li><i style="background:${x.color}"></i>${esc(x.b.name)}</li>`).join('') : '';
