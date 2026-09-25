@@ -763,7 +763,7 @@
       </div>
       <div class="modal-body">
         <div class="error-summary" id="productErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
-        <p class="note" id="productScopeNote" hidden>제품 이름·가격·고객 판매용은 <strong>모든 지점에 함께</strong> 바뀝니다. 코드·브랜드·카테고리·단위는 전체 관리자가 바꿉니다. 안전재고와 보관 위치는 이 지점에만 저장됩니다.</p>
+        <p class="note" id="productScopeNote" hidden>제품 이름·카테고리·가격·고객 판매용은 <strong>모든 지점에 함께</strong> 바뀝니다. 코드·브랜드·단위는 전체 관리자가 바꿉니다. 안전재고와 보관 위치는 이 지점에만 저장됩니다.</p>
         <div class="form-grid">
           <div class="form-field span-2">
             <label for="pName">품목명 <span class="req" aria-hidden="true">*</span></label>
@@ -782,7 +782,7 @@
           </div>
           <div class="form-field">
             <label for="pCategory">카테고리 <span class="req" aria-hidden="true">*</span></label>
-            <select data-catalog id="pCategory" required aria-describedby="pCategoryHelp pCategoryErr"></select>
+            <select data-catalog data-manager-edit id="pCategory" required aria-describedby="pCategoryHelp pCategoryErr"></select>
             <p class="help" id="pCategoryHelp">목록에 없으면 카테고리 관리에서 먼저 추가해 주세요.</p>
             <p class="err" id="pCategoryErr" hidden></p>
           </div>

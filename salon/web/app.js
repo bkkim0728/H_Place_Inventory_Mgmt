@@ -778,7 +778,7 @@
   // ------------------------------------------------------------------
   function renderProducts() {
     $('#pdNote').textContent = isManager()
-      ? '제품 목록은 모든 지점이 함께 씁니다. 새 제품을 등록하고, 제품 이름·가격·고객 판매용을 고칠 수 있습니다(모든 지점에 함께 반영). 코드·브랜드·카테고리·단위는 전체 관리자가 바꿉니다. "이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서만 숨겨집니다.'
+      ? '제품 목록은 모든 지점이 함께 씁니다. 새 제품을 등록하고, 제품 이름·카테고리·가격·고객 판매용을 고칠 수 있습니다(모든 지점에 함께 반영). 코드·브랜드·단위는 전체 관리자가 바꿉니다. "이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서만 숨겨집니다.'
       : '"이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서 숨겨집니다. 다른 지점에는 영향이 없습니다. 제품 등록과 설정은 지점 관리자에게 요청해 주세요.';
     const q = state.pd.q.trim().toLowerCase();
     const rows = state.inventory.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
@@ -1019,7 +1019,7 @@
     $('#pActive').checked = item ? item.catalog_active !== false : true;
     // Managers register new products; changing an existing one is admin-only.
     const catalogLocked = !isAdmin() && Boolean(item);
-    // Managers may change the name, prices and 고객 판매용 (shared by all branches)
+    // Managers may change the name, category, prices and 고객 판매용 (shared by all branches)
     $$('[data-catalog]', productForm).forEach((el) => { el.disabled = catalogLocked && !el.hasAttribute('data-manager-edit'); });
     $('#productScopeNote').hidden = !catalogLocked;
     if (catalogLocked) $('#productTitle').textContent = `${item.name} 수정 · ${state.branch.name}`;
