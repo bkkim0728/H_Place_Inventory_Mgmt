@@ -43,6 +43,7 @@
     CANNOT_CHANGE_SELF: '본인의 역할·지점·사용 여부는 바꿀 수 없습니다. 다른 관리자에게 요청해 주세요.',
     LAST_ADMIN: '마지막 전체 관리자는 역할을 바꾸거나 중지할 수 없습니다.',
     INVALID_PHOTO: '사진은 JPG·PNG·WEBP 이미지로, 5MB 이하만 올릴 수 있습니다.',
+    SCHEMA_OUTDATED: '데이터베이스 설정이 최신이 아닙니다. Supabase SQL Editor에서 최신 schema.sql을 다시 실행해 주세요.',
     PHOTO_UPLOAD_FAILED: '사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.',
   };
 
@@ -60,6 +61,7 @@
     if (code) return new AppError(code);
     if (/invalid login credentials/i.test(text)) return new AppError('LOGIN_FAILED', '아이디(이메일) 또는 비밀번호가 올바르지 않습니다.');
     if (/email not confirmed/i.test(text)) return new AppError('LOGIN_FAILED', '이메일 인증이 끝나지 않았습니다. 받은편지함의 인증 메일을 확인해 주세요.');
+    if (/could not find the function|schema cache|column .* does not exist|bucket not found/i.test(text)) return new AppError('SCHEMA_OUTDATED');
     if (/row-level security|unauthorized/i.test(text)) return new AppError('FORBIDDEN');
     if (/payload too large|exceeded the maximum|mime type/i.test(text)) return new AppError('INVALID_PHOTO');
     if (/rate limit/i.test(text)) return new AppError('RATE_LIMIT', '요청이 너무 많습니다. 몇 분 뒤 다시 시도해 주세요.');
@@ -95,6 +97,8 @@
     });
     const photos = sb.storage.from('branch-photos');
     const photoUrl = (path) => (path ? photos.getPublicUrl(path).data.publicUrl : null);
+    // Branches are read with select('*') so sign-in still works on a database
+    // set up before photo_path existed (the photo feature then asks for setup).
     const withPhoto = (b) => ({ ...b, photo_url: photoUrl(b.photo_path) });
     const run = async (promise) => {
       let res;
@@ -122,10 +126,10 @@
         const profile = await run(sb.from('profiles').select('user_id, email, login_id, full_name, role, branch_id, active').eq('user_id', user.id).maybeSingle());
         if (!profile || !profile.active) return { profile, branches: [] };
         // RLS returns only the branches this user may see (all of them for admins).
-        const branches = await run(sb.from('branches').select('id, code, name, phone, address, active, photo_path').order('code'));
+        const branches = await run(sb.from('branches').select('*').order('code'));
         return { profile, branches: branches.map(withPhoto) };
       },
-      listBranches: async () => (await run(sb.from('branches').select('id, code, name, phone, address, active, photo_path').order('code'))).map(withPhoto),
+      listBranches: async () => (await run(sb.from('branches').select('*').order('code'))).map(withPhoto),
       // Uploads a new photo, points the branch at it, then deletes the old file.
       async setBranchPhoto(branchId, blob) {
         const ext = blob.type === 'image/webp' ? 'webp' : blob.type === 'image/png' ? 'png' : 'jpg';
