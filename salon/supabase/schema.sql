@@ -357,7 +357,7 @@ begin
   if p_staff_id is not null and not exists (
        select 1 from public.staff s
        where s.id = p_staff_id and s.branch_id = p_branch_id and s.status <> 'left') then
-    raise exception 'INVALID_STAFF' using errcode = '22023';
+    raise exception 'INVALID_STAFF_PICK' using errcode = '22023';
   end if;
 
   insert into public.inventory (branch_id, product_id)
@@ -882,7 +882,7 @@ grant select on public.staff to authenticated;
 -- save_staff: create (p_id null) or update a staff record. Admins, or the
 -- manager of the branch (and, on update, of the record's current branch).
 -- Leaving (status 'left') without a date records today.
--- Errors: FORBIDDEN, INVALID_STAFF, STAFF_NOT_FOUND
+-- Errors: FORBIDDEN, STAFF_NOT_FOUND, INVALID_STAFF_NAME / _POSITION / _RATE / _DATES / _LEAVE, INVALID_STAFF
 drop function if exists public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text);
 create or replace function public.save_staff(
   p_id                  uuid,
@@ -922,15 +922,25 @@ begin
       raise exception 'FORBIDDEN' using errcode = '42501';
     end if;
   end if;
-  if coalesce(btrim(p_name), '') = '' or length(btrim(p_name)) > 30
-     or coalesce(p_position, '') not in ('head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff')
-     or v_status not in ('active', 'leave', 'left')
+  -- One code per problem so the app can point at the field
+  if coalesce(btrim(p_name), '') = '' or length(btrim(p_name)) > 30 then
+    raise exception 'INVALID_STAFF_NAME' using errcode = '22023';
+  end if;
+  if coalesce(p_position, '') not in ('head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff') then
+    raise exception 'INVALID_STAFF_POSITION' using errcode = '22023';
+  end if;
+  if coalesce(p_incentive_service, 0) not between 0 and 100 or coalesce(p_incentive_retail, 0) not between 0 and 100 then
+    raise exception 'INVALID_STAFF_RATE' using errcode = '22023';
+  end if;
+  if p_left_on is not null and p_hired_on is not null and p_left_on < p_hired_on then
+    raise exception 'INVALID_STAFF_DATES' using errcode = '22023';
+  end if;
+  if coalesce(p_annual_leave_days, 0) not between 0 and 60 then
+    raise exception 'INVALID_STAFF_LEAVE' using errcode = '22023';
+  end if;
+  if v_status not in ('active', 'leave', 'left')
      or not coalesce(p_services, '{}') <@ array['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo']::text[]
-     or not coalesce(p_days_off, '{}') <@ array[0, 1, 2, 3, 4, 5, 6]
-     or coalesce(p_incentive_service, 0) not between 0 and 100
-     or coalesce(p_incentive_retail, 0) not between 0 and 100
-     or (p_left_on is not null and p_hired_on is not null and p_left_on < p_hired_on)
-     or coalesce(p_annual_leave_days, 0) not between 0 and 60 then
+     or not coalesce(p_days_off, '{}') <@ array[0, 1, 2, 3, 4, 5, 6] then
     raise exception 'INVALID_STAFF' using errcode = '22023';
   end if;
 
