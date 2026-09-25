@@ -47,12 +47,13 @@
     schedule: '근무표',
     products: '제품 관리',
     categories: '카테고리 관리',
+    report: '매장 레포트',
     staff: '직원 관리',
     payroll: '실적·정산',
     users: '사용자 관리',
     branches: '지점 관리',
   };
-  const MANAGER_ROUTES = ['staff', 'payroll', 'branches'];
+  const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users'];  // branch managers use 직원 관리 and 지점 관리 instead
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
@@ -236,6 +237,7 @@
     if (state.route === 'users') loadUsers();
     if (state.route === 'staff') loadStaff();
     if (state.route === 'workboard') loadWorkboard();
+    if (state.route === 'report') loadReport();
     if (state.route === 'schedule') loadSchedule();
     if (state.route === 'payroll') loadPayroll();
   });
@@ -293,6 +295,7 @@
       btn.setAttribute('aria-busy', 'true');
       const r = state.route;
       if (r === 'workboard') await loadWorkboard();
+      else if (r === 'report') await loadReport();
       else if (r === 'schedule') await loadSchedule();
       else if (r === 'staff') await loadStaff();
       else if (r === 'payroll') await loadPayroll();
@@ -349,6 +352,7 @@
     if (route === 'branches') { renderBranches(); loadBranchManagers(); }
     if (route === 'staff') loadStaff();
     if (route === 'workboard') loadWorkboard();
+    if (route === 'report') loadReport();
     if (route === 'schedule') loadSchedule();
     if (route === 'payroll') loadPayroll();
     if (route === 'categories') renderCategories();
@@ -2230,6 +2234,143 @@
   $('#wbPrev').addEventListener('click', () => wbGo(-1));
   $('#wbNext').addEventListener('click', () => wbGo(1));
   $('#wbThis').addEventListener('click', () => wbGo(0));
+
+  // ------------------------------------------------------------------
+  // 매장 레포트: one day at the branch (managers)
+  // ------------------------------------------------------------------
+  state.rp = { day: todayKey(), rows: [], people: [], sched: [] };
+
+  async function loadReport() {
+    if (!isManager() || !state.branch) return;
+    const d = state.rp.day;
+    const box = $('#rpError');
+    try {
+      const [rows, people, sched] = await Promise.all([
+        api.listMovementsBetween(state.branch.id, d, d),
+        api.listStaff(state.branch.id).catch(() => []),
+        api.listSchedule(state.branch.id, d, d).catch(() => []),
+      ]);
+      Object.assign(state.rp, { rows, people, sched });
+      box.hidden = true;
+    } catch (e) {
+      Object.assign(state.rp, { rows: [], people: [], sched: [] });
+      box.textContent = api.toAppError(e).message;
+      box.hidden = false;
+    }
+    renderReport();
+  }
+
+  function renderReport() {
+    const d = state.rp.day, today = todayKey();
+    $('#rpDate').textContent = `${d.slice(0, 4)}년 ${mdText(d)} (${DOW[dowOf(d)]})${d === today ? ' · 오늘' : ''}`;
+    $('#rpPick').value = d;
+    $('#rpPick').max = today;
+    $('#rpNext').disabled = d >= today;
+    $('#rpToday').disabled = d === today;
+
+    // Amounts: 판매 at the sale price, everything else at cost. Reversals carry the
+    // opposite quantity, so sums net out; counts leave both sides out.
+    const rows = state.rp.rows;
+    const price = (m) => m.unit_price ?? itemById(m.product_id)?.retail_price ?? 0;
+    const counted = rows.filter((m) => !m.reverts_id && !m.reverted);
+    const agg = {};
+    ['receive', 'use', 'sale', 'dispose', 'adjust'].forEach((t) => { agg[t] = { n: 0, qty: 0, amt: 0 }; });
+    rows.forEach((m) => {
+      const a = agg[m.type];
+      if (!a) return;
+      const out = OUT_TYPES.includes(m.type);
+      a.qty += out ? -m.quantity : m.quantity;
+      a.amt += m.type === 'sale' ? -m.quantity * price(m) : (out ? -m.quantity : m.quantity) * (m.unit_cost || 0);
+    });
+    counted.forEach((m) => { if (agg[m.type]) agg[m.type].n += 1; });
+
+    $('#rpSales').textContent = won.format(agg.sale.amt);
+    $('#rpSalesSub').textContent = `${nf.format(agg.sale.n)}건 · ${nf.format(agg.sale.qty)}개`;
+    $('#rpIn').textContent = won.format(agg.receive.amt);
+    $('#rpInSub').textContent = `${nf.format(agg.receive.n)}건 · ${nf.format(agg.receive.qty)}개 · 매입가 기준`;
+    $('#rpUse').textContent = won.format(agg.use.amt);
+    $('#rpUseSub').textContent = `시술 사용 ${nf.format(agg.use.n)}건 · ${nf.format(agg.use.qty)}개`;
+
+    $('#rpTypes').innerHTML = ['receive', 'use', 'sale', 'dispose', 'adjust'].map((t) => {
+      const a = agg[t];
+      const qty = t === 'adjust' ? `${a.qty > 0 ? '+' : ''}${nf.format(a.qty)}` : nf.format(a.qty);
+      const amt = t === 'adjust' ? `${a.amt > 0 ? '+' : a.amt < 0 ? '−' : ''}${won.format(Math.abs(a.amt))}` : won.format(a.amt);
+      return `<tr class="${a.n ? '' : 'rp-zero'}"><td class="cell-name">${typeTag(t)}</td><td class="num" data-label="건수">${nf.format(a.n)}건</td><td class="num" data-label="수량">${qty}</td><td class="num" data-label="금액">${amt}</td></tr>`;
+    }).join('');
+
+    // Staffing that day
+    const sched = new Map(state.rp.sched.map((r) => [`${r.staff_id}|${r.day}`, r]));
+    const people = state.rp.people.filter((x) => x.status !== 'leave')
+      .map((x) => ({ x, st: dayState(x, d, sched), e: sched.get(`${x.id}|${d}`) })).filter((o) => o.st !== 'na')
+      .sort((a, b) => POS_RANK[a.x.position] - POS_RANK[b.x.position] || a.x.name.localeCompare(b.x.name, 'ko'));
+    const on = people.filter((o) => workValue(o.st) > 0), off = people.filter((o) => workValue(o.st) === 0);
+    const onDes = on.filter((o) => DESIGNER_POS.includes(o.x.position)).length;
+    $('#rpWork').textContent = `${nf.format(on.length)}명`;
+    $('#rpWorkSub').textContent = `시술 ${nf.format(onDes)}명 · 스태프 ${nf.format(on.length - onDes)}명 · 휴무 ${nf.format(off.length)}명`;
+    $('#rpOnCount').textContent = `${nf.format(on.length)}명`;
+    $('#rpOffCount').textContent = `${nf.format(off.length)}명`;
+    const nameItem = (o, note) => `<li><span class="rp-name">${esc(o.x.name)}</span><span class="tag pos-tag pos-${o.x.position}">${POSITIONS[o.x.position]}</span>${note ? `<small>${esc(note)}</small>` : ''}</li>`;
+    $('#rpOn').innerHTML = on.length ? on.map((o) => nameItem(o, o.st === 'half' ? '반차' : o.st === 'work' ? '대체 근무' : '')).join('') : '<li class="muted">없음</li>';
+    $('#rpOff').innerHTML = off.length ? off.map((o) => nameItem(o, `${offReason(o.st)}${o.e?.memo ? ` · ${o.e.memo}` : ''}`)).join('') : '<li class="muted">없음</li>';
+
+    // Top products
+    const top = (type) => {
+      const m = new Map();
+      rows.filter((r) => r.type === type).forEach((r) => {
+        const cur = m.get(r.product_id) || { name: r.product_name, unit: r.unit, qty: 0, amt: 0 };
+        cur.qty += -r.quantity;
+        cur.amt += type === 'sale' ? -r.quantity * price(r) : -r.quantity * (r.unit_cost || 0);
+        m.set(r.product_id, cur);
+      });
+      const list = [...m.values()].filter((x) => x.qty > 0).sort((a, b) => b.qty - a.qty || b.amt - a.amt).slice(0, 5);
+      return list.length ? list.map((x) => `<li><span class="rp-name">${esc(x.name)}</span><span class="rp-val">${nf.format(x.qty)}${esc(x.unit)} · ${won.format(x.amt)}</span></li>`).join('') : '<li class="muted rp-empty">기록 없음</li>';
+    };
+    $('#rpTopSale').innerHTML = top('sale');
+    $('#rpTopUse').innerHTML = top('use');
+
+    // Per designer
+    const byDes = new Map();
+    rows.filter((r) => r.staff_id && (r.type === 'sale' || r.type === 'use')).forEach((r) => {
+      const cur = byDes.get(r.staff_id) || { name: r.staff_name || '—', sales: 0, qty: 0, mat: 0 };
+      if (r.type === 'sale') { cur.sales += -r.quantity * price(r); cur.qty += -r.quantity; } else cur.mat += -r.quantity * (r.unit_cost || 0);
+      byDes.set(r.staff_id, cur);
+    });
+    const des = [...byDes.values()].filter((x) => x.sales || x.mat).sort((a, b) => b.sales - a.sales || b.mat - a.mat);
+    $('#rpDesigners').innerHTML = des.length
+      ? des.map((x) => `<tr><td class="cell-name">${esc(x.name)}</td><td class="num" data-label="제품 판매">${won.format(x.sales)}</td><td class="num" data-label="판매 수량">${nf.format(x.qty)}개</td><td class="num" data-label="재료 사용액">${won.format(x.mat)}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="muted rp-empty">담당 디자이너를 고른 기록이 없습니다.</td></tr>';
+
+    // Things to check
+    const alerts = [];
+    const hasDes = people.some((o) => DESIGNER_POS.includes(o.x.position));
+    if (hasDes && onDes === 0) alerts.push({ tone: 'danger', text: '시술 인원이 한 명도 없는 날입니다.', link: '#/schedule', linkText: '근무표' });
+    if (d === today) {
+      const outs = activeItems().filter((i) => i.status === 'out'), lows = activeItems().filter((i) => i.status === 'low');
+      if (outs.length) alerts.push({ tone: 'danger', text: `품절 ${nf.format(outs.length)}개: ${outs.slice(0, 5).map((i) => i.name).join(', ')}${outs.length > 5 ? ' 외' : ''}`, link: '#/inventory', linkText: '재고 목록' });
+      if (lows.length) alerts.push({ tone: 'warn', text: `안전재고 이하 ${nf.format(lows.length)}개: ${lows.slice(0, 5).map((i) => i.name).join(', ')}${lows.length > 5 ? ' 외' : ''}`, link: '#/inventory', linkText: '재고 목록' });
+    }
+    state.rp.people.filter((x) => x.status !== 'left' && x.health_cert_expires && daysUntil(x.health_cert_expires) <= 30).forEach((x) => {
+      const n = daysUntil(x.health_cert_expires);
+      alerts.push({ tone: n < 0 ? 'danger' : 'warn', text: `${x.name} 보건증 ${n < 0 ? `만료 ${nf.format(-n)}일 지남` : `D-${n}`} (${dateText(x.health_cert_expires)})`, link: '#/staff', linkText: '직원 관리' });
+    });
+    $('#rpAlerts').innerHTML = alerts.length
+      ? alerts.map((a) => `<li class="rp-alert rp-${a.tone}"><span>${esc(a.text)}</span><a href="${a.link}" class="link-btn">${a.linkText}</a></li>`).join('')
+      : `<li class="muted rp-empty">확인할 일이 없습니다.${d === today ? '' : ' (재고 알림은 오늘 날짜에서만 보여 줍니다)'}</li>`;
+
+    // 폐기·실사·취소 records
+    const notes = rows.filter((r) => r.type === 'dispose' || r.type === 'adjust' || r.reverts_id)
+      .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+    $('#rpNotes').innerHTML = notes.length
+      ? notes.map((r) => `<li><span class="rp-time">${timeFmt.format(new Date(r.created_at))}</span>${r.reverts_id ? '<span class="tag tag-note">취소</span>' : typeTag(r.type)}<span class="rp-name">${esc(r.product_name)}</span><span class="rp-val">${qtyText(r.quantity, r.unit)}</span><small>${esc(whoText(r))}${r.memo ? ` · ${esc(r.memo)}` : ''}</small></li>`).join('')
+      : '<li class="muted rp-empty">기록 없음</li>';
+  }
+
+  const rpGo = (day) => { state.rp.day = day > todayKey() ? todayKey() : day; loadReport(); };
+  $('#rpPrev').addEventListener('click', () => rpGo(addDays(state.rp.day, -1)));
+  $('#rpNext').addEventListener('click', () => rpGo(addDays(state.rp.day, 1)));
+  $('#rpToday').addEventListener('click', () => rpGo(todayKey()));
+  $('#rpPick').addEventListener('change', (e) => { if (e.target.value) rpGo(e.target.value); });
+  $('#rpPrint').addEventListener('click', () => window.print());
 
   // ------------------------------------------------------------------
   // 실적·정산 (managers; admins reopen a confirmed month)
