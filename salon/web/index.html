@@ -60,6 +60,7 @@
       <symbol id="i-lock-check" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M9.5 15.5l2 2 3.5-3.5"/></symbol>
       <symbol id="i-report" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></symbol>
       <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/><path d="M9 7h7M9 11h5"/></symbol>
+      <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></symbol>
       <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7"/></symbol>
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
@@ -125,6 +126,7 @@
           <li><a href="#/workboard" class="nav-link" data-route="workboard"><svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>근무 현황</a></li>
           <li><a href="#/inventory" class="nav-link" data-route="inventory"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>재고 목록<span class="nav-badge" id="navAlertCount" data-zero="true">0</span></a></li>
           <li><a href="#/movements" class="nav-link" data-route="movements"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>입출고 내역</a></li>
+          <li><a href="#/sales" class="nav-link" data-route="sales"><svg class="icon" aria-hidden="true"><use href="#i-receipt"/></svg>판매 내역</a></li>
           <li><a href="#/schedule" class="nav-link" data-route="schedule"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg>근무표</a></li>
         </ul>
         <p class="nav-section">관리</p>
@@ -306,6 +308,115 @@
               <button type="button" class="btn btn-secondary" id="invClear">필터 초기화</button>
             </div>
           </div>
+        </section>
+
+        <!-- Sales (판매 내역) -->
+        <section class="view" data-view="sales" hidden aria-labelledby="pageTitle">
+          <div class="card panel">
+            <div class="toolbar">
+              <div class="field field-search">
+                <label for="slQ" class="sr-only">품목명, 담당자, 메모 검색</label>
+                <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+                <input id="slQ" type="search" placeholder="품목명, 담당자, 메모 검색" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="slPeriod">기간</label>
+                <select id="slPeriod">
+                  <option value="today">오늘</option>
+                  <option value="7" selected>최근 7일</option>
+                  <option value="30">최근 30일</option>
+                  <option value="month">이번 달</option>
+                  <option value="lastmonth">지난달</option>
+                  <option value="custom">기간 직접 설정</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="slStaff">담당 디자이너</label>
+                <select id="slStaff"><option value="">전체</option></select>
+              </div>
+              <fieldset class="field mv-range" id="slRange" hidden>
+                <legend class="sr-only">조회 기간</legend>
+                <div class="mv-range-row">
+                  <div class="field">
+                    <label for="slFrom">시작일</label>
+                    <input id="slFrom" type="date" aria-describedby="slRangeErr" />
+                  </div>
+                  <span class="mv-range-sep" aria-hidden="true">~</span>
+                  <div class="field">
+                    <label for="slTo">종료일</label>
+                    <input id="slTo" type="date" aria-describedby="slRangeErr" />
+                  </div>
+                </div>
+                <p class="err" id="slRangeErr" role="alert" hidden></p>
+              </fieldset>
+              <button class="btn btn-secondary" type="button" id="slXlsx"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>엑셀 다운로드</button>
+            </div>
+            <p class="muted small sl-period" id="slPeriodText" aria-live="polite"></p>
+          </div>
+          <p class="err-box" id="slError" hidden></p>
+
+          <div class="kpi-grid sl-kpis">
+            <article class="card kpi rp-kpi-main">
+              <div class="kpi-head"><span class="kpi-label">판매 금액</span><span class="delta" id="slAmtDelta"></span></div>
+              <p class="kpi-value" id="slAmt">₩0</p>
+              <p class="kpi-sub muted" id="slAmtSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">판매 건수</span><span class="delta" id="slCntDelta"></span></div>
+              <p class="kpi-value" id="slCnt">0건</p>
+              <p class="kpi-sub muted" id="slCntSub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">판매 수량</span><span class="delta" id="slQtyDelta"></span></div>
+              <p class="kpi-value" id="slQty">0개</p>
+              <p class="kpi-sub muted" id="slQtySub">—</p>
+            </article>
+            <article class="card kpi">
+              <div class="kpi-head"><span class="kpi-label">건당 평균</span><span class="delta" id="slAvgDelta"></span></div>
+              <p class="kpi-value" id="slAvg">₩0</p>
+              <p class="kpi-sub muted" id="slAvgSub">—</p>
+            </article>
+          </div>
+
+          <div class="rp-grid sl-grid">
+            <section class="card panel" aria-labelledby="slTopHeading">
+              <h2 id="slTopHeading" class="rp-title">제품별 판매</h2>
+              <ol class="sl-bars" id="slTop"></ol>
+            </section>
+            <section class="card panel" aria-labelledby="slDesHeading">
+              <h2 id="slDesHeading" class="rp-title">담당 디자이너별 판매</h2>
+              <ol class="sl-bars" id="slDes"></ol>
+            </section>
+          </div>
+
+          <section class="card panel sl-list" aria-labelledby="slListHeading">
+            <div class="panel-head">
+              <h2 id="slListHeading" class="rp-title">판매 기록</h2>
+              <p class="muted small" id="slCount"></p>
+            </div>
+            <div class="table-wrap">
+              <table class="inv-table" id="slTable">
+                <caption class="sr-only">판매 기록 (최신순)</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" class="th-plain">품목</th>
+                    <th scope="col" class="th-plain num">수량</th>
+                    <th scope="col" class="th-plain num">판매가</th>
+                    <th scope="col" class="th-plain num">금액</th>
+                    <th scope="col" class="th-plain">담당 · 등록</th>
+                    <th scope="col" class="th-plain">메모</th>
+                    <th scope="col" class="th-plain"><span class="sr-only">작업</span></th>
+                  </tr>
+                </thead>
+                <tbody id="slBody"></tbody>
+              </table>
+              <div class="empty" id="slEmpty" hidden>
+                <svg class="icon icon-lg" aria-hidden="true"><use href="#i-receipt"/></svg>
+                <p><strong>이 기간에 판매 기록이 없습니다.</strong></p>
+                <p class="muted small">제품을 팔면 오른쪽 위 <b>입출고 등록</b>에서 구분을 <b>판매</b>로 골라 기록해 주세요.</p>
+              </div>
+            </div>
+          </section>
         </section>
 
         <!-- Movements -->
@@ -912,6 +1023,13 @@
               <div class="man-body">
                 <ol class="man-steps"><li><b>입출고 내역</b>에서 <b>구분</b>(입고·판매 등)과 <b>기간</b>을 고릅니다.</li><li>원하는 날짜가 있으면 기간에서 <b>기간 직접 설정</b>을 고르고 시작일·종료일을 입력합니다.</li><li><b>엑셀 다운로드</b>를 누르면 지금 보고 있는 내역이 .xlsx 파일로 저장됩니다.</li></ol>
                 <a href="#/movements" class="btn btn-secondary btn-sm man-go">입출고 내역(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-sales">
+              <summary><span class="man-q">판매 내역 · 판매 실적 보기</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>판매 내역</b>에서 <b>기간</b>(오늘, 최근 7일, 최근 30일, 이번 달, 지난달, 기간 직접 설정)을 고릅니다.</li><li>위쪽 카드에서 판매 금액·건수·수량·건당 평균과 <b>이전 기간 대비</b> 증감(▲▼)을 확인합니다.</li><li><b>제품별 판매</b>와 <b>담당 디자이너별 판매</b> 순위를 보고, <b>담당 디자이너</b>를 골라 한 사람의 판매만 볼 수도 있습니다.</li><li>아래 <b>판매 기록</b>에서 한 건씩 확인하고, <b>엑셀 다운로드</b>로 파일을 받습니다.</li></ol><p class="man-tip"><strong>참고</strong> 취소한 판매는 "취소됨"으로 표시되고 합계에는 들어가지 않습니다.</p>
+                <a href="#/sales" class="btn btn-secondary btn-sm man-go">판매 내역(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>
             <details class="man-item" id="man-work">
