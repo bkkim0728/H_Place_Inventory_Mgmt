@@ -129,6 +129,16 @@ create table if not exists public.inventory (
 );
 -- 이 지점에서 사용 (a branch can stop using a product without affecting others)
 alter table public.inventory add column if not exists in_use boolean not null default true;
+-- 지점별 매입가·단위·판매가: own_prices = true → this branch uses its own three
+-- values; false → the product's (shared) values.
+alter table public.inventory add column if not exists own_prices boolean not null default false;
+alter table public.inventory add column if not exists unit text;
+alter table public.inventory add column if not exists cost_price integer;
+alter table public.inventory add column if not exists retail_price integer;
+do $$ begin
+  alter table public.inventory add constraint inventory_own_prices_chk check (
+    not own_prices or (unit is not null and cost_price is not null and cost_price >= 0 and coalesce(retail_price, 0) >= 0));
+exception when duplicate_object then null; end $$;
 
 create table if not exists public.stock_movements (
   id           bigint generated always as identity primary key,
@@ -274,13 +284,17 @@ create or replace view public.inventory_view with (security_invoker = true) as
 select
   i.branch_id,
   p.id            as product_id,
-  p.sku, p.name, p.brand, p.category, p.unit,
-  p.cost_price, p.retail_price, p.is_retail, p.active,
+  p.sku, p.name, p.brand, p.category,
+  case when i.own_prices then i.unit else p.unit end as unit,
+  case when i.own_prices then i.cost_price else p.cost_price end as cost_price,
+  case when i.own_prices then i.retail_price else p.retail_price end as retail_price,
+  p.is_retail, p.active,
   i.stock, i.safety_stock, i.location, i.updated_at,
   case when i.stock = 0 then 'out'
        when i.stock <= i.safety_stock then 'low'
        else 'ok' end as status,
-  i.in_use
+  i.in_use,
+  i.own_prices, p.unit as base_unit, p.cost_price as base_cost_price, p.retail_price as base_retail_price
 from public.inventory i
 join public.products p on p.id = i.product_id;
 
@@ -298,12 +312,14 @@ create or replace view public.movement_view with (security_invoker = true) as
 select
   m.id, m.branch_id, m.product_id, m.type, m.quantity, m.stock_after,
   m.unit_cost, m.memo, m.reverts_id, m.created_by, m.created_at,
-  p.name as product_name, p.sku, p.unit,
+  p.name as product_name, p.sku,
+  case when inv.own_prices then inv.unit else p.unit end as unit,
   pr.full_name as created_by_name,
   exists (select 1 from public.stock_movements r where r.reverts_id = m.id) as reverted,
   m.staff_id, public.staff_display_name(m.staff_id) as staff_name, m.unit_price
 from public.stock_movements m
 join public.products p on p.id = m.product_id
+left join public.inventory inv on inv.branch_id = m.branch_id and inv.product_id = m.product_id
 left join public.profiles pr on pr.user_id = m.created_by;
 
 revoke all on public.inventory_view, public.movement_view from anon, authenticated;
@@ -353,8 +369,7 @@ begin
     raise exception 'INVALID_QUANTITY' using errcode = '22023';
   end if;
 
-  select cost_price, retail_price into v_cost, v_price from public.products where id = p_product_id and active;
-  if not found then
+  if not exists (select 1 from public.products where id = p_product_id and active) then
     raise exception 'PRODUCT_NOT_FOUND' using errcode = 'P0002';
   end if;
   if p_staff_id is not null and not exists (
@@ -367,10 +382,15 @@ begin
   values (p_branch_id, p_product_id)
   on conflict do nothing;
 
-  select stock into v_stock
-  from public.inventory
-  where branch_id = p_branch_id and product_id = p_product_id
-  for update;
+  -- the branch's own 매입가·판매가 when it has them
+  select i.stock,
+         case when i.own_prices then i.cost_price else p.cost_price end,
+         case when i.own_prices then i.retail_price else p.retail_price end
+    into v_stock, v_cost, v_price
+  from public.inventory i
+  join public.products p on p.id = i.product_id
+  where i.branch_id = p_branch_id and i.product_id = p_product_id
+  for update of i;
 
   v_delta := case p_type
                when 'receive' then p_quantity
@@ -494,6 +514,7 @@ grant execute on function public.next_sku(text) to authenticated;
 -- Errors: ADMIN_ONLY, INVALID_PRODUCT, DUPLICATE_SKU, PRODUCT_NOT_FOUND,
 --         CATEGORY_NOT_FOUND
 -- ---------------------------------------------------------------------------
+drop function if exists public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean);  -- before 지점별 가격
 create or replace function public.save_product(
   p_branch_id     uuid,
   p_product_id    uuid,          -- null → create
@@ -507,18 +528,20 @@ create or replace function public.save_product(
   p_is_retail     boolean,
   p_safety_stock  integer,
   p_location      text,
-  p_active        boolean default true
+  p_active        boolean default true,
+  p_price_scope   text default null   -- 매입가·단위·판매가: 'branch' (p_branch_id only) or 'all' (admin)
 )
 returns uuid
 language plpgsql security definer set search_path = public
 as $$
 declare
-  v_id uuid;
+  v_id    uuid;
+  v_scope text;
 begin
   -- New products: admins, or a branch manager (registered for every branch).
-  -- Changing an existing product (shared by all branches): admins only.
   -- Changing an existing product: admins change everything; a branch manager
-  -- may change everything but the code and the catalog-wide 사용 flag (shared by all branches).
+  -- may change everything but the code and the catalog-wide 사용 flag.
+  -- 매입가·단위·판매가 can differ per branch (p_price_scope, see below).
   if p_product_id is null or not public.is_admin() then
     if not (public.is_admin() or (p_branch_id is not null and public.is_branch_manager(p_branch_id))) then
       raise exception 'MANAGER_ONLY' using errcode = '42501';
@@ -533,6 +556,14 @@ begin
      or coalesce(btrim(p_category), '') = '' or coalesce(btrim(p_unit), '') = ''
      or coalesce(p_cost_price, 0) < 0 or coalesce(p_retail_price, 0) < 0
      or coalesce(p_safety_stock, 0) < 0 then
+    raise exception 'INVALID_PRODUCT' using errcode = '22023';
+  end if;
+  -- New products set the shared values; a branch manager's changes stay in their branch.
+  v_scope := case when p_product_id is null then 'all'
+                  when not public.is_admin() then 'branch'
+                  when p_branch_id is null then 'all'
+                  else coalesce(p_price_scope, 'all') end;
+  if v_scope not in ('all', 'branch') then
     raise exception 'INVALID_PRODUCT' using errcode = '22023';
   end if;
 
@@ -552,8 +583,7 @@ begin
     elsif not public.is_admin() then
       update public.products
          set name = btrim(p_name), brand = nullif(btrim(p_brand), ''), category = btrim(p_category),
-             unit = btrim(p_unit), cost_price = coalesce(p_cost_price, 0),
-             retail_price = p_retail_price, is_retail = coalesce(p_is_retail, false)
+             is_retail = coalesce(p_is_retail, false)
        where id = p_product_id
       returning id into v_id;
       if v_id is null then
@@ -562,14 +592,37 @@ begin
     else
       update public.products
          set sku = upper(btrim(p_sku)), name = btrim(p_name), brand = nullif(btrim(p_brand), ''),
-             category = btrim(p_category), unit = btrim(p_unit),
-             cost_price = coalesce(p_cost_price, 0), retail_price = p_retail_price,
+             category = btrim(p_category),
              is_retail = coalesce(p_is_retail, false), active = coalesce(p_active, true)
        where id = p_product_id
       returning id into v_id;
       if v_id is null then
         raise exception 'PRODUCT_NOT_FOUND' using errcode = 'P0002';
       end if;
+      if v_scope = 'all' then
+        -- same values everywhere: set the shared ones and drop every branch's own
+        update public.products
+           set unit = btrim(p_unit), cost_price = coalesce(p_cost_price, 0), retail_price = p_retail_price
+         where id = v_id;
+        update public.inventory
+           set own_prices = false, unit = null, cost_price = null, retail_price = null
+         where product_id = v_id and own_prices;
+      end if;
+    end if;
+    if v_scope = 'branch' then
+      insert into public.inventory (branch_id, product_id) values (p_branch_id, v_id)
+      on conflict do nothing;
+      -- Own values only when they differ from the shared ones
+      update public.inventory i
+         set own_prices = x.own,
+             unit = case when x.own then btrim(p_unit) end,
+             cost_price = case when x.own then coalesce(p_cost_price, 0) end,
+             retail_price = case when x.own then p_retail_price end,
+             updated_at = now()
+        from (select not (p.unit = btrim(p_unit) and p.cost_price = coalesce(p_cost_price, 0)
+                          and p.retail_price is not distinct from p_retail_price) as own
+                from public.products p where p.id = v_id) x
+       where i.branch_id = p_branch_id and i.product_id = v_id;
     end if;
   exception
     when unique_violation then
@@ -1428,7 +1481,7 @@ grant execute on function public.staff_display_name(uuid) to authenticated;
 -- ---------------------------------------------------------------------------
 revoke all on function public.record_movement(uuid, uuid, public.movement_type, integer, text, uuid) from public, anon;
 revoke all on function public.revert_movement(bigint) from public, anon;
-revoke all on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) from public, anon;
+revoke all on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean, text) from public, anon;
 revoke all on function public.set_branch_item(uuid, uuid, integer, text) from public, anon;
 revoke all on function public.save_branch(uuid, text, text, text, text, boolean) from public, anon;
 revoke all on function public.save_category(uuid, text) from public, anon;
@@ -1440,7 +1493,7 @@ revoke all on function public.set_branch_photo(uuid, text) from public, anon;
 revoke all on function public.login_photos() from public;
 grant execute on function public.record_movement(uuid, uuid, public.movement_type, integer, text, uuid) to authenticated;
 grant execute on function public.revert_movement(bigint) to authenticated;
-grant execute on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean) to authenticated;
+grant execute on function public.save_product(uuid, uuid, text, text, text, text, text, integer, integer, boolean, integer, text, boolean, text) to authenticated;
 grant execute on function public.set_branch_item(uuid, uuid, integer, text) to authenticated;
 grant execute on function public.save_branch(uuid, text, text, text, text, boolean) to authenticated;
 grant execute on function public.save_category(uuid, text) to authenticated;
