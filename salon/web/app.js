@@ -44,13 +44,15 @@
     dashboard: '대시보드',
     inventory: '재고 목록',
     movements: '입출고 내역',
+    schedule: '근무표',
     products: '제품 관리',
     categories: '카테고리 관리',
     staff: '직원 관리',
+    payroll: '실적·정산',
     users: '사용자 관리',
     branches: '지점 관리',
   };
-  const MANAGER_ROUTES = ['products', 'staff', 'users', 'branches'];
+  const MANAGER_ROUTES = ['products', 'staff', 'payroll', 'users', 'branches'];
   const ADMIN_ROUTES = ['categories'];
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
@@ -233,6 +235,8 @@
     loadData();
     if (state.route === 'users') loadUsers();
     if (state.route === 'staff') loadStaff();
+    if (state.route === 'schedule') loadSchedule();
+    if (state.route === 'payroll') loadPayroll();
   });
 
   $('#demoRole').addEventListener('change', async (e) => {
@@ -260,6 +264,8 @@
       state.inventory = inventory;
       state.movements = movements;
       state.categories = categories;
+      // Names for 담당 디자이너; an outdated database just means no list.
+      state.staffNames = await api.listStaffNames(state.branch.id).catch(() => []);
       $('#loadError').hidden = true;
       renderAll();
     } catch (e) {
@@ -312,6 +318,8 @@
     if (route === 'users') loadUsers();
     if (route === 'branches') { renderBranches(); loadBranchManagers(); }
     if (route === 'staff') loadStaff();
+    if (route === 'schedule') loadSchedule();
+    if (route === 'payroll') loadPayroll();
     if (route === 'categories') renderCategories();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
@@ -724,7 +732,8 @@
     const since = sinceMs(f.days);
     const rows = state.movements.filter((m) =>
       Date.parse(m.created_at) >= since && (!f.type || m.type === f.type) &&
-      (!q || m.product_name.toLowerCase().includes(q) || (m.memo || '').toLowerCase().includes(q) || whoText(m).toLowerCase().includes(q)));
+      (!q || m.product_name.toLowerCase().includes(q) || (m.memo || '').toLowerCase().includes(q) || whoText(m).toLowerCase().includes(q)
+        || (m.staff_name || '').toLowerCase().includes(q)));
     $('#mvCount').textContent = `${nf.format(rows.length)}건`;
     $('#mvEmpty').hidden = rows.length > 0;
     $('#mvTable').hidden = rows.length === 0;
@@ -737,7 +746,7 @@
         <td data-label="구분">${typeTag(m.type)}${m.reverts_id ? ' <span class="tag tag-note">취소 기록</span>' : ''}${m.reverted ? ' <span class="tag tag-note">취소됨</span>' : ''}</td>
         <td class="num" data-label="변동">${qtyText(m.quantity, m.unit)}</td>
         <td class="num" data-label="변동 후">${nf.format(m.stock_after)}${esc(m.unit)}</td>
-        <td data-label="담당자">${esc(whoText(m))}</td>
+        <td data-label="등록 · 담당">${esc(whoText(m))}${m.staff_name ? `<small class="mv-staff">담당 ${esc(m.staff_name)}</small>` : ''}</td>
         <td data-label="메모"><span class="memo">${esc(m.memo || '—')}</span></td>
         <td class="cell-action">${canRevert(m) ? `<button type="button" class="btn btn-secondary btn-sm" data-revert="${m.id}" aria-label="${esc(m.product_name)} ${TYPES[m.type].label} 기록 취소">${svgIcon('i-undo')}취소</button>` : ''}</td>
       </tr>`;
@@ -881,17 +890,33 @@
     }
   }
   ['#mItem', '#mQty'].forEach((s) => $(s).addEventListener('input', updatePreview));
-  $$('input[name="mType"]').forEach((r) => r.addEventListener('change', updatePreview));
+  $$('input[name="mType"]').forEach((r) => r.addEventListener('change', () => { updatePreview(); syncMoveStaff(); }));
+
+  // 담당 디자이너: current staff of the branch, designers first; remembers the last pick.
+  function fillMoveStaff() {
+    const rank = { director: 0, chief: 1, designer: 2, intern: 3, desk: 4 };
+    const list = (state.staffNames || []).filter((x) => x.status === 'active')
+      .sort((a, b) => rank[a.position] - rank[b.position] || a.name.localeCompare(b.name, 'ko'));
+    $('#mStaff').innerHTML = '<option value="">선택 안 함</option>'
+      + list.map((x) => `<option value="${x.id}">${esc(x.name)} (${POSITIONS[x.position] || ''})</option>`).join('');
+    $('#mStaff').value = list.some((x) => x.id === state.lastMoveStaff) ? state.lastMoveStaff : '';
+  }
+  function syncMoveStaff() {
+    const t = moveType();
+    $('#mStaffField').hidden = !(state.staffNames || []).some((x) => x.status === 'active') || (t !== 'use' && t !== 'sale');
+  }
 
   function openMove({ productId = '', type = 'receive', qty = '' } = {}) {
     moveForm.reset();
     clearErrors(moveForm);
     fillMoveItems();
+    fillMoveStaff();
     $('#mItem').value = productId;
     const radio = $(`input[name="mType"][value="${type}"]`);
     radio.checked = true;
     $('#mQty').value = qty;
     updatePreview();
+    syncMoveStaff();
     moveDialog.open();
     (productId ? $('#mQty') : $('#mItem')).focus();
   }
@@ -919,7 +944,9 @@
     const btn = $('#moveSubmit');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
-      const mv = await api.recordMovement({ branchId: state.branch.id, productId: item.product_id, type, quantity: qty, memo: $('#mMemo').value });
+      const staffId = !$('#mStaffField').hidden && $('#mStaff').value ? $('#mStaff').value : null;
+      if (staffId) state.lastMoveStaff = staffId;
+      const mv = await api.recordMovement({ branchId: state.branch.id, productId: item.product_id, type, quantity: qty, memo: $('#mMemo').value, staffId });
       $('#moveDialog').close();
       const verb = type === 'adjust' ? `실사 반영 (${mv.quantity > 0 ? '+' : '−'}${nf.format(Math.abs(mv.quantity))}${item.unit})` : `${TYPES[type].label} ${nf.format(qty)}${item.unit}`;
       toast(`${item.name} ${verb} 등록됨`, { undo: () => revert(mv.id) });
@@ -1660,6 +1687,7 @@
     $('#sLicense').value = x?.license_no || '';
     $('#sCert').value = x?.health_cert_expires || '';
     $('#sMemo').value = x?.memo || '';
+    $('#sLeave').value = x?.annual_leave_days ?? '';
     $('#staffDelete').hidden = !x;
     syncLeftField();
     setStaffPhotoDraft(null);
@@ -1684,6 +1712,12 @@
       return v;
     };
     const incS = rate('sIncS', '시술 인센티브'), incR = rate('sIncR', '제품 판매 인센티브');
+    const leaveRaw = $('#sLeave').value.trim();
+    const leaveDays = leaveRaw === '' ? null : Number(leaveRaw);
+    if (leaveDays != null && (!Number.isFinite(leaveDays) || leaveDays < 0 || leaveDays > 60 || (leaveDays * 2) % 1)) {
+      fieldError($('#sLeave'), '연차 일수는 0~60 사이, 0.5일 단위로 입력해 주세요.');
+      errors.push({ id: 'sLeave', msg: '연차 일수를 확인해 주세요.' });
+    }
     const status = staffForm.elements.sStatus.value;
     const hired = $('#sHired').value, left = status === 'left' ? $('#sLeftOn').value : '';
     if (left && hired && left < hired) { fieldError($('#sLeftOn'), '퇴사일은 입사일 이후여야 합니다.'); errors.push({ id: 'sLeftOn', msg: '퇴사일을 확인해 주세요.' }); }
@@ -1700,6 +1734,7 @@
         days_off: $$('input[name="sDay"]:checked').map((c) => Number(c.value)),
         incentive_service: incS, incentive_retail: incR,
         license_no: $('#sLicense').value, health_cert_expires: $('#sCert').value || null, memo: $('#sMemo').value,
+        annual_leave_days: leaveDays,
       });
       let photoError = null;
       try {
@@ -1734,6 +1769,344 @@
     });
   });
   $('#addStaffBtn').addEventListener('click', () => openStaff(null));
+
+  // ------------------------------------------------------------------
+  // 근무표·연차 (everyone at the branch reads; the manager edits)
+  // ------------------------------------------------------------------
+  const KIND = {
+    off: { label: '추가 휴무', short: '휴' }, work: { label: '대체 근무', short: '근' }, annual: { label: '연차', short: '연' },
+    half: { label: '반차', short: '반' }, sick: { label: '병가', short: '병' }, edu: { label: '교육', short: '교' },
+  };
+  state.sch = { month: todayKey().slice(0, 7), rows: [], year: null };
+  const monthLabel = (ym) => `${ym.slice(0, 4)}년 ${Number(ym.slice(5, 7))}월`;
+  const shiftMonth = (ym, n) => { const d = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+  const daysIn = (ym) => new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).getUTCDate();
+  const dowOf = (day) => new Date(`${day}T00:00:00Z`).getUTCDay();
+
+  // Where a person stands on a day: 'na' (not employed), a KIND key, 'reg' (regular day off) or '' (working)
+  function dayState(x, day, sched) {
+    if ((x.hired_on && day < x.hired_on) || (x.status === 'left' && x.left_on && day > x.left_on)) return 'na';
+    const e = sched.get(`${x.id}|${day}`);
+    if (e) return e.kind;
+    return (x.days_off || []).includes(dowOf(day)) ? 'reg' : '';
+  }
+  const workValue = (st) => (st === '' || st === 'work' ? 1 : st === 'half' ? 0.5 : 0);
+
+  // 연차 발생 (근로기준법 제60조, hire-date basis) as of a date
+  function leaveEntitlement(x, asOf) {
+    if (x.annual_leave_days != null) return { days: Number(x.annual_leave_days), auto: false };
+    if (!x.hired_on) return null;
+    const a = new Date(`${x.hired_on}T00:00:00Z`), b = new Date(`${asOf}T00:00:00Z`);
+    let months = (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + b.getUTCMonth() - a.getUTCMonth();
+    if (b.getUTCDate() < a.getUTCDate()) months -= 1;
+    if (months < 0) return { days: 0, auto: true };
+    const years = Math.floor(months / 12);
+    return { days: years < 1 ? Math.min(11, months) : Math.min(25, 15 + Math.floor((years - 1) / 2)), auto: true };
+  }
+
+  async function loadSchedule() {
+    if (!state.branch) return;
+    const year = state.sch.month.slice(0, 4);
+    const box = $('#schError');
+    try {
+      const [people, rows] = await Promise.all([
+        isManager() ? api.listStaff(state.branch.id) : api.listStaffNames(state.branch.id),
+        api.listSchedule(state.branch.id, `${year}-01-01`, `${year}-12-31`),
+      ]);
+      state.sch.people = people;
+      state.sch.rows = rows;
+      box.hidden = true;
+    } catch (e) {
+      state.sch.people = [];
+      state.sch.rows = [];
+      box.textContent = api.toAppError(e).message;
+      box.hidden = false;
+    }
+    renderSchedule();
+  }
+
+  function renderSchedule() {
+    const ym = state.sch.month;
+    $('#schMonth').textContent = monthLabel(ym);
+    $('#schThis').disabled = ym === todayKey().slice(0, 7);
+    const n = daysIn(ym), days = Array.from({ length: n }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
+    const today = todayKey();
+    const sched = new Map(state.sch.rows.map((r) => [`${r.staff_id}|${r.day}`, r]));
+    const rank = { director: 0, chief: 1, designer: 2, intern: 3, desk: 4 };
+    const people = (state.sch.people || [])
+      .filter((x) => x.status !== 'leave' && days.some((d) => dayState(x, d, sched) !== 'na') && (x.status !== 'left' || (x.left_on && x.left_on >= days[0])))
+      .sort((a, b) => rank[a.position] - rank[b.position] || a.name.localeCompare(b.name, 'ko'));
+    const edit = isManager();
+    $('#schEmpty').hidden = people.length > 0;
+    $('#schWrap').hidden = people.length === 0;
+
+    const head = `<thead><tr><th scope="col" class="sch-name">직원</th>${days.map((d) => {
+      const w = dowOf(d);
+      return `<th scope="col" class="sch-day${w === 0 ? ' is-sun' : w === 6 ? ' is-sat' : ''}${d === today ? ' is-today' : ''}"><span>${Number(d.slice(8))}</span><small>${DOW[w]}</small></th>`;
+    }).join('')}<th scope="col" class="sch-sum">근무일</th></tr></thead>`;
+    const body = people.map((x) => {
+      let worked = 0;
+      const cells = days.map((d) => {
+        const st = dayState(x, d, sched);
+        worked += workValue(st);
+        const e = sched.get(`${x.id}|${d}`);
+        const label = st === 'na' ? '재직 전후' : st === 'reg' ? '정기 휴무' : st === '' ? '근무' : KIND[st].label;
+        const text = st === 'na' ? '' : st === 'reg' ? '휴' : st === '' ? '' : KIND[st].short;
+        const cls = `sc sc-${st || 'on'}${d === today ? ' is-today' : ''}`;
+        const title = `${x.name} ${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일 ${label}${e?.memo ? ` · ${e.memo}` : ''}`;
+        return edit && st !== 'na'
+          ? `<td><button type="button" class="${cls}" data-sch="${x.id}|${d}" aria-label="${esc(title)}" title="${esc(title)}">${text}</button></td>`
+          : `<td><span class="${cls}" title="${esc(title)}"><span class="sr-only">${esc(label)}</span><span aria-hidden="true">${text}</span></span></td>`;
+      }).join('');
+      return `<tr><th scope="row" class="sch-name"><span class="sch-person">${esc(x.name)}<small>${POSITIONS[x.position] || ''}</small></span></th>${cells}<td class="sch-sum">${nf.format(worked)}일</td></tr>`;
+    }).join('');
+    const designers = people.filter((x) => DESIGNER_POS.includes(x.position));
+    const countRow = (label, list, warn) => `<tr class="sch-foot"><th scope="row" class="sch-name">${label}</th>${days.map((d) => {
+      const c = list.reduce((a, x) => a + workValue(dayState(x, d, sched)), 0);
+      const gap = warn && designers.length > 0 && c === 0;
+      return `<td class="${gap ? 'is-gap' : ''}">${gap ? '<span class="sr-only">디자이너 없음 </span>' : ''}${nf.format(c)}</td>`;
+    }).join('')}<td></td></tr>`;
+    $('#schTable').innerHTML = head + `<tbody>${body}</tbody><tfoot>${countRow('근무 인원', people, false)}${countRow('디자이너', designers, true)}</tfoot>`;
+
+    // Leave summary (managers)
+    if (!isManager()) return;
+    const year = ym.slice(0, 4);
+    const asOf = today.slice(0, 4) === year ? today : `${year}-12-31` < today ? `${year}-12-31` : today;
+    $('#leaveSub').textContent = `${year}년 사용 기준 · 발생은 ${asOf.replace(/-/g, '.')} 기준`;
+    const staffAll = (state.sch.people || []).filter((x) => x.status !== 'left' || (x.left_on && x.left_on.slice(0, 4) >= year))
+      .sort((a, b) => rank[a.position] - rank[b.position] || a.name.localeCompare(b.name, 'ko'));
+    $('#leaveBody').innerHTML = staffAll.map((x) => {
+      const used = state.sch.rows.filter((r) => r.staff_id === x.id && (r.kind === 'annual' || r.kind === 'half'));
+      const usedDays = used.reduce((a, r) => a + (r.kind === 'half' ? 0.5 : 1), 0);
+      const ent = leaveEntitlement(x, x.status === 'left' && x.left_on && x.left_on < asOf ? x.left_on : asOf);
+      const left = ent ? ent.days - usedDays : null;
+      const list = used.sort((a, b) => (a.day < b.day ? -1 : 1)).map((r) => `${Number(r.day.slice(5, 7))}/${Number(r.day.slice(8))}${r.kind === 'half' ? '(반)' : ''}`).join(', ');
+      return `<tr class="${x.status !== 'active' ? 'inactive-row' : ''}">
+        <td class="cell-name"><div class="item-name">${esc(x.name)}<span class="tag pos-tag pos-${x.position}">${POSITIONS[x.position]}</span></div>${x.status === 'leave' ? '<div class="item-sku">휴직 중</div>' : ''}</td>
+        <td data-label="입사·근속" class="when">${x.hired_on ? `${dateText(x.hired_on)}<small>${tenure(x.hired_on, x.status === 'left' ? x.left_on : null)}</small>` : '<span class="muted">입사일 없음</span>'}</td>
+        <td data-label="발생">${ent ? `${nf.format(ent.days)}일${ent.auto ? '' : ' <span class="tag tag-note">직접 지정</span>'}` : '<span class="muted">입사일 필요</span>'}</td>
+        <td data-label="사용">${nf.format(usedDays)}일</td>
+        <td data-label="남음">${left == null ? '—' : left < 0 ? `<span class="tag tag-off">${nf.format(left)}일</span>` : `<strong>${nf.format(left)}일</strong>`}</td>
+        <td data-label="사용한 날"><span class="memo">${list || '—'}</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  const goMonth = (n) => {
+    const prevYear = state.sch.month.slice(0, 4);
+    state.sch.month = n === 0 ? todayKey().slice(0, 7) : shiftMonth(state.sch.month, n);
+    if (state.sch.month.slice(0, 4) !== prevYear) loadSchedule(); else renderSchedule();
+  };
+  $('#schPrev').addEventListener('click', () => goMonth(-1));
+  $('#schNext').addEventListener('click', () => goMonth(1));
+  $('#schThis').addEventListener('click', () => goMonth(0));
+
+  const schDialog = setupDialog($('#schDialog'));
+  const schForm = $('#schForm');
+  let schTarget = null;
+  function openScheduleDay(staffId, day, trigger) {
+    const x = (state.sch.people || []).find((p) => p.id === staffId);
+    if (!x) return;
+    const e = state.sch.rows.find((r) => r.staff_id === staffId && r.day === day);
+    schTarget = { staffId, day, trigger };
+    clearErrors(schForm);
+    const reg = (x.days_off || []).includes(dowOf(day));
+    $('#schTitle').textContent = `${x.name} · ${Number(day.slice(5, 7))}월 ${Number(day.slice(8))}일 (${DOW[dowOf(day)]})`;
+    $('#schInfo').textContent = reg ? '이날은 정기 휴무일입니다. 출근하면 "대체 근무"를 고르세요.' : '이날은 기본 근무일입니다.';
+    schForm.elements.schKind.value = e ? e.kind : '';
+    $('#schMemo').value = e?.memo || '';
+    schDialog.open();
+    (schForm.querySelector('input[name="schKind"]:checked') || schForm.querySelector('input[name="schKind"]')).focus();
+  }
+  schForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#schSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      const kind = schForm.elements.schKind.value || null;
+      await api.setSchedule(schTarget.staffId, schTarget.day, kind, $('#schMemo').value);
+      state.sch.rows = state.sch.rows.filter((r) => !(r.staff_id === schTarget.staffId && r.day === schTarget.day));
+      if (kind) state.sch.rows.push({ staff_id: schTarget.staffId, day: schTarget.day, kind, memo: $('#schMemo').value.trim() || null });
+      $('#schDialog').close();
+      renderSchedule();
+      const again = $(`[data-sch="${schTarget.staffId}|${schTarget.day}"]`);
+      if (again) again.focus();
+    } catch (ex) {
+      showServerError(schForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // 실적·정산 (managers; admins reopen a confirmed month)
+  // ------------------------------------------------------------------
+  state.pay = { month: todayKey().slice(0, 7), rows: [] };
+  const krw = (v) => `${nf.format(Math.round(Number(v) || 0))}원`;
+  const signedWon = (v) => (Number(v) > 0 ? `+${krw(v)}` : Number(v) < 0 ? `−${krw(-v)}` : '—');
+  const pctText = (v) => (v == null ? '—' : `${Number(v)}%`);
+  const parseWon = (raw) => { const t = String(raw).replace(/[,\s원]/g, ''); return t === '' || t === '-' ? 0 : /^-?\d+$/.test(t) ? Number(t) : NaN; };
+
+  async function loadPayroll() {
+    if (!isManager() || !state.branch) return;
+    const box = $('#payError');
+    try {
+      state.pay.rows = await api.staffMonthReport(state.branch.id, `${state.pay.month}-01`);
+      box.hidden = true;
+    } catch (e) {
+      state.pay.rows = [];
+      box.textContent = api.toAppError(e).message;
+      box.hidden = false;
+    }
+    renderPayroll();
+  }
+
+  function renderPayroll() {
+    const rows = state.pay.rows;
+    const ym = state.pay.month;
+    const confirmed = rows.length > 0 && rows[0].confirmed;
+    $('#payMonth').textContent = monthLabel(ym);
+    $('#payStatus').innerHTML = confirmed ? '<span class="tag tag-ok-strong">정산 확정</span>' : '<span class="tag tag-note">집계 중</span>';
+    $('#payConfirm').hidden = confirmed;
+    $('#payConfirm').disabled = rows.length === 0;
+    $('#payReopen').hidden = !confirmed;
+    $('#payNext').disabled = ym >= todayKey().slice(0, 7);
+    const sum = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
+    $('#payKpiService').textContent = krw(sum('service_sales'));
+    $('#payKpiServiceSub').textContent = `${nf.format(sum('service_count'))}건`;
+    $('#payKpiRetail').textContent = krw(sum('retail_sales'));
+    $('#payKpiRetailSub').textContent = `${nf.format(sum('retail_qty'))}개 판매`;
+    $('#payKpiIncentive').textContent = krw(sum('incentive_total'));
+    $('#payKpiIncentiveSub').textContent = `${nf.format(rows.length)}명`;
+    $('#payKpiMaterial').textContent = krw(sum('material_cost'));
+    $('#payEmpty').hidden = rows.length > 0;
+    $('#payTable').hidden = rows.length === 0;
+    $('#payBody').innerHTML = rows.map((r) => `<tr class="${r.status === 'left' ? 'inactive-row' : ''}">
+      <td class="cell-name"><div class="item-name">${esc(r.name)}<span class="tag pos-tag pos-${r.position}">${POSITIONS[r.position] || ''}</span></div>${r.memo ? `<div class="st-memo">${esc(r.memo)}</div>` : ''}</td>
+      <td class="num" data-label="시술 매출">${krw(r.service_sales)}<small class="sub-num">${nf.format(r.service_count)}건</small></td>
+      <td class="num" data-label="시술 인센티브">${krw(r.incentive_service)}<small class="sub-num">${pctText(r.rate_service)}</small></td>
+      <td class="num" data-label="제품 판매">${krw(r.retail_sales)}<small class="sub-num">${nf.format(r.retail_qty)}개</small></td>
+      <td class="num" data-label="판매 인센티브">${krw(r.incentive_retail)}<small class="sub-num">${pctText(r.rate_retail)}</small></td>
+      <td class="num" data-label="조정">${signedWon(r.adjustment)}</td>
+      <td class="num pay-total" data-label="인센티브 합계">${krw(r.incentive_total)}</td>
+      <td class="num" data-label="재료 사용액">${krw(r.material_cost)}</td>
+      <td class="cell-action">${confirmed ? '' : `<button type="button" class="btn btn-secondary btn-sm" data-pay-edit="${r.staff_id}" aria-label="${esc(r.name)} 실적 입력">${svgIcon('i-edit')}입력</button>`}</td>
+    </tr>`).join('');
+    $('#payFoot').innerHTML = rows.length ? `<tr class="pay-sum">
+      <th scope="row">합계</th>
+      <td class="num" data-label="시술 매출">${krw(sum('service_sales'))}</td>
+      <td class="num" data-label="시술 인센티브">${krw(sum('incentive_service'))}</td>
+      <td class="num" data-label="제품 판매">${krw(sum('retail_sales'))}</td>
+      <td class="num" data-label="판매 인센티브">${krw(sum('incentive_retail'))}</td>
+      <td class="num" data-label="조정">${signedWon(sum('adjustment'))}</td>
+      <td class="num pay-total" data-label="인센티브 합계">${krw(sum('incentive_total'))}</td>
+      <td class="num" data-label="재료 사용액">${krw(sum('material_cost'))}</td>
+      <td></td></tr>` : '';
+  }
+
+  const payGo = (n) => { state.pay.month = shiftMonth(state.pay.month, n); loadPayroll(); };
+  $('#payPrev').addEventListener('click', () => payGo(-1));
+  $('#payNext').addEventListener('click', () => payGo(1));
+
+  $('#payConfirm').addEventListener('click', () => {
+    const total = state.pay.rows.reduce((a, r) => a + Number(r.incentive_total || 0), 0);
+    askConfirm({
+      title: `${monthLabel(state.pay.month)} 정산 확정`,
+      text: `${state.branch.name} ${nf.format(state.pay.rows.length)}명, 인센티브 합계 ${krw(total)}으로 확정할까요? 확정하면 이 달의 제품 판매·인센티브율이 고정되고 실적을 고칠 수 없습니다. 확정 취소는 전체 관리자만 할 수 있습니다.`,
+      button: '확정',
+      run: async () => {
+        await api.confirmPayroll(state.branch.id, `${state.pay.month}-01`);
+        toast(`${monthLabel(state.pay.month)} 정산을 확정했습니다.`);
+        await loadPayroll();
+      },
+    });
+  });
+  $('#payReopen').addEventListener('click', () => {
+    askConfirm({
+      title: `${monthLabel(state.pay.month)} 확정 취소`,
+      text: '확정을 취소하면 현재 입출고 기록과 인센티브율로 다시 계산됩니다. 계속할까요?',
+      button: '확정 취소',
+      run: async () => {
+        await api.reopenPayroll(state.branch.id, `${state.pay.month}-01`);
+        toast(`${monthLabel(state.pay.month)} 정산 확정을 취소했습니다.`);
+        await loadPayroll();
+      },
+    });
+  });
+
+  // CSV for the payroll team (UTF-8 with BOM so Excel reads Korean)
+  $('#payCsv').addEventListener('click', () => {
+    const rows = state.pay.rows;
+    if (!rows.length) { toast('내보낼 실적이 없습니다.', { error: true }); return; }
+    const head = ['정산월', '지점', '직원', '직급', '시술 매출', '시술 건수', '시술 인센티브율(%)', '시술 인센티브', '제품 판매', '판매 수량', '판매 인센티브율(%)', '판매 인센티브', '조정액', '인센티브 합계', '재료 사용액', '메모', '확정'];
+    const cell = (v) => { const t = v == null ? '' : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const lines = [head, ...rows.map((r) => [state.pay.month, state.branch.name, r.name, POSITIONS[r.position] || r.position,
+      r.service_sales, r.service_count, r.rate_service ?? '', r.incentive_service, r.retail_sales, r.retail_qty, r.rate_retail ?? '',
+      r.incentive_retail, r.adjustment, r.incentive_total, r.material_cost, r.memo || '', r.confirmed ? '확정' : '집계 중'])];
+    const blob = new Blob(['﻿' + lines.map((l) => l.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `실적정산_${state.branch.name}_${state.pay.month}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  const payDialog = setupDialog($('#payDialog'));
+  const payForm = $('#payForm');
+  let payTarget = null;
+  function payPreview() {
+    const r = payTarget;
+    if (!r) return;
+    const sales = parseWon($('#pSales').value), adj = parseWon($('#pAdj').value);
+    if (!Number.isFinite(sales) || !Number.isFinite(adj)) { $('#pPreview').textContent = ''; return; }
+    const iS = Math.round(sales * (r.rate_service || 0) / 100), iR = Number(r.incentive_retail || 0);
+    $('#pPreview').innerHTML = `<dl>
+      <div><dt>시술 인센티브 (${pctText(r.rate_service)})</dt><dd>${krw(iS)}</dd></div>
+      <div><dt>판매 인센티브 (${pctText(r.rate_retail)} · 제품 ${krw(r.retail_sales)})</dt><dd>${krw(iR)}</dd></div>
+      <div><dt>조정</dt><dd>${signedWon(adj)}</dd></div>
+      <div class="pp-total"><dt>인센티브 합계</dt><dd>${krw(iS + iR + adj)}</dd></div></dl>`;
+  }
+  function openPayEdit(r) {
+    payTarget = r;
+    payForm.reset();
+    clearErrors(payForm);
+    $('#payTitle').textContent = `${r.name} · ${monthLabel(state.pay.month)} 실적`;
+    $('#pSales').value = r.service_sales ? nf.format(r.service_sales) : '';
+    $('#pCount').value = r.service_count || '';
+    $('#pAdj').value = r.adjustment ? String(r.adjustment) : '';
+    $('#pMemo').value = r.memo || '';
+    payPreview();
+    payDialog.open();
+    $('#pSales').focus();
+  }
+  ['pSales', 'pAdj'].forEach((id) => $('#' + id).addEventListener('input', payPreview));
+  $('#pSales').addEventListener('blur', () => { const v = parseWon($('#pSales').value); if (Number.isFinite(v) && v > 0) $('#pSales').value = nf.format(v); });
+  payForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(payForm);
+    const errors = [];
+    const sales = parseWon($('#pSales').value), adj = parseWon($('#pAdj').value);
+    const cntRaw = $('#pCount').value.trim(), cnt = cntRaw === '' ? 0 : Number(cntRaw);
+    if (!Number.isFinite(sales) || sales < 0) { fieldError($('#pSales'), '시술 매출은 0 이상의 숫자(원)로 입력해 주세요.'); errors.push({ id: 'pSales', msg: '시술 매출을 확인해 주세요.' }); }
+    if (!Number.isInteger(cnt) || cnt < 0) { fieldError($('#pCount'), '시술 건수는 0 이상의 정수로 입력해 주세요.'); errors.push({ id: 'pCount', msg: '시술 건수를 확인해 주세요.' }); }
+    if (!Number.isFinite(adj) || Math.abs(adj) > 1e8) { fieldError($('#pAdj'), '조정액은 숫자로, ±1억 원까지 입력해 주세요.'); errors.push({ id: 'pAdj', msg: '조정액을 확인해 주세요.' }); }
+    if (errors.length) return showSummary(payForm, errors);
+    const btn = $('#paySubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      await api.saveStaffMonth(payTarget.staff_id, `${state.pay.month}-01`, { service_sales: sales, service_count: cnt, adjustment: adj, memo: $('#pMemo').value });
+      $('#payDialog').close();
+      toast(`${payTarget.name} 님의 ${monthLabel(state.pay.month)} 실적을 저장했습니다.`);
+      const id = payTarget.staff_id;
+      await loadPayroll();
+      const again = $(`[data-pay-edit="${id}"]`);
+      if (again) again.focus();
+    } catch (ex) {
+      showServerError(payForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
 
   // ------------------------------------------------------------------
   // Categories (admin)
@@ -1938,6 +2311,10 @@
     if (ce) return openCategory(state.categories.find((c) => c.id === ce.dataset.catEdit));
     const cd = e.target.closest('[data-cat-delete]');
     if (cd) return deleteCategory(state.categories.find((c) => c.id === cd.dataset.catDelete));
+    const sc = e.target.closest('[data-sch]');
+    if (sc) { const [sid, day] = sc.dataset.sch.split('|'); return openScheduleDay(sid, day, sc); }
+    const pe = e.target.closest('[data-pay-edit]');
+    if (pe) return openPayEdit(state.pay.rows.find((r) => r.staff_id === pe.dataset.payEdit));
     const es = e.target.closest('[data-edit-staff]');
     if (es) return openStaff(state.staff.find((x) => x.id === es.dataset.editStaff));
     const eb = e.target.closest('[data-edit-branch]');

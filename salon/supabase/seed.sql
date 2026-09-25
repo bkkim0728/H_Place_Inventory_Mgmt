@@ -147,3 +147,18 @@ cross join (values
 ) as v(name, position, phone, hired_on, services, days_off, inc_s, inc_r, license, cert)
 where b.code = 'BR01'
   and not exists (select 1 from public.staff s where s.branch_id = b.id);
+
+-- Tag the sample 시술 사용·판매 history of 1호점 with its designers and record
+-- the 판매가 of sample sales (only rows not tagged yet).
+with d as (
+  select s.id, row_number() over (order by s.hired_on) - 1 as n, count(*) over () as cnt
+  from public.staff s join public.branches b on b.id = s.branch_id
+  where b.code = 'BR01' and s.status = 'active' and s.position in ('director', 'chief', 'designer')
+)
+update public.stock_movements m
+   set staff_id = d.id,
+       unit_price = case when m.type = 'sale' then p.retail_price else m.unit_price end
+  from d, public.products p, public.branches b
+ where b.code = 'BR01' and m.branch_id = b.id and p.id = m.product_id
+   and m.memo = '샘플 데이터' and m.type in ('use', 'sale') and m.staff_id is null
+   and d.n = m.id % d.cnt;

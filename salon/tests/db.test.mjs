@@ -300,5 +300,75 @@ ok((await err(other, () => q(`select set_staff_photo($1,$2)`, [stP, null])))?.in
 ok((await err(staff, () => q(`select set_staff_photo($1,$2)`, [stP, null])))?.includes('FORBIDDEN'), 'staff role cannot change the photo');
 ok((await as(mgr, () => one(`select delete_staff($1) p`, [stP]))).p === sp, 'delete_staff returns the photo path for cleanup');
 
+console.log('담당 디자이너 on movements');
+const des = (await one(`select id from staff where branch_id=$1 and name='김도윤'`, [b1])).id;
+const retail = (await one(`select id, retail_price from products where sku='RT-ESS'`));
+const stockR = await stockOf(b1, retail.id);
+let smv = await as(staff, () => one(`select * from record_movement($1,$2,'sale',2,null,$3)`, [b1, retail.id, des]));
+ok(smv.staff_id === des && smv.unit_price === retail.retail_price, 'sale records the designer and the 판매가 at the time');
+ok((await as(staff, () => one(`select staff_name from movement_view where id=$1`, [smv.id]))).staff_name === '김도윤', 'staff role sees the designer name in history');
+const umv = await as(staff, () => one(`select * from record_movement($1,$2,'use',1,null,$3)`, [b1, p6n, des]));
+ok(umv.staff_id === des && umv.unit_price === null, '시술 사용 records the designer, no 판매가');
+const b2staff = (await as(admin, () => one(`select save_staff(null,$1,'2호점 디자이너','designer',null,null,'active',null,'{}','{}',30,5,null,null,null) id`, [b2]))).id;
+ok((await err(staff, () => q(`select record_movement($1,$2,'use',1,null,$3)`, [b1, p6n, b2staff])))?.includes('INVALID_STAFF'), 'designer from another branch rejected');
+const rev = await as(staff, () => one(`select * from revert_movement($1)`, [smv.id]));
+ok(rev.staff_id === des && rev.unit_price === retail.retail_price && (await stockOf(b1, retail.id)) === stockR, 'revert keeps designer and price so totals net out');
+smv = await as(staff, () => one(`select * from record_movement($1,$2,'sale',1,null,$3)`, [b1, retail.id, des]));
+
+console.log('list_staff_names');
+const names = await as(staff, () => q(`select * from list_staff_names($1)`, [b1]));
+ok(names.length >= 6 && !('incentive_service' in names[0]), 'staff role lists names without pay data');
+ok((await err(staff, () => q(`select * from list_staff_names($1)`, [b2])))?.includes('NOT_BRANCH_MEMBER'), 'names of another branch hidden');
+
+console.log('근무표');
+await as(mgr, () => q(`select set_schedule($1,'2026-09-10','annual','가족 여행')`, [des]));
+await as(mgr, () => q(`select set_schedule($1,'2026-09-10','half',null)`, [des]));
+ok((await one(`select kind, memo from staff_schedule where staff_id=$1 and day='2026-09-10'`, [des])).kind === 'half', 'setting the same day replaces the entry');
+ok((await as(staff, () => q(`select * from staff_schedule where branch_id=$1`, [b1]))).length === 1, 'staff role reads the branch schedule');
+ok((await as(other, () => q(`select * from staff_schedule where branch_id=$1`, [b1]))).length === 0, 'other branch cannot read it');
+ok((await err(staff, () => q(`select set_schedule($1,'2026-09-11','off',null)`, [des])))?.includes('FORBIDDEN'), 'staff role cannot edit the schedule');
+ok((await err(mgr, () => q(`select set_schedule($1,'2026-09-11','holiday',null)`, [des])))?.includes('INVALID_SCHEDULE'), 'unknown kind rejected');
+await as(mgr, () => q(`select set_schedule($1,'2026-09-10',null,null)`, [des]));
+ok((await one(`select count(*)::int n from staff_schedule where staff_id=$1`, [des])).n === 0, 'null kind clears the day');
+
+console.log('실적·정산');
+const month = (await one(`select to_char(now() at time zone 'Asia/Seoul', 'YYYY-MM-01') m`)).m;
+const rep = async (uid = mgr, m = month) => as(uid, () => q(`select * from staff_month_report($1,$2)`, [b1, m]));
+let rows = await rep();
+let dr = rows.find(r => r.staff_id === des);
+const expectRetail = (await one(`select coalesce(sum(-m.quantity * coalesce(m.unit_price, p.retail_price)),0)::int s from stock_movements m join products p on p.id=m.product_id
+  where m.staff_id=$1 and m.type='sale' and m.created_at >= ($2::date)::timestamp at time zone 'Asia/Seoul'`, [des, month])).s;
+ok(Number(dr.retail_sales) === expectRetail && expectRetail >= retail.retail_price, 'product sales come from tagged sales (reverted ones net out)');
+ok(Number(dr.material_cost) > 0, 'material cost comes from tagged 시술 사용');
+ok(rows.every(r => r.status !== 'left' || r.staff_id), 'report lists the branch staff');
+await as(mgr, () => q(`select save_staff_month($1,$2,3200000,41,50000,'우수 사원 보너스')`, [des, month]));
+dr = (await rep()).find(r => r.staff_id === des);
+ok(Number(dr.incentive_service) === Math.round(3200000 * 0.35) && Number(dr.incentive_retail) === Math.round(expectRetail * 0.08), 'incentives use the staff rates');
+ok(Number(dr.incentive_total) === Math.round(3200000 * 0.35) + Math.round(expectRetail * 0.08) + 50000, 'total adds the adjustment');
+ok((await err(staff, () => rep(staff)))?.includes('FORBIDDEN'), 'staff role cannot see payroll');
+ok((await err(other, () => rep(other)))?.includes('FORBIDDEN'), 'other branch manager cannot see payroll');
+ok((await err(mgr, () => q(`select save_staff_month($1,$2,-1,0,0,null)`, [des, month])))?.includes('INVALID_AMOUNT'), 'negative sales rejected');
+ok((await as(staff, () => q(`select * from staff_monthly`))).length === 0, 'staff role cannot read monthly figures');
+
+await as(mgr, () => q(`select confirm_payroll($1,$2)`, [b1, month]));
+const before = (await rep()).find(r => r.staff_id === des);
+await as(staff, () => q(`select record_movement($1,$2,'sale',1,null,$3)`, [b1, retail.id, des]));
+await db.query(`update staff set incentive_retail=50 where id=$1`, [des]);
+const after = (await rep()).find(r => r.staff_id === des);
+ok(before.confirmed && Number(after.retail_sales) === Number(before.retail_sales) && Number(after.incentive_total) === Number(before.incentive_total), 'a confirmed month keeps its figures after new sales and rate changes');
+ok((await err(mgr, () => q(`select save_staff_month($1,$2,1,1,0,null)`, [des, month])))?.includes('MONTH_CONFIRMED'), 'confirmed month cannot be edited');
+ok((await err(mgr, () => q(`select confirm_payroll($1,$2)`, [b1, month])))?.includes('MONTH_CONFIRMED'), 'cannot confirm twice');
+ok((await err(mgr, () => q(`select reopen_payroll($1,$2)`, [b1, month])))?.includes('ADMIN_ONLY'), 'only an admin reopens a month');
+await as(admin, () => q(`select reopen_payroll($1,$2)`, [b1, month]));
+const reopened = (await rep()).find(r => r.staff_id === des);
+ok(!reopened.confirmed && Number(reopened.retail_sales) > Number(before.retail_sales) && Number(reopened.rate_retail) === 50, 'reopened month shows live figures again');
+await db.query(`update staff set incentive_retail=8 where id=$1`, [des]);
+// KST month boundary: a sale at 23:30 KST on the last day belongs to that month
+const prevMonth = (await one(`select to_char(($1::date - interval '1 month'), 'YYYY-MM-01') m`, [month])).m;
+await db.query(`insert into stock_movements(branch_id,product_id,type,quantity,stock_after,unit_price,staff_id,created_at)
+  values($1,$2,'sale',-1,0,10000,$3, ($4::date - interval '30 minutes')::timestamp at time zone 'Asia/Seoul')`, [b1, retail.id, des, month]);
+const prevRow = (await rep(mgr, prevMonth)).find(r => r.staff_id === des);
+ok(Number(prevRow.retail_sales) >= 10000, 'month boundaries follow Korea time');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

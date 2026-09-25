@@ -45,6 +45,9 @@
     INVALID_PHOTO: '사진은 JPG·PNG·WEBP 이미지로, 5MB 이하만 올릴 수 있습니다.',
     INVALID_STAFF: '직원 정보를 확인해 주세요. 이름은 1~30자, 인센티브는 0~100%, 퇴사일은 입사일 이후여야 합니다.',
     STAFF_NOT_FOUND: '직원 정보를 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.',
+    INVALID_SCHEDULE: '근무표 항목을 다시 선택해 주세요.',
+    INVALID_AMOUNT: '금액과 건수는 0 이상으로 입력해 주세요. 조정액은 ±1억 원까지입니다.',
+    MONTH_CONFIRMED: '정산이 확정된 달입니다. 수정하려면 전체 관리자가 확정을 취소해야 합니다.',
     SCHEMA_OUTDATED: '데이터베이스 설정이 최신이 아닙니다. Supabase SQL Editor에서 최신 schema.sql을 다시 실행해 주세요.',
     PHOTO_UPLOAD_FAILED: '사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.',
   };
@@ -168,6 +171,7 @@
           p_hired_on: x.hired_on || null, p_status: x.status, p_left_on: x.left_on || null, p_services: x.services || [],
           p_days_off: x.days_off || [], p_incentive_service: x.incentive_service ?? null, p_incentive_retail: x.incentive_retail ?? null,
           p_license_no: x.license_no || null, p_health_cert_expires: x.health_cert_expires || null, p_memo: x.memo || null,
+          p_annual_leave_days: x.annual_leave_days ?? null,
         })),
       async deleteStaff(id) {
         const path = await run(sb.rpc('delete_staff', { p_id: id }));
@@ -211,11 +215,24 @@
           .gte('created_at', sinceIso(days))
           .order('created_at', { ascending: false }).order('id', { ascending: false })
           .limit(3000)),
-      recordMovement: ({ branchId, productId, type, quantity, memo }) =>
+      recordMovement: ({ branchId, productId, type, quantity, memo, staffId }) =>
         run(sb.rpc('record_movement', {
           p_branch_id: branchId, p_product_id: productId, p_type: type,
-          p_quantity: quantity, p_memo: memo || null,
+          p_quantity: quantity, p_memo: memo || null, p_staff_id: staffId || null,
         })),
+      listStaffNames: (branchId) => run(sb.rpc('list_staff_names', { p_branch_id: branchId })),
+      listSchedule: (branchId, from, to) =>
+        run(sb.from('staff_schedule').select('staff_id, day, kind, memo').eq('branch_id', branchId).gte('day', from).lte('day', to)),
+      setSchedule: (staffId, day, kind, memo) =>
+        run(sb.rpc('set_schedule', { p_staff_id: staffId, p_day: day, p_kind: kind || null, p_memo: memo || null })),
+      staffMonthReport: (branchId, month) => run(sb.rpc('staff_month_report', { p_branch_id: branchId, p_month: month })),
+      saveStaffMonth: (staffId, month, v) =>
+        run(sb.rpc('save_staff_month', {
+          p_staff_id: staffId, p_month: month, p_service_sales: v.service_sales, p_service_count: v.service_count,
+          p_adjustment: v.adjustment, p_memo: v.memo || null,
+        })),
+      confirmPayroll: (branchId, month) => run(sb.rpc('confirm_payroll', { p_branch_id: branchId, p_month: month })),
+      reopenPayroll: (branchId, month) => run(sb.rpc('reopen_payroll', { p_branch_id: branchId, p_month: month })),
       revertMovement: (id) => run(sb.rpc('revert_movement', { p_movement_id: id })),
       saveProduct: (branchId, p) =>
         run(sb.rpc('save_product', {
@@ -262,7 +279,7 @@
   // Demo store (same catalog as supabase/seed.sql, plus a second branch and
   // sample users so every role can be tried)
   // ------------------------------------------------------------------
-  const DEMO_KEY = 'hplace-salon-demo-v5';
+  const DEMO_KEY = 'hplace-salon-demo-v6';
   const PERSONA = { admin: 'u-admin', manager: 'u-mgr1', staff: 'u-staff1' };
 
   const CATALOG = [
@@ -393,7 +410,38 @@
       memo: '샘플 데이터', reverts_id: null, created_by: m.created_by, created_at: iso(m.created_at),
     }));
     const categories = [...new Set(CATALOG.map((c) => c[2]))].map((name, i) => ({ id: `cat${i + 1}`, name, sort_order: (i + 1) * 10 }));
-    return { branches, users, categories, products, inventory, movements, staff: buildDemoStaff(), nextId: id, signedIn: false, meId: PERSONA.manager };
+    // 담당 디자이너 on sample 시술 사용·판매, and 판매가 on sample sales
+    const staff = buildDemoStaff();
+    const designersOf = (b) => staff.filter((x) => x.branch_id === b && x.status === 'active' && ['director', 'chief', 'designer'].includes(x.position));
+    movements.forEach((m) => {
+      if (m.type !== 'use' && m.type !== 'sale') return;
+      const ds = designersOf(m.branch_id);
+      if (ds.length) m.staff_id = ds[m.id % ds.length].id;
+      if (m.type === 'sale') m.unit_price = products.find((p) => p.id === m.product_id).retail_price;
+    });
+    // This month's 시술 매출 so far (from the POS) and a few leave days
+    const monthKey = new Date(now + KST).toISOString().slice(0, 7) + '-01';
+    const staffMonthly = [
+      ['st1', 4850000, 52, 0, null], ['st2', 3920000, 47, 0, null], ['st3', 2760000, 58, 0, null],
+      ['st4', 2310000, 39, 30000, '고객 추천 이벤트'], ['st8', 3350000, 44, 0, null], ['st9', 1980000, 36, 0, null],
+    ].map(([sid, sales, cnt, adj, memo]) => ({
+      staff_id: sid, month: monthKey, branch_id: staff.find((x) => x.id === sid).branch_id,
+      service_sales: sales, service_count: cnt, adjustment: adj, memo,
+    }));
+    const ym = monthKey.slice(0, 8);
+    const schedule = [
+      { staff_id: 'st3', day: `${ym}08`, kind: 'annual', memo: '가족 행사' },
+      { staff_id: 'st3', day: `${ym}09`, kind: 'annual', memo: '가족 행사' },
+      { staff_id: 'st2', day: `${ym}15`, kind: 'edu', memo: '염색 신제품 교육' },
+      { staff_id: 'st4', day: `${ym}22`, kind: 'half', memo: '오후 반차' },
+      { staff_id: 'st1', day: `${ym}13`, kind: 'work', memo: '웨딩 예약' },
+      { staff_id: 'st5', day: `${ym}19`, kind: 'sick', memo: null },
+      { staff_id: 'st8', day: `${ym}12`, kind: 'annual', memo: null },
+    ].map((x) => ({ ...x, branch_id: staff.find((s) => s.id === x.staff_id).branch_id }));
+    return {
+      branches, users, categories, products, inventory, movements, staff, schedule, staffMonthly, payrollMonths: [],
+      nextId: id, signedIn: false, meId: PERSONA.manager,
+    };
   }
 
   function demoApi() {
@@ -405,6 +453,7 @@
     } catch (e) { memoryOnly = true; }
     if (!state || !Array.isArray(state.users)) state = buildDemoState();
     if (!Array.isArray(state.staff)) state.staff = buildDemoStaff();  // saved before 직원 관리 existed
+    ['schedule', 'staffMonthly', 'payrollMonths'].forEach((k) => { if (!Array.isArray(state[k])) state[k] = []; });
     const save = () => {
       if (memoryOnly) return;
       try { localStorage.setItem(DEMO_KEY, JSON.stringify(state)); } catch (e) { memoryOnly = true; }
@@ -501,6 +550,7 @@
         const name = String(x.name || '').trim();
         const rate = (v) => v == null || (v >= 0 && v <= 100);
         const status = x.status || 'active';
+        must(x.annual_leave_days == null || (x.annual_leave_days >= 0 && x.annual_leave_days <= 60), 'INVALID_STAFF');
         must(name && name.length <= 30 && ['director', 'chief', 'designer', 'intern', 'desk'].includes(x.position)
           && ['active', 'leave', 'left'].includes(status)
           && (x.services || []).every((v) => ['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo'].includes(v))
@@ -514,10 +564,101 @@
           services: [...new Set(x.services || [])].sort(), days_off: [...new Set(x.days_off || [])].sort((a, b) => a - b),
           incentive_service: x.incentive_service ?? null, incentive_retail: x.incentive_retail ?? null,
           license_no: trimOrNull(x.license_no), health_cert_expires: x.health_cert_expires || null, memo: trimOrNull(x.memo),
+          annual_leave_days: x.annual_leave_days ?? null,
         };
         if (row) Object.assign(row, next); else state.staff.push(next);
         save();
         return delay(next.id);
+      },
+      async listStaffNames(branchId) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        return delay(clone(state.staff.filter((x) => x.branch_id === branchId)
+          .map(({ id, name, position, status, days_off, hired_on, left_on }) => ({ id, name, position, status, days_off, hired_on, left_on }))));
+      },
+      async listSchedule(branchId, from, to) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        return delay(clone(state.schedule.filter((x) => x.branch_id === branchId && x.day >= from && x.day <= to)));
+      },
+      async setSchedule(staffId, day, kind, memo) {
+        const st = state.staff.find((x) => x.id === staffId);
+        must(st, 'STAFF_NOT_FOUND');
+        must(isManager(st.branch_id), 'FORBIDDEN');
+        must(day && (!kind || ['off', 'work', 'annual', 'half', 'sick', 'edu'].includes(kind)), 'INVALID_SCHEDULE');
+        state.schedule = state.schedule.filter((x) => !(x.staff_id === staffId && x.day === day));
+        if (kind) state.schedule.push({ branch_id: st.branch_id, staff_id: staffId, day, kind, memo: trimOrNull(memo) });
+        save();
+        return delay();
+      },
+      // Mirrors staff_month_report() in schema.sql
+      async staffMonthReport(branchId, month) {
+        must(isManager(branchId), 'FORBIDDEN');
+        const m0 = month.slice(0, 7) + '-01';
+        const next = new Date(Date.UTC(+m0.slice(0, 4), +m0.slice(5, 7), 1)).toISOString().slice(0, 10);
+        const from = Date.parse(`${m0}T00:00:00Z`) - KST, to = Date.parse(`${next}T00:00:00Z`) - KST;
+        const confirmed = state.payrollMonths.some((x) => x.branch_id === branchId && x.month === m0);
+        const agg = new Map();
+        state.movements.forEach((mv) => {
+          const t = Date.parse(mv.created_at);
+          if (mv.branch_id !== branchId || !mv.staff_id || t < from || t >= to) return;
+          const a = agg.get(mv.staff_id) || { sales: 0, qty: 0, mat: 0 };
+          if (mv.type === 'sale') { a.sales += -mv.quantity * (mv.unit_price ?? product(mv.product_id).retail_price ?? 0); a.qty += -mv.quantity; }
+          if (mv.type === 'use') a.mat += -mv.quantity * (mv.unit_cost || 0);
+          agg.set(mv.staff_id, a);
+        });
+        const rank = { director: 0, chief: 1, designer: 2, intern: 3, desk: 4 };
+        const rows = state.staff.filter((s) => s.branch_id === branchId).map((s) => {
+          const sm = state.staffMonthly.find((x) => x.staff_id === s.id && x.month === m0);
+          const a = agg.get(s.id);
+          const inMonth = (!s.hired_on || s.hired_on < next) && (s.status !== 'left' || !s.left_on || s.left_on >= m0);
+          if (confirmed ? !sm : !(sm || a || inMonth)) return null;
+          const rs = confirmed ? sm.rate_service_snap : s.incentive_service;
+          const rr = confirmed ? sm.rate_retail_snap : s.incentive_retail;
+          const ss = sm ? sm.service_sales : 0, sc = sm ? sm.service_count : 0, adj = sm ? sm.adjustment : 0;
+          const rsales = confirmed ? sm.retail_sales_snap || 0 : a ? a.sales : 0;
+          const iS = Math.round(ss * (rs || 0) / 100), iR = Math.round(rsales * (rr || 0) / 100);
+          return {
+            staff_id: s.id, name: s.name, position: s.position, status: s.status, rate_service: rs ?? null, rate_retail: rr ?? null,
+            service_sales: ss, service_count: sc, adjustment: adj, memo: sm ? sm.memo : null,
+            retail_sales: rsales, retail_qty: confirmed ? sm.retail_qty_snap || 0 : a ? a.qty : 0,
+            material_cost: confirmed ? sm.material_cost_snap || 0 : a ? a.mat : 0,
+            incentive_service: iS, incentive_retail: iR, incentive_total: iS + iR + adj, confirmed,
+          };
+        }).filter(Boolean).sort((x, y) => rank[x.position] - rank[y.position] || x.name.localeCompare(y.name, 'ko'));
+        return delay(clone(rows));
+      },
+      async saveStaffMonth(staffId, month, v) {
+        const st = state.staff.find((x) => x.id === staffId);
+        must(st, 'STAFF_NOT_FOUND');
+        must(isManager(st.branch_id), 'FORBIDDEN');
+        const m0 = month.slice(0, 7) + '-01';
+        must(v.service_sales >= 0 && v.service_count >= 0 && Math.abs(v.adjustment || 0) <= 1e8, 'INVALID_AMOUNT');
+        must(!state.payrollMonths.some((x) => x.branch_id === st.branch_id && x.month === m0), 'MONTH_CONFIRMED');
+        let row = state.staffMonthly.find((x) => x.staff_id === staffId && x.month === m0);
+        if (!row) { row = { staff_id: staffId, month: m0, branch_id: st.branch_id }; state.staffMonthly.push(row); }
+        Object.assign(row, { service_sales: v.service_sales, service_count: v.service_count, adjustment: v.adjustment || 0, memo: trimOrNull(v.memo) });
+        save();
+        return delay();
+      },
+      async confirmPayroll(branchId, month) {
+        must(isManager(branchId), 'FORBIDDEN');
+        const m0 = month.slice(0, 7) + '-01';
+        must(!state.payrollMonths.some((x) => x.branch_id === branchId && x.month === m0), 'MONTH_CONFIRMED');
+        const rows = await this.staffMonthReport(branchId, m0);
+        rows.forEach((r) => {
+          let row = state.staffMonthly.find((x) => x.staff_id === r.staff_id && x.month === m0);
+          if (!row) { row = { staff_id: r.staff_id, month: m0, branch_id: branchId, service_sales: 0, service_count: 0, adjustment: 0, memo: null }; state.staffMonthly.push(row); }
+          Object.assign(row, { retail_sales_snap: r.retail_sales, retail_qty_snap: r.retail_qty, material_cost_snap: r.material_cost, rate_service_snap: r.rate_service, rate_retail_snap: r.rate_retail });
+        });
+        state.payrollMonths.push({ branch_id: branchId, month: m0, confirmed_at: new Date().toISOString() });
+        save();
+        return delay();
+      },
+      async reopenPayroll(branchId, month) {
+        must(isAdmin(), 'ADMIN_ONLY');
+        const m0 = month.slice(0, 7) + '-01';
+        state.payrollMonths = state.payrollMonths.filter((x) => !(x.branch_id === branchId && x.month === m0));
+        save();
+        return delay();
       },
       async setStaffPhoto(x, blob) {
         const row = state.staff.find((r) => r.id === x.id);
@@ -603,13 +744,15 @@
           .map((m) => {
             const p = product(m.product_id);
             const u = state.users.find((x) => x.user_id === m.created_by);
-            return { ...m, product_name: p.name, sku: p.sku, unit: p.unit, created_by_name: u ? u.full_name : null, reverted: reverted.has(m.id) };
+            const st = m.staff_id ? state.staff.find((x) => x.id === m.staff_id) : null;
+            return { ...m, product_name: p.name, sku: p.sku, unit: p.unit, created_by_name: u ? u.full_name : null, reverted: reverted.has(m.id), staff_name: st ? st.name : null };
           })
           .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : b.id - a.id));
         return delay(clone(rows));
       },
-      async recordMovement({ branchId, productId, type, quantity, memo }) {
+      async recordMovement({ branchId, productId, type, quantity, memo, staffId }) {
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        must(!staffId || state.staff.some((x) => x.id === staffId && x.branch_id === branchId && x.status !== 'left'), 'INVALID_STAFF');
         must(type !== 'adjust' || isManager(branchId), 'MANAGER_ONLY');
         must(Number.isInteger(quantity) && quantity >= 0 && (type === 'adjust' || quantity > 0), 'INVALID_QUANTITY');
         const p = product(productId);
@@ -622,7 +765,10 @@
         must(delta !== 0, 'NO_CHANGE');
         row.stock = after;
         row.updated_at = new Date().toISOString();
-        const m = insertMovement({ branch_id: branchId, product_id: productId, type, quantity: delta, stock_after: after, unit_cost: p.cost_price, memo: trimOrNull(memo) });
+        const m = insertMovement({
+          branch_id: branchId, product_id: productId, type, quantity: delta, stock_after: after, unit_cost: p.cost_price,
+          unit_price: type === 'sale' ? p.retail_price : null, staff_id: staffId || null, memo: trimOrNull(memo),
+        });
         save();
         return delay(clone(m));
       },
@@ -636,7 +782,10 @@
         const after = row.stock - mv.quantity;
         must(after >= 0, 'INSUFFICIENT_STOCK');
         row.stock = after;
-        const m = insertMovement({ branch_id: mv.branch_id, product_id: mv.product_id, type: mv.type, quantity: -mv.quantity, stock_after: after, unit_cost: mv.unit_cost, memo: `취소: #${mv.id}`, reverts_id: mv.id });
+        const m = insertMovement({
+          branch_id: mv.branch_id, product_id: mv.product_id, type: mv.type, quantity: -mv.quantity, stock_after: after,
+          unit_cost: mv.unit_cost, unit_price: mv.unit_price ?? null, staff_id: mv.staff_id ?? null, memo: `취소: #${mv.id}`, reverts_id: mv.id,
+        });
         save();
         return delay(clone(m));
       },

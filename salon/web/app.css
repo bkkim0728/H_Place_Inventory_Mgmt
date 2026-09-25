@@ -281,3 +281,77 @@ img.st-avatar-xs { display: inline-block; }
   display: grid; place-items: center; font-size: 30px; font-weight: 700; color: var(--violet-text);
 }
 .st-photo-preview:not(.is-empty) { color: transparent; }
+
+/* Movements: designer under the registrant */
+.mv-staff { display: block; font-size: 12px; color: var(--violet-text); }
+
+/* Month navigation (근무표 · 실적·정산) */
+.sched-toolbar { justify-content: space-between; align-items: center; }
+.month-nav { display: flex; align-items: center; gap: var(--space-2); }
+.month-nav h2 { font-size: 19px; min-width: 120px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.month-nav .icon-btn:disabled, .month-nav .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tag-ok-strong { background: var(--ok-soft); color: var(--ok); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 50%, transparent); }
+
+/* Schedule legend + cells */
+.sched-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); font-size: 12.5px; color: var(--fg-muted); }
+.sched-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.sc {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px;
+  font-size: 12px; font-weight: 700; border: 1px solid transparent; background: transparent; color: var(--fg); padding: 0;
+}
+button.sc { cursor: pointer; transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
+button.sc:hover { border-color: var(--border-strong); }
+.sc-on { background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.sc-reg { background: var(--surface-2); color: var(--fg-muted); }
+.sc-off { background: var(--warn-soft); color: var(--warn); }
+.sc-work { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.sc-annual { background: var(--violet-soft); color: var(--violet-text); border-color: color-mix(in srgb, var(--violet) 45%, transparent); }
+.sc-half { background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--violet-text); border: 1px dashed color-mix(in srgb, var(--violet) 55%, transparent); }
+.sc-sick { background: var(--danger-soft); color: var(--danger); }
+.sc-edu { background: var(--accent-soft); color: var(--fg); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.sc-na { opacity: 0.25; }
+.sc.is-today { box-shadow: 0 0 0 2px var(--accent); }
+
+/* Monthly grid scrolls sideways inside its card, never the page */
+.view > * { min-width: 0; }
+.sched-wrap { position: relative; overflow-x: auto; max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.sched-wrap:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.sched { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-width: 100%; }
+.sched th, .sched td { padding: 3px 2px; text-align: center; border-bottom: 1px solid var(--border); }
+.sched thead th { position: sticky; top: 0; background: var(--surface-solid); font-weight: 600; color: var(--fg-muted); padding: 6px 2px; }
+.sch-day span { display: block; color: var(--fg); font-size: 13px; }
+.sch-day small { display: block; font-size: 11px; }
+.sch-day.is-sun small, .sch-day.is-sun span { color: var(--danger); }
+.sch-day.is-sat small, .sch-day.is-sat span { color: var(--violet-text); }
+.sch-day.is-today { background: var(--accent-soft); border-radius: 8px 8px 0 0; }
+.sch-name {
+  position: sticky; left: 0; z-index: 1; background: var(--surface-solid); text-align: left !important;
+  padding: 4px var(--space-3) !important; min-width: 108px; white-space: nowrap; font-weight: 600;
+}
+.sch-person small { display: block; font-size: 11.5px; font-weight: 500; color: var(--fg-muted); }
+.sch-sum { padding: 4px var(--space-3) !important; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+.sch-foot th, .sch-foot td { color: var(--fg-muted); font-variant-numeric: tabular-nums; font-weight: 600; background: var(--surface-2); }
+.sch-foot .sch-name { background: var(--surface-solid); }
+.sch-foot td.is-gap { background: var(--danger-soft); color: var(--danger); }
+.leave-note { margin: var(--space-3) 0 0; line-height: 1.6; }
+
+/* Payroll */
+.pay-kpis { margin: var(--space-4) 0; }
+.pay-kpis .kpi-value { font-size: 22px; }
+.pay-table td.num, .pay-table th.num { text-align: right; white-space: nowrap; }
+.sub-num { display: block; font-size: 12px; color: var(--fg-muted); }
+.pay-total { font-weight: 700; color: var(--fg); }
+.pay-sum th, .pay-sum td { font-weight: 700; border-top: 2px solid var(--border-strong); padding: 12px var(--space-3); background: var(--surface-2); }
+.pay-preview dl { margin: var(--space-4) 0 0; display: grid; gap: 6px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
+.pay-preview dl > div { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 13.5px; }
+.pay-preview dt { color: var(--fg-muted); }
+.pay-preview dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 600; }
+.pay-preview .pp-total { border-top: 1px solid var(--border); padding-top: 6px; font-size: 15px; }
+.pay-preview .pp-total dt { color: var(--fg); font-weight: 700; }
+
+@media (max-width: 767px) {
+  .month-nav h2 { min-width: 0; font-size: 17px; }
+  .pay-kpis .kpi-value { font-size: 17px; white-space: nowrap; }
+  .sched-toolbar { align-items: stretch; }
+  .pay-sum th { display: block; }
+}
