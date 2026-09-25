@@ -380,7 +380,7 @@
       row('st2', 'br01', '정다은', 'deputy', '010-1234-0002', 1650, ['clinic', 'color', 'cut'], [1, 4], 40, 10, '서울-2018-04521', 18),
       row('st3', 'br01', '김도윤', 'stylist', '010-1234-0003', 820, ['cut', 'perm', 'styling'], [2], 35, 8, '경기-2020-11873', 95),
       row('st4', 'br01', '이하린', 'designer', '010-1234-0004', 400, ['clinic', 'color', 'scalp'], [3], 35, 8, '서울-2022-07765', -12),
-      row('st5', 'br01', '박지후', 'staff', '010-1234-0005', 150, ['scalp', 'styling'], [1], null, 5, null, 240, '디자이너 승급 평가 예정'),
+      row('st5', 'br01', '박지후', 'staff', '010-1234-0005', 150, [], [1], null, 5, null, 240, '디자이너 승급 평가 예정'),
       row('st6', 'br01', '최유진', 'staff', '010-1234-0006', 300, [], [0], null, 3, null, null),
       { ...row('st7', 'br01', '오세라', 'designer', '010-1234-0007', 1300, ['cut', 'perm'], [5], 35, 8, '서울-2019-02210', -200), status: 'left', left_on: d(-60) },
       row('st8', 'br02', '이서연', 'deputy', '010-2345-0001', 1500, ['color', 'cut', 'perm'], [2], 40, 10, '서울-2017-09911', 150),
@@ -606,7 +606,7 @@
         const next = {
           id: row ? row.id : `st${Date.now()}`, branch_id: x.branch_id, name, position: x.position, phone: trimOrNull(x.phone),
           hired_on: x.hired_on || null, status, left_on: status === 'left' ? x.left_on || today : null,
-          services: [...new Set(x.services || [])].sort(), days_off: [...new Set(x.days_off || [])].sort((a, b) => a - b),
+          services: x.position === 'staff' ? [] : [...new Set(x.services || [])].sort(), days_off: [...new Set(x.days_off || [])].sort((a, b) => a - b),
           incentive_service: x.incentive_service ?? null, incentive_retail: x.incentive_retail ?? null,
           license_no: trimOrNull(x.license_no), health_cert_expires: x.health_cert_expires || null, memo: trimOrNull(x.memo),
           annual_leave_days: x.annual_leave_days ?? null,

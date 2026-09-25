@@ -1028,7 +1028,9 @@ begin
          hired_on = p_hired_on,
          status = v_status,
          left_on = case when v_status = 'left' then coalesce(p_left_on, current_date) end,
-         services = coalesce((select array_agg(distinct s order by s) from unnest(p_services) s), '{}'),
+         -- 스태프 assists and has no 담당 시술 of their own
+         services = case when p_position = 'staff' then '{}'
+                         else coalesce((select array_agg(distinct s order by s) from unnest(p_services) s), '{}') end,
          days_off = coalesce((select array_agg(distinct d::smallint order by d::smallint) from unnest(p_days_off) d), '{}'),
          incentive_service = p_incentive_service,
          incentive_retail = p_incentive_retail,
