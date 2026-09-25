@@ -1023,9 +1023,25 @@
     $$('[data-catalog]', productForm).forEach((el) => { el.disabled = catalogLocked && !el.hasAttribute('data-manager-edit'); });
     $('#productScopeNote').hidden = !catalogLocked;
     if (catalogLocked) $('#productTitle').textContent = `${item.name} 수정 · ${state.branch.name}`;
+    // 사용 중: admins switch it for every branch; a branch manager switches it for
+    // their own branch only (same as the list switch), so one branch can't hide
+    // a product everywhere.
+    activeScope = catalogLocked ? 'branch' : 'catalog';
+    if (activeScope === 'branch') {
+      const hqOff = item.catalog_active === false;
+      $('#pActive').checked = !hqOff && item.in_use !== false;
+      $('#pActive').disabled = hqOff;
+      $('#pActiveText').textContent = hqOff
+        ? '본사에서 모든 지점 사용을 중지한 제품입니다'
+        : `${state.branch.name}에서 사용 중 (해제하면 이 지점의 재고 목록·입출고 등록에서만 숨김)`;
+    } else {
+      $('#pActiveText').textContent = '사용 중 · 모든 지점 (해제하면 모든 지점의 재고 목록·입출고 등록에서 숨김)';
+    }
     productDialog.open();
     $('#pName').focus();
   }
+
+  let activeScope = 'catalog';
 
   function previewSku() {
     const cat = $('#pCategory').value;
@@ -1073,8 +1089,11 @@
         productId: editingId, sku: editingId ? $('#pSku').value : '', name: $('#pName').value, brand: $('#pBrand').value,
         category: $('#pCategory').value, unit: $('#pUnit').value, costPrice: cost, retailPrice: retail,
         isRetail: $('#pRetailFlag').checked, safetyStock: safety, location: $('#pLocation').value,
-        active: $('#pActive').checked,
+        active: activeScope === 'branch' ? itemById(editingId).catalog_active !== false : $('#pActive').checked,
       });
+      if (activeScope === 'branch' && !$('#pActive').disabled && $('#pActive').checked !== (itemById(editingId).in_use !== false)) {
+        await api.setItemInUse(state.branch.id, editingId, $('#pActive').checked);
+      }
       $('#productDialog').close();
       await loadData();
       const code = editingId ? '' : itemById(newId)?.sku;
