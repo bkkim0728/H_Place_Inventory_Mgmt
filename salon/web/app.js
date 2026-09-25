@@ -52,6 +52,7 @@
     payroll: '실적·정산',
     users: '사용자 관리',
     branches: '지점 관리',
+    manual: '사용 매뉴얼',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users'];  // branch managers use 직원 관리 and 지점 관리 instead
@@ -356,11 +357,53 @@
     if (route === 'schedule') loadSchedule();
     if (route === 'payroll') loadPayroll();
     if (route === 'categories') renderCategories();
+    if (route === 'manual') renderManual();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
     window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', () => { if (!$('#screenApp').hidden) applyRoute(); });
+
+  // ------------------------------------------------------------------
+  // 사용 매뉴얼: role-aware (data-manager-only / data-admin-only hide the rest)
+  // ------------------------------------------------------------------
+  const ROLE_NAMES = { admin: '전체 관리자', manager: '지점 관리자', staff: '직원' };
+  function renderManual() {
+    const role = state.profile?.role || 'staff';
+    $('#manRoleNote').textContent = `${ROLE_NAMES[role] || '직원'}${state.branch && role !== 'admin' ? ` · ${state.branch.name}` : ''} 권한에서 쓸 수 있는 기능만 안내합니다. 궁금한 항목을 눌러 펼쳐 보세요.`;
+  }
+  function filterManual() {
+    const words = $('#manQ').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    $$('.man-item').forEach((d) => {
+      const hit = !words.length || words.every((w) => d.textContent.toLowerCase().includes(w));
+      d.hidden = !hit;
+      if (words.length && hit) d.open = true;
+      if (hit && getComputedStyle(d).display !== 'none') shown += 1;
+    });
+    $$('.man-group').forEach((g) => { g.classList.toggle('man-group-empty', words.length > 0 && !g.querySelector('.man-item:not([hidden])') && g.id !== 'man-terms'); });
+    $('#man-terms').hidden = words.length > 0 && !words.every((w) => $('#man-terms').textContent.toLowerCase().includes(w));
+    $('.man-start').hidden = words.length > 0;
+    $('#manEmpty').hidden = shown > 0 || !$('#man-terms').hidden;
+  }
+  let manTimer = 0;
+  $('#manQ').addEventListener('input', () => { clearTimeout(manTimer); manTimer = setTimeout(filterManual, 120); });
+  // Table of contents: scroll without touching the route hash
+  $('.man-toc').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-man-jump]');
+    if (!a) return;
+    e.preventDefault();
+    const target = $(`#man-${a.dataset.manJump}`);
+    target.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'start' });
+    target.querySelector('h2')?.setAttribute('tabindex', '-1');
+    target.querySelector('h2')?.focus({ preventScroll: true });
+  });
+  $('#manPrint').addEventListener('click', () => {
+    const closed = $$('.man-item:not([open])');
+    closed.forEach((d) => { d.open = true; });
+    window.print();
+    closed.forEach((d) => { d.open = false; });
+  });
 
   // ------------------------------------------------------------------
   // Dashboard

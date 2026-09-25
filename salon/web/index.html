@@ -59,6 +59,7 @@
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
       <symbol id="i-lock-check" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M9.5 15.5l2 2 3.5-3.5"/></symbol>
       <symbol id="i-report" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/><path d="M9 7h7M9 11h5"/></symbol>
       <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7"/></symbol>
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
@@ -135,6 +136,10 @@
           <li data-manager-only><a href="#/payroll" class="nav-link" data-route="payroll"><svg class="icon" aria-hidden="true"><use href="#i-won"/></svg>실적·정산</a></li>
           <li data-admin-only><a href="#/users" class="nav-link" data-route="users"><svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>사용자 관리</a></li>
           <li data-manager-only><a href="#/branches" class="nav-link" data-route="branches"><svg class="icon" aria-hidden="true"><use href="#i-store"/></svg>지점 관리</a></li>
+        </ul>
+        <p class="nav-section">도움말</p>
+        <ul class="nav-list">
+          <li><a href="#/manual" class="nav-link" data-route="manual"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg>사용 매뉴얼</a></li>
         </ul>
       </nav>
       <div class="sidebar-foot">
@@ -837,6 +842,195 @@
               <tbody id="brBody"></tbody>
             </table>
           </div>
+        </section>
+        <section class="view" data-view="manual" hidden aria-labelledby="pageTitle">
+          <div class="card panel man-hero">
+            <div class="man-hero-text">
+              <h2>무엇을 도와 드릴까요?</h2>
+              <p class="muted" id="manRoleNote">내 권한에서 쓸 수 있는 기능만 안내합니다.</p>
+            </div>
+            <div class="man-hero-tools">
+              <div class="field field-search man-search">
+                <label for="manQ" class="sr-only">매뉴얼 검색</label>
+                <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+                <input id="manQ" type="search" placeholder="예: 입고, 취소, 연차, 엑셀" autocomplete="off" />
+              </div>
+              <button type="button" class="btn btn-secondary" id="manPrint"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>인쇄</button>
+            </div>
+          </div>
+
+          <section class="card panel man-start" aria-labelledby="manStartHeading">
+            <h2 id="manStartHeading" class="rp-title">처음 시작하기</h2>
+            <ol class="man-steps-grid">
+              <li><strong>로그인</strong><span>받은 아이디와 비밀번호로 로그인합니다. 지점은 계정에 맞춰 자동으로 정해집니다.</span></li>
+              <li><strong>재고 현황 보기</strong><span>첫 화면에서 재고 금액, 부족·품절 제품, 최근 입출고를 한눈에 봅니다.</span></li>
+              <li><strong>입출고 등록</strong><span>물건이 들어오거나 쓰일 때마다 오른쪽 위 <b>입출고 등록</b>으로 기록합니다.</span></li>
+              <li data-manager-only><strong>하루 마감</strong><span><b>매장 레포트</b>에서 시술 매출을 입력하고 오늘 업무를 확인합니다.</span></li>
+            </ol>
+          </section>
+
+          <nav class="man-toc" aria-label="매뉴얼 목차">
+            <a href="#man-daily" class="chip man-chip" data-man-jump="daily">매일 하는 일</a>
+            <a href="#man-manage" class="chip man-chip" data-man-jump="manage" data-manager-only>지점 관리자 업무</a>
+            <a href="#man-admin" class="chip man-chip" data-man-jump="admin" data-admin-only>전체 관리자 업무</a>
+            <a href="#man-terms" class="chip man-chip" data-man-jump="terms">용어</a>
+            <a href="#man-faq" class="chip man-chip" data-man-jump="faq">자주 묻는 질문</a>
+          </nav>
+
+          <section class="card panel man-group" id="man-daily" aria-labelledby="man-daily-h">
+            <h2 class="rp-title man-group-title" id="man-daily-h"><svg class="icon" aria-hidden="true"><use href="#i-box"/></svg>매일 하는 일</h2>
+            <details class="man-item" id="man-receive">
+              <summary><span class="man-q">입고 등록하기 (물건이 들어왔을 때)</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li>오른쪽 위 노란색 <b>입출고 등록</b> 버튼을 누릅니다. (휴대폰은 <b>＋</b> 버튼)</li><li><b>품목</b>에서 들어온 제품을 고릅니다. 이름 일부를 입력하면 빨리 찾을 수 있습니다.</li><li><b>구분</b>에서 <b>입고</b>를 고르고 <b>수량</b>을 입력합니다.</li><li>필요하면 메모(거래처, 영수증 번호 등)를 적고 <b>저장</b>을 누릅니다. 현재고가 바로 늘어납니다.</li></ol><p class="man-tip"><strong>참고</strong> 매입가는 제품 관리에 적힌 이 지점의 매입가로 자동 기록됩니다.</p>
+                <a href="#/movements" class="btn btn-secondary btn-sm man-go">입출고 내역(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-use">
+              <summary><span class="man-q">시술 사용 · 판매 · 폐기 등록하기</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>입출고 등록</b>을 누르고 품목을 고릅니다.</li><li><b>구분</b>에서 <b>시술 사용</b>(시술에 쓴 재료), <b>판매</b>(고객에게 판 제품), <b>폐기</b>(파손·유통기한) 중 하나를 고릅니다.</li><li><b>수량</b>을 입력합니다. 현재고보다 많이 뺄 수는 없습니다.</li><li><b>담당 디자이너</b>를 고르면 디자이너별 실적·재료비와 인센티브 계산에 반영됩니다.</li><li><b>저장</b>을 누르면 현재고가 줄어듭니다.</li></ol><p class="man-tip"><strong>참고</strong> 판매 금액은 이 지점의 판매가로 계산됩니다. 판매가가 없는 제품은 제품 관리에서 먼저 넣어 주세요.</p>
+                <a href="#/movements" class="btn btn-secondary btn-sm man-go">입출고 내역(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-revert">
+              <summary><span class="man-q">잘못 등록한 기록 취소하기</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>입출고 내역</b>에서 잘못 등록한 줄을 찾습니다.</li><li>오른쪽의 <b>취소</b> 버튼을 누르면 반대 기록이 생기고 재고가 원래대로 돌아옵니다.</li><li>취소한 기록은 지워지지 않고 "취소"로 남아 누가 언제 고쳤는지 확인할 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 직원은 본인이 등록한 기록을 <b>10분 안에만</b> 취소할 수 있습니다. 그 뒤에는 지점 관리자에게 요청해 주세요.</p>
+                <a href="#/movements" class="btn btn-secondary btn-sm man-go">입출고 내역(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-stock">
+              <summary><span class="man-q">재고 확인하고 발주할 제품 찾기</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>재고 현황</b> 화면의 <b>발주 필요</b> 목록에 안전재고 이하 제품이 권장 발주 수량과 함께 나옵니다.</li><li><b>재고 목록</b>에서 <b>상태</b>를 <b>부족</b> 또는 <b>품절</b>로 고르면 그 제품만 볼 수 있습니다.</li><li>표의 제목(현재고, 재고 금액 등)을 누르면 그 순서로 정렬됩니다.</li><li>왼쪽 메뉴 <b>재고 목록</b> 옆 숫자는 발주가 필요한 제품 수입니다.</li></ol>
+                <a href="#/inventory" class="btn btn-secondary btn-sm man-go">재고 목록(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-history">
+              <summary><span class="man-q">기간별 입출고 내역 보기 · 엑셀 받기</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>입출고 내역</b>에서 <b>구분</b>(입고·판매 등)과 <b>기간</b>을 고릅니다.</li><li>원하는 날짜가 있으면 기간에서 <b>기간 직접 설정</b>을 고르고 시작일·종료일을 입력합니다.</li><li><b>엑셀 다운로드</b>를 누르면 지금 보고 있는 내역이 .xlsx 파일로 저장됩니다.</li></ol>
+                <a href="#/movements" class="btn btn-secondary btn-sm man-go">입출고 내역(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-work">
+              <summary><span class="man-q">오늘 누가 근무하는지 보기</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>근무 현황</b>에서 이번 주 요일별 근무 인원(시술 인원·스태프)을 봅니다.</li><li>날짜를 누르면 그날 근무자와 휴무·연차자가 아래에 나옵니다.</li><li>화살표로 지난주·다음 주로 이동하고, <b>이번 주</b>로 돌아옵니다.</li></ol>
+                <a href="#/workboard" class="btn btn-secondary btn-sm man-go">근무 현황(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-inuse">
+              <summary><span class="man-q">우리 지점에서 안 쓰는 제품 숨기기</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>제품 관리</b>에서 제품의 <b>이 지점 사용</b> 스위치를 끕니다.</li><li>이 지점의 재고 목록과 입출고 등록에서만 숨겨지고, 다른 지점에는 영향이 없습니다.</li><li>다시 쓰려면 스위치를 켜면 됩니다.</li></ol>
+                <a href="#/products" class="btn btn-secondary btn-sm man-go">제품 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+          </section>
+
+          <section class="card panel man-group" id="man-manage" aria-labelledby="man-manage-h" data-manager-only>
+            <h2 class="rp-title man-group-title" id="man-manage-h"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>지점 관리자 업무</h2>
+            <details class="man-item" id="man-adjust" data-manager-only>
+              <summary><span class="man-q">재고 실사 (실제 수량과 맞추기)</span><span class="tag man-role">지점 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li>진열대·창고의 실제 수량을 셉니다.</li><li><b>입출고 등록</b> → 품목 선택 → 구분 <b>재고 실사</b>를 고릅니다.</li><li><b>실제 수량</b>을 입력하고 저장하면 현재고가 그 수량으로 맞춰지고, 차이만큼 기록이 남습니다.</li></ol><p class="man-tip"><strong>참고</strong> 현재고와 같은 수량이면 저장되지 않습니다(바뀐 것이 없기 때문).</p>
+                <a href="#/movements" class="btn btn-secondary btn-sm man-go">입출고 내역(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-product" data-manager-only>
+              <summary><span class="man-q">제품 등록 · 수정하기</span><span class="tag man-role">지점 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>제품 관리</b> → <b>제품 등록</b>을 누릅니다.</li><li>품목명, 카테고리, 단위, 매입가를 입력합니다. <b>품목 코드는 카테고리를 고르면 자동</b>으로 정해집니다.</li><li>고객에게 파는 제품이면 <b>판매가</b>를 넣고 <b>고객 판매용 품목</b>에 체크합니다.</li><li><b>안전재고</b>(이 수량 이하가 되면 발주 필요로 표시)와 보관 위치를 적고 저장합니다.</li><li>이미 있는 제품은 <b>설정</b>을 눌러 고칩니다. 고친 내용은 <b>우리 지점에만</b> 적용되고 목록에 "지점 설정"이 표시됩니다.</li></ol><p class="man-tip"><strong>참고</strong> 새 제품은 모든 지점에 재고 0으로 준비됩니다. 공통 값으로 돌아가려면 수정 창의 <b>공통 값으로 되돌리기</b>를 누르고 저장하세요.</p>
+                <a href="#/products" class="btn btn-secondary btn-sm man-go">제품 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-staff" data-manager-only>
+              <summary><span class="man-q">직원 등록하기</span><span class="tag man-role">지점 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>직원 관리</b> → <b>직원 추가</b>를 누릅니다.</li><li>이름, 직급, 연락처, 입사일을 입력합니다. 스태프가 아닌 직급은 <b>담당 시술</b>을 고릅니다.</li><li><b>정기 휴무 요일</b>을 고르면 근무표에 자동으로 휴무가 표시됩니다.</li><li>시술·제품 판매 인센티브(%), 보건증 만료일, 연간 연차 일수를 넣고 저장합니다. 사진도 올릴 수 있습니다.</li><li>퇴사하면 근무 상태를 <b>퇴사</b>로 바꾸고 퇴사일을 입력합니다.</li></ol><p class="man-tip"><strong>참고</strong> 보건증 만료 30일 전부터 직원 관리와 매장 레포트에 알림이 나옵니다.</p>
+                <a href="#/staff" class="btn btn-secondary btn-sm man-go">직원 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-schedule" data-manager-only>
+              <summary><span class="man-q">근무표에 연차·반차·휴무 기록하기</span><span class="tag man-role">지점 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>근무표</b>에서 월을 고릅니다. 직원별로 한 달 근무가 보입니다.</li><li>바꿀 날짜 칸을 누르고 <b>연차, 반차, 병가, 교육, 추가 휴무, 대체 근무</b> 중 하나를 고릅니다.</li><li>메모를 적고 저장하면 근무 현황과 연차 현황에 바로 반영됩니다.</li></ol><p class="man-tip"><strong>참고</strong> 정기 휴무일에 출근하면 <b>대체 근무</b>를 고르세요. 반차는 근무 인원에 포함됩니다.</p>
+                <a href="#/schedule" class="btn btn-secondary btn-sm man-go">근무표(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-report" data-manager-only>
+              <summary><span class="man-q">매장 레포트 · 시술 매출 입력</span><span class="tag man-role">지점 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li>영업을 마치면 <b>매장 레포트</b> → <b>시술 매출 입력</b>을 누릅니다.</li><li>POS 마감 기준 <b>시술 매출</b>과 <b>시술 건수</b>를 입력하면 객단가가 자동 계산됩니다.</li><li>총매출·제품 판매·재료 사용액과 <b>지난주 같은 요일 대비</b> 증감(▲▼)을 확인합니다.</li><li><b>주간 비교</b>에서 최근 7일과 이전 7일을 그래프와 표로 비교합니다.</li><li><b>인쇄</b>를 누르면 하루 보고서로 출력할 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출을 입력하지 않은 날은 "미입력"으로 표시되고, 총매출에는 제품 판매만 들어갑니다.</p>
+                <a href="#/report" class="btn btn-secondary btn-sm man-go">매장 레포트(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-payroll" data-manager-only>
+              <summary><span class="man-q">월 실적 입력 · 인센티브 정산</span><span class="tag man-role">지점 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>실적·정산</b>에서 월을 고릅니다. 제품 판매·재료 사용은 입출고 기록에서 자동 집계됩니다.</li><li>직원 줄의 <b>입력</b>을 눌러 그달 시술 매출, 시술 건수, 조정액을 넣습니다.</li><li>인센티브 합계를 확인하고 <b>정산 확정</b>을 누르면 그달 실적이 잠깁니다.</li><li><b>CSV 내보내기</b>로 급여 담당자에게 보낼 파일을 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 확정한 달을 고쳐야 하면 전체 관리자에게 <b>확정 취소</b>를 요청하세요.</p>
+                <a href="#/payroll" class="btn btn-secondary btn-sm man-go">실적·정산(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-branch" data-manager-only>
+              <summary><span class="man-q">지점 정보 · 로그인 사진 바꾸기</span><span class="tag man-role">지점 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>지점 관리</b>에서 우리 지점의 <b>수정</b>을 누릅니다.</li><li>전화번호, 주소를 고치고 지점 사진을 올립니다.</li><li>올린 사진은 로그인 화면 배경으로 사용됩니다.</li></ol>
+                <a href="#/branches" class="btn btn-secondary btn-sm man-go">지점 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+          </section>
+
+          <section class="card panel man-group" id="man-admin" aria-labelledby="man-admin-h" data-admin-only>
+            <h2 class="rp-title man-group-title" id="man-admin-h"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>전체 관리자 업무</h2>
+            <details class="man-item" id="man-users" data-admin-only>
+              <summary><span class="man-q">사용자(로그인 계정) 만들기 · 비밀번호 초기화</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>사용자 관리</b> → <b>사용자 추가</b>를 누릅니다.</li><li>아이디(영문 소문자·숫자), 이름, 비밀번호, 역할(직원·지점 관리자·전체 관리자), 지점을 정하고 저장합니다.</li><li>비밀번호를 잊은 사용자는 목록에서 선택 → <b>비밀번호 재설정</b>에 새 비밀번호를 넣습니다.</li><li>그만둔 사람은 계정을 비활성으로 바꾸면 더 이상 로그인할 수 없습니다.</li></ol>
+                <a href="#/users" class="btn btn-secondary btn-sm man-go">사용자 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-categories" data-admin-only>
+              <summary><span class="man-q">카테고리 추가 · 순서 바꾸기</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>카테고리 관리</b> → <b>카테고리 추가</b>로 새 분류를 만듭니다.</li><li>위·아래 화살표로 목록 순서를 바꿉니다. 재고 목록도 이 순서로 정렬됩니다.</li><li>제품이 있는 카테고리는 삭제할 수 없습니다. 이름을 바꾸면 제품에도 함께 반영됩니다.</li></ol>
+                <a href="#/categories" class="btn btn-secondary btn-sm man-go">카테고리 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-branches" data-admin-only>
+              <summary><span class="man-q">지점 추가 · 모든 지점 값 한 번에 바꾸기</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>지점 관리</b> → <b>지점 추가</b>에서 지점 코드와 지점명을 넣습니다. 모든 제품이 재고 0으로 준비됩니다.</li><li>위쪽 <b>지점 선택</b>으로 보고 싶은 지점을 바꿉니다.</li><li>제품 수정 창의 <b>적용 범위</b>에서 <b>모든 지점 같은 값</b>을 고르면 모든 지점의 품목명·가격 등이 한 번에 바뀝니다.</li></ol><p class="man-tip"><strong>참고</strong> "모든 지점 같은 값"을 고르면 지점별로 따로 정한 값은 없어집니다.</p>
+                <a href="#/branches" class="btn btn-secondary btn-sm man-go">지점 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+          </section>
+
+          <section class="card panel man-group" id="man-terms" aria-labelledby="man-terms-h">
+            <h2 class="rp-title" id="man-terms-h">용어 설명</h2>
+            <dl class="man-terms">
+              <div class="man-term"><dt>안전재고</dt><dd>이 수량 이하가 되면 "부족"으로 표시하고 발주 필요 목록에 올리는 기준 수량</dd></div>
+              <div class="man-term"><dt>재고 실사</dt><dd>실제로 센 수량으로 현재고를 맞추는 것 (지점 관리자)</dd></div>
+              <div class="man-term"><dt>시술 인원 · 스태프</dt><dd>디자이너 이상 직급은 시술 인원, 스태프는 보조 인력으로 따로 셉니다</dd></div>
+              <div class="man-term"><dt>공통 값 · 지점 설정</dt><dd>모든 지점이 함께 쓰는 제품 정보가 공통 값, 우리 지점만 다르게 정한 값이 지점 설정</dd></div>
+              <div class="man-term"><dt>객단가</dt><dd>시술 매출 ÷ 시술 건수</dd></div>
+              <div class="man-term"><dt>재료비율</dt><dd>재료 사용액 ÷ 시술 매출 (낮을수록 좋음)</dd></div>
+              <div class="man-term"><dt>전주 대비</dt><dd>오늘을 지난주 같은 요일과 비교한 증감률. 초록 ▲는 좋아짐, 빨강은 나빠짐</dd></div>
+            </dl>
+          </section>
+
+          <section class="card panel man-group" id="man-faq" aria-labelledby="man-faq-h">
+            <h2 class="rp-title" id="man-faq-h">자주 묻는 질문 · 문제 해결</h2>
+            <details class="man-item" id="man-faq0"><summary><span class="man-q">로그인이 안 돼요</span></summary><div class="man-body"><p>아이디·비밀번호를 다시 확인하고, 계속 안 되면 전체 관리자에게 비밀번호 재설정을 요청하세요. 비활성 계정은 로그인할 수 없습니다.</p></div></details>
+            <details class="man-item" id="man-faq1"><summary><span class="man-q">화면의 숫자가 최신이 아닌 것 같아요</span></summary><div class="man-body"><p>오른쪽 위 <b>새로고침</b>(↻) 버튼을 누르면 지금 보는 화면과 재고를 다시 불러옵니다.</p></div></details>
+            <details class="man-item" id="man-faq2"><summary><span class="man-q">"데이터베이스 설정이 최신이 아닙니다"라고 나와요</span></summary><div class="man-body"><p>전체 관리자가 Supabase SQL Editor에서 <code>schema.sql</code>을 다시 실행해야 합니다. 실행 후 새로고침하세요.</p></div></details>
+            <details class="man-item" id="man-faq3"><summary><span class="man-q">메뉴가 안 보여요</span></summary><div class="man-body"><p>역할에 따라 보이는 메뉴가 다릅니다. 직원은 재고·입출고·근무 메뉴를, 지점 관리자는 관리 메뉴를, 전체 관리자는 모든 메뉴를 봅니다.</p></div></details>
+            <details class="man-item" id="man-faq4"><summary><span class="man-q">휴대폰에서도 쓸 수 있나요</span></summary><div class="man-body"><p>네. 왼쪽 위 <b>☰</b> 버튼으로 메뉴를 열고, 오른쪽 위 <b>＋</b> 버튼으로 입출고를 등록합니다.</p></div></details>
+            <details class="man-item" id="man-faq5"><summary><span class="man-q">밝은 화면으로 바꾸고 싶어요</span></summary><div class="man-body"><p>오른쪽 위 해 모양 버튼으로 밝은 화면·어두운 화면을 바꿉니다.</p></div></details>
+          </section>
+          <p class="muted man-empty" id="manEmpty" hidden>검색 결과가 없습니다. 다른 낱말로 찾아보세요.</p>
         </section>
       </main>
     </div>
