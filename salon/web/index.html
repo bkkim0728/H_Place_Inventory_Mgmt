@@ -325,10 +325,27 @@
                 <button type="button" data-hq-period="30" aria-pressed="false">최근 30일</button>
                 <button type="button" data-hq-period="month" aria-pressed="false">이번 달</button>
                 <button type="button" data-hq-period="lastmonth" aria-pressed="false">지난달</button>
+                <button type="button" data-hq-period="custom" aria-pressed="false">기간 직접 설정</button>
               </div>
               <button type="button" class="btn btn-secondary" id="hqXlsx"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>엑셀</button>
               <button type="button" class="btn btn-secondary" id="hqPrint"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>인쇄</button>
             </div>
+            <fieldset class="field mv-range hq-range" id="hqRange" hidden>
+              <legend class="sr-only">조회 기간 (한 번에 최대 1년)</legend>
+              <div class="mv-range-row">
+                <div class="field">
+                  <label for="hqFrom">시작일</label>
+                  <input id="hqFrom" type="date" aria-describedby="hqRangeHelp hqRangeErr" />
+                </div>
+                <span class="mv-range-sep" aria-hidden="true">~</span>
+                <div class="field">
+                  <label for="hqTo">종료일</label>
+                  <input id="hqTo" type="date" aria-describedby="hqRangeHelp hqRangeErr" />
+                </div>
+                <p class="muted small hq-range-help" id="hqRangeHelp">한 번에 최대 1년 · 바로 앞의 같은 길이 기간과 비교합니다</p>
+              </div>
+              <p class="err" id="hqRangeErr" role="alert" hidden></p>
+            </fieldset>
           </div>
           <p class="err-box" id="hqError" hidden></p>
 
@@ -1256,8 +1273,8 @@
             <details class="man-item" id="man-hq" data-admin-only>
               <summary><span class="man-q">전체현황으로 전체 지점 한눈에 보기</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
               <div class="man-body">
-                <ol class="man-steps"><li><b>전체현황</b>에서 기간(최근 7일, 최근 30일, 이번 달, 지난달)을 고릅니다.</li><li>위쪽 카드에서 전체 총매출·시술 매출·제품 판매·재료비율과 <b>이전 기간 대비</b> 증감, 재고 금액·재고 경고·오늘 근무·시술 매출 입력률을 확인합니다.</li><li><b>일별 총매출 · 지점별</b> 그래프에 마우스를 올리면 그날 지점별 금액이 보입니다.</li><li><b>지점별 성과</b> 표에서 매출 비중, 객단가, 재료비율, 재고, 근무를 비교합니다. 지점명을 누르면 그 지점의 매장 레포트로 이동합니다.</li><li><b>확인이 필요한 항목</b>(품절, 매출 미입력, 보건증 만료, 매출 급감 등)을 눌러 해당 화면으로 바로 갑니다. <b>엑셀</b>로 지점별 성과를 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출은 각 지점이 매장 레포트에서 입력한 값으로 계산합니다. 입력률이 낮으면 총매출이 실제보다 적게 보입니다.</p>
-                <a href="#/hq" class="btn btn-secondary btn-sm man-go">전체현황으로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+                <ol class="man-steps"><li><b>전체현황</b>에서 기간(최근 7일, 최근 30일, 이번 달, 지난달)을 고르거나, <b>기간 직접 설정</b>으로 시작일·종료일을 넣습니다(한 번에 최대 1년, 바로 앞의 같은 길이 기간과 비교).</li><li>위쪽 카드에서 전체 총매출·시술 매출·제품 판매·재료비율과 <b>이전 기간 대비</b> 증감, 재고 금액·재고 경고·오늘 근무·시술 매출 입력률을 확인합니다.</li><li><b>총매출 · 지점별</b> 그래프에 마우스를 올리면 지점별 금액이 보입니다. 기간이 길면 주별(2달 넘게)·월별(7달 넘게)로 묶어 보여 줍니다.</li><li><b>지점별 성과</b> 표에서 매출 비중, 객단가, 재료비율, 재고, 근무를 비교합니다. 지점명을 누르면 그 지점의 매장 레포트로 이동합니다.</li><li><b>확인이 필요한 항목</b>(품절, 매출 미입력, 보건증 만료, 매출 급감 등)을 눌러 해당 화면으로 바로 갑니다. <b>엑셀</b>로 지점별 성과를 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출은 각 지점이 매장 레포트에서 입력한 값으로 계산합니다. 입력률이 낮으면 총매출이 실제보다 적게 보입니다.</p>
+                <a href="#/hq" class="btn btn-secondary btn-sm man-go">전체현황(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>
             <details class="man-item" id="man-allstaff" data-admin-only>
