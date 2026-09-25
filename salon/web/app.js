@@ -279,7 +279,7 @@
       else a.removeAttribute('aria-current');
     });
     $('#pageTitle').textContent = ROUTES[route];
-    document.title = `${ROUTES[route]} · H Place 살롱 재고`;
+    document.title = `${ROUTES[route]} · H Place 매장관리`;
     if (route === 'dashboard') renderChart();
     if (route === 'users') loadUsers();
     if (route === 'branches') renderBranches();
