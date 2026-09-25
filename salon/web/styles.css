@@ -294,7 +294,7 @@ main:focus { outline: none; }
 .ts-item dd { margin: 0; font-size: 24px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .ts-net { padding-left: var(--space-5); border-left: 1px solid var(--border); }
 .ts-range { margin: 0 0 3px auto; font-size: 12px; }
-.swatch { width: 18px; height: 0; border-top: 2.5px solid; border-radius: 2px; }
+.swatch { width: 18px; height: 0; border-top: 2px solid; border-radius: 2px; }
 .swatch-in { border-color: var(--chart-in); }
 .swatch-out { border-color: var(--chart-out); border-top-style: dashed; }
 
@@ -307,9 +307,9 @@ main:focus { outline: none; }
 .chart .stop-out { stop-color: var(--chart-out); }
 .chart .area-in { fill: url(#gradIn); }
 .chart .area-out { fill: url(#gradOut); }
-.chart .line-in, .chart .line-out { fill: none; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
+.chart .line-in, .chart .line-out { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .chart .line-in { stroke: var(--chart-in); }
-.chart .line-out { stroke: var(--chart-out); stroke-dasharray: 6 5; }
+.chart .line-out { stroke: var(--chart-out); stroke-dasharray: 5 4; }
 .chart .mark-in, .chart .mark-out { fill: var(--surface-solid); stroke-width: 2.5; }
 .chart .mark-in { stroke: var(--chart-in); }
 .chart .mark-out { stroke: var(--chart-out); }
