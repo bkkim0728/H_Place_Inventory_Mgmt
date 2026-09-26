@@ -223,5 +223,5 @@ DB 설계(권한, 재고 규칙, 샘플 데이터 정합성)는 PGlite(WASM Post
 ```bash
 cd salon
 npm install
-npm test   # DB 198 passed · admin-users 23 passed
+npm test   # DB 302 passed · admin-users 23 passed
 ```
