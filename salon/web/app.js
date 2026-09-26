@@ -3550,7 +3550,7 @@
   const SNS_FORMAT = { feed: '피드', carousel: '캐러셀', reels: '릴스', story: '스토리', post: '게시물', video: '영상', news: '소식' };
   const SNS_THEME = {
     designer: '디자이너 소개', lineup: '오늘의 라인업', best: '베스트 제품', product: '추천 제품', service: '시술 과정',
-    before_after: '시술 전후', store: '매장 소개', tip: '홈케어 팁', booking: '예약 안내',
+    before_after: '시술 전후', store: '매장 소개', tip: '홈케어 팁', booking: '예약 안내', trend: '트렌드 콘텐츠',
   };
   const SNS_STATUS = {
     draft: { label: '승인 대기', tag: 'tag-warn' },
@@ -3582,7 +3582,7 @@
   const josa = (w, withB, without) => { const c = String(w).trim().slice(-1).charCodeAt(0); return `${w}${c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? withB : without}`; };
   const dotDate = (k) => k.replace(/-/g, '.');
 
-  state.sn = { day: '', platform: '', status: '', posts: [], consents: [], settings: null, people: [], sched: [], moves: [], loading: false, ticket: 0, loadedFor: '' };
+  state.sn = { day: '', platform: '', status: '', audience: '', posts: [], consents: [], settings: null, people: [], sched: [], moves: [], loading: false, ticket: 0, loadedFor: '' };
 
   async function loadSns() {
     if (!state.branch) return;
@@ -3678,6 +3678,90 @@
     return [...new Set(tags)].join(' ');
   }
 
+  // 해외용: English place name, address and hashtags
+  const GU_EN = { 강남: 'Gangnam', 강동: 'Gangdong', 강북: 'Gangbuk', 강서: 'Gangseo', 관악: 'Gwanak', 광진: 'Gwangjin', 구로: 'Guro', 금천: 'Geumcheon',
+    노원: 'Nowon', 도봉: 'Dobong', 동대문: 'Dongdaemun', 동작: 'Dongjak', 마포: 'Mapo', 서대문: 'Seodaemun', 서초: 'Seocho', 성동: 'Seongdong', 성북: 'Seongbuk',
+    송파: 'Songpa', 양천: 'Yangcheon', 영등포: 'Yeongdeungpo', 용산: 'Yongsan', 은평: 'Eunpyeong', 종로: 'Jongno', 중: 'Jung', 중랑: 'Jungnang' };
+  const POS_EN = { head_director: 'Director', chief_deputy: 'Chief Deputy Director', deputy: 'Deputy Director', senior_stylist: 'Senior Stylist', stylist: 'Stylist', designer: 'Designer', staff: 'Assistant' };
+  const SERVICES_EN = { cut: 'cut', perm: 'perm', color: 'color', clinic: 'hair treatment', scalp: 'scalp care', styling: 'blow-dry & styling', updo: 'updo' };
+  function snsEn() {
+    const b = state.branch;
+    const gu = (b.address || '').match(/([가-힣]{1,4})구(?:\s|$)/)?.[1];
+    const area = GU_EN[gu] ? `${GU_EN[gu]}, Seoul` : 'Seoul';
+    const phone = b.phone ? `+82 ${b.phone.replace(/^0/, '')}` : '';
+    return { gu: GU_EN[gu] || '', area, place: `H Place ${area}`, address: b.address ? `${b.address} (${area})` : area, phone };
+  }
+  function snsBaseTagsGlobal() {
+    const set = state.sn.settings?.hashtags_global;
+    if (set) return set.trim();
+    const g = snsEn().gu.toLowerCase();
+    return ['#HPlace', '#seoulhairsalon', '#koreanhairsalon', '#kbeauty', '#seoulhair', ...(g ? [`#${g}`, `#${g}hairsalon`] : [])].join(' ');
+  }
+  // Hashtags for a draft: the audience's base tags (fewer on stories, none on 네이버 소식) + the post's own
+  function snsTags(extra, audience, platform, format) {
+    if (platform === 'naver') return '';
+    const base = (audience === 'global' ? snsBaseTagsGlobal() : snsBaseTags()).split(/\s+/).filter(Boolean);
+    const n = format === 'story' ? 2 : platform === 'tiktok' || platform === 'facebook' ? 3 : 99;
+    return [...new Set([...base.slice(0, n), ...String(extra || '').split(/\s+/).filter(Boolean)])].join(' ');
+  }
+
+  // 해외용 매장 데이터 초안 (English)
+  function snsPlanGlobal() {
+    const f = state.sn, day = f.day;
+    const x = snsFacts(), en = snsEn();
+    const who = (p) => `${p.name} (${POS_EN[p.position] || 'Designer'})`;
+    const svcEn = (p) => Object.keys(SERVICES).filter((k) => (p.services || []).includes(k)).map((k) => SERVICES_EN[k]);
+    const out = [];
+    const add = (o) => out.push({ day, shoot_note: '', needs_consent: false, audience: 'global', origin: 'data', ...o,
+      hashtags: snsTags(o.hashtags, 'global', o.platform, o.format) });
+    const book = `DM us to book ✨\n📍 ${en.address}`;
+    if (x.working.length) {
+      add({ platform: 'instagram', format: 'story', theme: 'lineup', slot: '10:00', title: "Today's designers",
+        caption: `Today's designers at ${en.place} 💇\n${x.working.map((p) => `· ${who(p)}${svcEn(p).length ? ` — ${svcEn(p).slice(0, 2).join(', ')}` : ''}`).join('\n')}\n\n${book}`,
+        hashtags: '#seoulhair', shoot_note: '단체 사진 또는 매장 입구 사진 + 이름 스티커(영문)', source_note: `근무표: ${mdText(day)} 근무 디자이너 ${x.working.length}명 · 해외(영어)` });
+    }
+    if (x.spotlight) {
+      const p = x.spotlight, years = p.hired_on ? Math.floor(dayDiff(p.hired_on, day) / 365) : 0;
+      add({ platform: 'instagram', format: 'feed', theme: 'designer', slot: '11:00', title: `Meet ${p.name} · ${POS_EN[p.position] || 'Designer'}`,
+        caption: `Meet ${who(p)} at ${en.place} ✂️\n\n${svcEn(p).length ? `Specialties: ${svcEn(p).join(', ')}\n` : ''}${years >= 1 ? `${years}+ years with H Place\n` : ''}\nWant the K-hair look? DM us to book with ${p.name}.\n📍 ${en.address}`,
+        hashtags: '#koreanhairdesigner #kbeauty', shoot_note: '디자이너 상반신 사진 + 대표 시술 결과 2장', source_note: '근무표 · 직원 관리 · 해외(영어)' });
+    }
+    if (x.best.length) {
+      add({ platform: 'instagram', format: 'carousel', theme: 'best', slot: '19:00', title: 'Best-selling K-hair care',
+        caption: `Our best-selling hair care this month 🛍️\n\n${x.best.map((b, i) => `${i + 1}. ${b.item.name}`).join('\n')}\n\nAvailable at the salon — ask your designer which one fits your hair.`,
+        hashtags: '#koreanhaircare #kbeautyhaul', shoot_note: '제품 사진 여러 장. 제품명은 영문 표기로 고쳐 주세요.',
+        source_note: `판매 내역 최근 4주 · 해외(영어)` });
+    }
+    if (x.rec) {
+      add({ platform: 'instagram', format: 'story', theme: 'product', slot: '13:00', title: `Designer's pick · ${x.rec.name}`,
+        caption: `Designer's pick for home care 💛\n${x.rec.name}\n\nAvailable at ${en.place}.`,
+        hashtags: '#kbeauty', shoot_note: '제품을 손에 든 사진. 제품명은 영문 표기로 고쳐 주세요.', source_note: `재고: ${x.rec.name} · 해외(영어)` });
+    }
+    add({ platform: 'instagram', format: 'reels', theme: 'service', slot: '20:00', title: `Korean ${SERVICES_EN[x.svc]} process`, needs_consent: true,
+      caption: `Korean ${SERVICES_EN[x.svc]}, start to finish 🎬\n${x.svcDesigner ? `by ${who(x.svcDesigner)}\n` : ''}\nSave this for your Seoul trip ✈️ ${book}`,
+      hashtags: '#koreanhair #hairtransformation', shoot_note: '세로 영상 15~30초: 전 → 과정 → 완성. 고객이 나오므로 동의를 연결하세요.', source_note: '재료 사용 최근 4주 · 해외(영어)' });
+    if (x.tomorrow.length) {
+      add({ platform: 'instagram', format: 'story', theme: 'booking', slot: '18:00', title: 'Book for tomorrow',
+        caption: `Tomorrow at ${en.place} 📅\n${x.tomorrow.map((p) => `· ${who(p)}`).join('\n')}\n\n${book}`,
+        hashtags: '#seoultravel', shoot_note: '매장 사진 + 예약 링크 스티커', source_note: `근무표: 내일 근무 디자이너 ${x.tomorrow.length}명 · 해외(영어)` });
+    }
+    return out;
+  }
+
+  // 트렌드 콘텐츠 초안 (sns-trends.js), filled with this branch's names and tags
+  function snsTrendPlan(audience) {
+    const x = snsFacts(), en = snsEn(), b = state.branch;
+    const d = x.svcDesigner || x.spotlight;
+    const ctx = {
+      month: Number(state.sn.day.slice(5, 7)), seed: x.seed, josa,
+      place: `H Place ${b.name}`, placeEn: en.place, areaEn: en.area, addressEn: en.address, phone: b.phone || '', phoneIntl: en.phone,
+      contact: [b.address ? `📍 ${b.address}` : '', b.phone ? `☎ ${b.phone}` : ''].filter(Boolean).join('\n'),
+      des: d ? `${d.name} ${POSITIONS[d.position] || '디자이너'}` : '디자이너', desEn: d ? d.name : 'our designer',
+      tags: snsTags,
+    };
+    return window.snsTrends ? window.snsTrends.trendDrafts(audience, ctx).map((p) => ({ ...p, day: state.sn.day })) : [];
+  }
+
   // One day's plan, most important first. Each entry is a ready-to-edit draft.
   function snsPlan() {
     const f = state.sn, day = f.day, b = state.branch;
@@ -3695,7 +3779,7 @@
     const lineup = (list) => list.map((x) => `· ${x.name} ${pos(x)}${svcs(x).length ? ` — ${svcs(x).slice(0, 2).join('·')}` : ''}`).join('\n');
     const names = (list) => list.map((x) => `${x.name} ${pos(x)}`).join(', ');
     const out = [];
-    const add = (o) => out.push({ day, hashtags: '', shoot_note: '', source_note: '', needs_consent: false, ...o });
+    const add = (o) => out.push({ day, hashtags: '', shoot_note: '', source_note: '', needs_consent: false, audience: 'domestic', origin: 'data', ...o });
     const W = facts.working, S = facts.spotlight, D = facts.svcDesigner, best = facts.best, rec = facts.rec;
     const useSrc = facts.top ? `재료 사용 최근 4주: ${facts.top.cat} ${nf.format(facts.top.qty)}개 사용 (1위)` : '재료 사용 기록이 적어 염색을 기본 주제로 정했습니다';
 
@@ -3843,7 +3927,7 @@
   }
 
   // One post per topic; designer and product posts are per person / per item
-  const snsKey = (p) => `${p.platform}|${p.format}|${p.theme}${['designer', 'product'].includes(p.theme) ? `|${p.title}` : ''}`;
+  const snsKey = (p) => `${p.audience || 'domestic'}|${p.platform}|${p.format}|${p.theme}${['designer', 'product', 'trend'].includes(p.theme) ? `|${p.title}` : ''}`;
   const snsTarget = () => state.sn.settings?.daily_target || 12;
 
   function renderSns() {
@@ -3858,9 +3942,12 @@
     const target = snsTarget();
     const n = posts.length;
     const cnt = (st) => posts.filter((p) => p.status === st).length;
-    $('#snGoal').textContent = `${nf.format(n)} / ${nf.format(target)}개`;
-    $('#snGoalBar').style.width = `${Math.min(100, (n / target) * 100).toFixed(1)}%`;
-    $('#snGoalSub').textContent = f.loading ? '불러오는 중…' : n >= target ? '하루 목표를 채웠어요' : `${nf.format(target - n)}개 더 만들 수 있어요`;
+    const ko = posts.filter((p) => (p.audience || 'domestic') === 'domestic').length, en = n - ko;
+    const nTrend = posts.filter((p) => p.origin === 'trend').length;
+    $('#snGoal').textContent = `국내 ${nf.format(ko)} · 해외 ${nf.format(en)}`;
+    $('#snGoalBarKo').style.width = `${Math.min(100, (ko / target) * 100).toFixed(1)}%`;
+    $('#snGoalBarEn').style.width = `${Math.min(100, (en / target) * 100).toFixed(1)}%`;
+    $('#snGoalSub').textContent = f.loading ? '불러오는 중…' : `하루 목표 각 ${nf.format(target)}개${n ? ` · 데이터 ${nf.format(n - nTrend)} : 트렌드 ${nf.format(nTrend)}` : ''}`;
     const needC = posts.filter((p) => p.status !== 'posted' && p.needs_consent && !p.consent_id).length;
     $('#snWait').textContent = `${nf.format(cnt('draft'))}개`;
     $('#snWaitSub').textContent = needC ? `동의 연결 필요 ${nf.format(needC)}개` : cnt('rejected') ? `반려 ${nf.format(cnt('rejected'))}개` : '지점 관리자가 승인합니다';
@@ -3872,22 +3959,27 @@
     $('#snMix').innerHTML = Object.entries(SNS_PLATFORM).map(([k, v]) => {
       const c = posts.filter((p) => p.platform === k).length;
       return `<li class="sn-mix-item" style="--br: var(--br-${v.color})"><span class="sn-dot" aria-hidden="true"></span>${v.label}<strong>${nf.format(c)}</strong></li>`;
-    }).join('');
+    }).join('') + `<li class="sn-mix-item sn-mix-origin"><span class="tag tag-note">매장 데이터</span><strong>${nf.format(n - nTrend)}</strong></li>
+      <li class="sn-mix-item sn-mix-origin"><span class="tag tag-sale">트렌드</span><strong>${nf.format(nTrend)}</strong></li>`;
 
     // Generate button
     const past = f.day < today, far = f.day > addDays(today, 60);
-    const gen = $('#snGenerate');
-    gen.disabled = f.loading || past || far;
-    gen.lastChild.textContent = n ? '초안 더 만들기' : '초안 자동 만들기';
+    [['#snGenKo', ko, '국내용'], ['#snGenEn', en, '해외용']].forEach(([id, c, label]) => {
+      const b = $(id);
+      b.disabled = f.loading || past || far;
+      $('span', b).textContent = `${label} 초안${c ? ' 더 만들기' : ''}${id === '#snGenEn' ? ' (English)' : ''}`;
+    });
     // Say why instead of a silent disabled button
+    const done = [ko >= target ? '국내용' : '', en >= target ? '해외용' : ''].filter(Boolean);
     const hint = past ? '지난 날짜에는 초안을 만들 수 없어요. [오늘]을 누르거나 오늘 이후 날짜를 고르세요.'
       : far ? '60일 뒤까지만 초안을 만들 수 있어요.'
-      : n >= target ? `하루 목표 ${nf.format(target)}개를 채웠어요. [초안 더 만들기]를 누르면 아직 쓰지 않은 주제(다른 디자이너 소개, 다른 추천 제품 등)로 더 만듭니다.` : '';
+      : done.length ? `${done.join('·')} 하루 목표 ${nf.format(target)}개를 채웠어요. [더 만들기]를 누르면 아직 쓰지 않은 주제로 한 번 더 만듭니다.` : '';
     $('#snGenHint').textContent = hint;
     $('#snGenHint').hidden = !hint || f.loading;
 
     // List
-    const shown = posts.filter((p) => (!f.platform || p.platform === f.platform) && (!f.status || p.status === f.status));
+    const shown = posts.filter((p) => (!f.platform || p.platform === f.platform) && (!f.status || p.status === f.status)
+      && (!f.audience || (p.audience || 'domestic') === f.audience));
     $('#snCount').textContent = f.loading ? '' : `${nf.format(shown.length)}개${shown.length !== n ? ` / 전체 ${nf.format(n)}개` : ''}`;
     $('#snApproveAll')?.remove();
     const waiting = posts.filter((p) => p.status === 'draft' && !(p.needs_consent && !p.consent_id));
@@ -3897,11 +3989,11 @@
     $('#snEmpty').hidden = f.loading || shown.length > 0;
     if (!shown.length && n) {
       $('#snEmptyTitle').textContent = '조건에 맞는 게시물이 없습니다.';
-      $('#snEmptyText').textContent = '플랫폼이나 상태 필터를 바꿔 보세요.';
+      $('#snEmptyText').textContent = '대상·플랫폼·상태 필터를 바꿔 보세요.';
     } else {
       $('#snEmptyTitle').textContent = past ? '이 날짜에 기록된 게시물이 없습니다.' : '이 날짜의 게시물이 없습니다.';
       $('#snEmptyText').textContent = past ? '지난 날짜에는 초안을 새로 만들 수 없습니다.'
-        : `[초안 자동 만들기]를 누르면 근무표·판매·재고·재료 사용 데이터로 하루 ${nf.format(target)}개의 게시물 초안을 만듭니다.`;
+        : `[국내용 초안] 또는 [해외용 초안]을 누르면 매장 데이터 30% + 트렌드 콘텐츠 70%로 하루 ${nf.format(target)}개의 게시물 초안을 만듭니다.`;
     }
     const consent = (id) => f.consents.find((c) => c.id === id);
     $('#snList').innerHTML = shown.map((p) => {
@@ -3930,7 +4022,9 @@
         <article class="sn-card" aria-label="${esc(hhmm(p.slot))} ${esc(pf.label)} ${esc(p.title)}">
           <div class="sn-meta">
             <span class="sn-pf">${esc(pf.label)} · ${esc(SNS_FORMAT[p.format] || p.format)}</span>
-            <span class="tag tag-note">${esc(SNS_THEME[p.theme] || p.theme)}</span>
+            ${(p.audience || 'domestic') === 'global' ? '<span class="tag tag-use">해외 · EN</span>' : ''}
+            <span class="tag ${p.origin === 'trend' ? 'tag-sale' : 'tag-note'}">${p.origin === 'trend' ? '트렌드' : '매장 데이터'}</span>
+            ${p.theme === 'trend' ? '' : `<span class="tag tag-note">${esc(SNS_THEME[p.theme] || p.theme)}</span>`}
             <span class="tag ${st.tag}">${st.label}</span>
             ${needs ? `<span class="tag tag-off">${svgIcon('i-shield')}동의 연결 필요</span>` : c ? `<span class="tag tag-note">${svgIcon('i-shield')}동의 · ${esc(c.customer)}</span>` : ''}
             ${when ? `<span class="muted small">${when}</span>` : ''}
@@ -3964,6 +4058,11 @@
       fact('i-receipt', '많이 팔린 판매 제품', x.best.length ? esc(x.best.map((b) => `${b.item.name} ${nf.format(b.qty)}${b.item.unit}`).join(' · ')) : '최근 4주 판매 기록 없음', '판매 내역 최근 4주'),
       fact('i-box', '재고가 넉넉한 추천 제품', x.rec ? `${esc(x.rec.name)} · ${nf.format(x.rec.stock)}${esc(x.rec.unit)}` : '추천할 판매 제품 없음', '재고 목록 · 안전재고보다 많은 판매 제품'),
       fact('i-scissors', '요즘 많이 한 시술', `${SERVICES[x.svc]}${x.top ? ` · ${esc(x.top.cat)} ${nf.format(x.top.qty)}개 사용` : ''}`, '재료 사용 최근 4주'),
+      (() => {
+        const sea = window.snsTrends?.season(Number(f.day.slice(5, 7)));
+        const st = window.snsTrends?.styles;
+        return sea ? fact('i-sparkle', `이번 시즌 트렌드 · ${sea.ko}`, esc(`${sea.colors.ko.slice(0, 3).join(', ')} · ${st.cuts.ko.slice(0, 2).join(', ')} · ${st.perms.ko.slice(0, 2).join(', ')}`), '트렌드 콘텐츠 라이브러리 (계절별)') : '';
+      })(),
       fact('i-megaphone', '하루 목표', `${nf.format(snsTarget())}개 · ${SNS_TONE[f.settings?.tone || 'friendly']}`, isManager() ? 'SNS 설정에서 바꿀 수 있어요' : 'SNS 설정 (지점 관리자)'),
     ];
     $('#snFacts').innerHTML = items.join('');
@@ -3999,17 +4098,41 @@
   $('#snPlatform').addEventListener('change', (e) => { state.sn.platform = e.target.value; renderSns(); });
   $('#snStatus').addEventListener('change', (e) => { state.sn.status = e.target.value; renderSns(); });
 
-  $('#snGenerate').addEventListener('click', async (e) => {
-    const f = state.sn, btn = e.currentTarget;
-    const have = new Set(f.posts.map(snsKey));
-    const need = snsTarget() - f.posts.length;
-    // Below the target: fill up to it. At or above: add every topic not used yet (max 40 at once).
-    const fresh = snsPlan().filter((p) => !have.has(snsKey(p))).slice(0, need > 0 ? need : 40);
-    if (!fresh.length) { toast('이 날짜에 만들 수 있는 새 주제를 모두 썼습니다. 기존 초안을 수정하거나 다른 날짜를 골라 주세요.'); return; }
+  // 국내용 / 해외용: 매장 데이터 30% + 트렌드 콘텐츠 70% of the day's target for that audience.
+  // Below the target it fills up to it; at or above it adds another round of unused topics.
+  const SNS_DATA_SHARE = 0.3;
+  const DATA_ORDER = ['designer', 'best', 'product', 'lineup', 'booking', 'service', 'tip', 'before_after', 'store'];
+  // One of each theme first (designer, best, product, lineup …), then the second of each, and so on
+  const spreadThemes = (list) => {
+    const seen = {};
+    return list.map((p, i) => ({ p, i, round: (seen[p.theme] = (seen[p.theme] ?? -1) + 1) }))
+      .sort((a, b) => a.round - b.round || DATA_ORDER.indexOf(a.p.theme) - DATA_ORDER.indexOf(b.p.theme) || a.i - b.i)
+      .map((x) => x.p);
+  };
+  function snsDrafts(audience) {
+    const f = state.sn, target = snsTarget();
+    const mine = f.posts.filter((p) => (p.audience || 'domestic') === audience);
+    const have = new Set(mine.map(snsKey));
+    const need = mine.length < target ? target - mine.length : target;
+    const dataHave = mine.filter((p) => (p.origin || 'data') === 'data').length;
+    const dataWant = Math.max(0, Math.min(need, Math.round((mine.length + need) * SNS_DATA_SHARE) - dataHave));
+    const dataPool = spreadThemes(audience === 'global' ? snsPlanGlobal() : snsPlan()).filter((p) => !have.has(snsKey(p)));
+    const trendPool = snsTrendPlan(audience).filter((p) => !have.has(snsKey(p)));
+    let data = dataPool.slice(0, dataWant);
+    const trend = trendPool.slice(0, need - data.length);
+    if (data.length + trend.length < need) data = dataPool.slice(0, need - trend.length);  // not enough trend topics left
+    return [...data, ...trend];
+  }
+  $$('[data-sn-gen]').forEach((btn) => btn.addEventListener('click', async () => {
+    const f = state.sn, audience = btn.dataset.snGen;
+    const label = audience === 'global' ? '해외용(영어)' : '국내용';
+    const fresh = snsDrafts(audience);
+    if (!fresh.length) { toast(`이 날짜에 만들 수 있는 ${label} 새 주제를 모두 썼습니다. 기존 초안을 수정하거나 다른 날짜를 골라 주세요.`); return; }
+    const nData = fresh.filter((p) => p.origin === 'data').length;
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
       const count = await api.addSnsPosts(state.branch.id, fresh);
-      toast(`${mdText(f.day)} 게시물 초안 ${nf.format(count)}개를 만들었습니다. 내용을 확인하고 ${isManager() ? '승인해' : '지점 관리자에게 승인을 받아'} 주세요.`);
+      toast(`${mdText(f.day)} ${label} 초안 ${nf.format(count)}개(매장 데이터 ${nf.format(nData)} · 트렌드 ${nf.format(count - nData)})를 만들었습니다. 내용을 확인하고 ${isManager() ? '승인해' : '지점 관리자에게 승인을 받아'} 주세요.`);
       await loadSns();
     } catch (ex) {
       toast(api.toAppError(ex).message, { error: true });
@@ -4017,7 +4140,8 @@
       btn.removeAttribute('aria-busy');
       renderSns();
     }
-  });
+  }));
+  $('#snAudience').addEventListener('change', (e) => { state.sn.audience = e.target.value; renderSns(); });
 
   async function snsSetStatus(id, status, note, trigger) {
     const p = state.sn.posts.find((x) => x.id === id);
@@ -4266,6 +4390,11 @@
     $('#snSetTarget').value = s.daily_target || 12;
     $('#snSetTags').value = s.hashtags || '';
     $('#snSetTags').placeholder = `비워 두면: ${snsBaseTagsDefault()}`;
+    $('#snSetTagsEn').value = s.hashtags_global || '';
+    const keepG = state.sn.settings;
+    state.sn.settings = keepG ? { ...keepG, hashtags_global: null } : null;
+    $('#snSetTagsEn').placeholder = `비워 두면: ${snsBaseTagsGlobal()}`;
+    state.sn.settings = keepG;
     $$('input[name="snTone"]').forEach((r) => { r.checked = r.value === (s.tone || 'friendly'); });
     snSetDialog.open();
     $('#snSetHandle').focus();
@@ -4291,7 +4420,7 @@
       const handle = $('#snSetHandle').value.trim();
       await api.saveSnsSettings(state.branch.id, {
         handle: handle && !handle.startsWith('@') ? `@${handle}` : handle, hashtags: $('#snSetTags').value,
-        tone: $('input[name="snTone"]:checked').value, daily_target: target,
+        tone: $('input[name="snTone"]:checked').value, daily_target: target, hashtags_global: $('#snSetTagsEn').value,
       });
       $('#snSetDialog').close();
       toast('SNS 설정을 저장했습니다. 새로 만드는 초안부터 반영됩니다.');

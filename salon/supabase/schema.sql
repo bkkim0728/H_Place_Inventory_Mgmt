@@ -1562,13 +1562,35 @@ create table if not exists public.sns_posts (
       or (platform = 'facebook' and format in ('post', 'video'))
       or (platform = 'tiktok' and format = 'video')
       or (platform = 'naver' and format = 'news'))
-    and theme in ('designer', 'lineup', 'best', 'product', 'service', 'before_after', 'store', 'tip', 'booking')
+    and theme in ('designer', 'lineup', 'best', 'product', 'service', 'before_after', 'store', 'tip', 'booking', 'trend')
     and status in ('draft', 'approved', 'rejected', 'posted')
     and char_length(btrim(title)) between 1 and 60 and char_length(btrim(caption)) between 1 and 2200
     and char_length(coalesce(hashtags, '')) <= 500 and char_length(coalesce(shoot_note, '')) <= 300
     and char_length(coalesce(source_note, '')) <= 200 and char_length(coalesce(review_note, '')) <= 200)
 );
 create index if not exists sns_posts_branch_day_idx on public.sns_posts (branch_id, day, slot);
+-- 국내용/해외용(영어) and where the idea came from: 매장 데이터 or 트렌드 콘텐츠
+alter table public.sns_posts add column if not exists audience text not null default 'domestic';
+alter table public.sns_posts add column if not exists origin text not null default 'data';
+alter table public.sns_settings add column if not exists hashtags_global text;
+-- Older installs: allow the 'trend' theme and the new columns' values
+do $$ begin
+  alter table public.sns_posts drop constraint if exists sns_posts_chk;
+  alter table public.sns_posts add constraint sns_posts_chk check (
+    ((platform = 'instagram' and format in ('feed', 'carousel', 'reels', 'story'))
+      or (platform = 'facebook' and format in ('post', 'video'))
+      or (platform = 'tiktok' and format = 'video')
+      or (platform = 'naver' and format = 'news'))
+    and theme in ('designer', 'lineup', 'best', 'product', 'service', 'before_after', 'store', 'tip', 'booking', 'trend')
+    and status in ('draft', 'approved', 'rejected', 'posted')
+    and audience in ('domestic', 'global') and origin in ('data', 'trend')
+    and not (audience = 'global' and platform = 'naver')
+    and char_length(btrim(title)) between 1 and 60 and char_length(btrim(caption)) between 1 and 2200
+    and char_length(coalesce(hashtags, '')) <= 500 and char_length(coalesce(shoot_note, '')) <= 300
+    and char_length(coalesce(source_note, '')) <= 200 and char_length(coalesce(review_note, '')) <= 200);
+  alter table public.sns_settings drop constraint if exists sns_settings_global_chk;
+  alter table public.sns_settings add constraint sns_settings_global_chk check (char_length(coalesce(hashtags_global, '')) <= 500);
+end $$;
 
 alter table public.sns_settings enable row level security;
 alter table public.sns_consents enable row level security;
@@ -1599,8 +1621,9 @@ as $$
 $$;
 
 -- save_sns_settings: branch managers. Errors: FORBIDDEN, INVALID_SNS_SETTINGS
+drop function if exists public.save_sns_settings(uuid, text, text, text, integer);
 create or replace function public.save_sns_settings(
-  p_branch_id uuid, p_handle text, p_hashtags text, p_tone text, p_daily_target integer
+  p_branch_id uuid, p_handle text, p_hashtags text, p_tone text, p_daily_target integer, p_hashtags_global text default null
 )
 returns void
 language plpgsql security definer set search_path = public
@@ -1610,11 +1633,13 @@ begin
     raise exception 'FORBIDDEN' using errcode = '42501';
   end if;
   begin
-    insert into public.sns_settings (branch_id, handle, hashtags, tone, daily_target, updated_by)
-    values (p_branch_id, nullif(btrim(p_handle), ''), nullif(btrim(p_hashtags), ''), coalesce(p_tone, 'friendly'), coalesce(p_daily_target, 12), auth.uid())
+    insert into public.sns_settings (branch_id, handle, hashtags, tone, daily_target, hashtags_global, updated_by)
+    values (p_branch_id, nullif(btrim(p_handle), ''), nullif(btrim(p_hashtags), ''), coalesce(p_tone, 'friendly'), coalesce(p_daily_target, 12),
+            nullif(btrim(p_hashtags_global), ''), auth.uid())
     on conflict (branch_id) do update
       set handle = excluded.handle, hashtags = excluded.hashtags, tone = excluded.tone,
-          daily_target = excluded.daily_target, updated_by = excluded.updated_by, updated_at = now();
+          daily_target = excluded.daily_target, hashtags_global = excluded.hashtags_global,
+          updated_by = excluded.updated_by, updated_at = now();
   exception when check_violation then
     raise exception 'INVALID_SNS_SETTINGS' using errcode = '22023';
   end;
@@ -1647,11 +1672,12 @@ begin
         raise exception 'INVALID_SNS_POST' using errcode = '22023';
       end if;
       insert into public.sns_posts (branch_id, day, slot, platform, format, theme, title, caption, hashtags,
-                                    shoot_note, source_note, needs_consent, created_by)
+                                    shoot_note, source_note, needs_consent, audience, origin, created_by)
       values (p_branch_id, v_day, (v_post ->> 'slot')::time, v_post ->> 'platform', v_post ->> 'format', v_post ->> 'theme',
               btrim(v_post ->> 'title'), btrim(v_post ->> 'caption'), nullif(btrim(v_post ->> 'hashtags'), ''),
               nullif(btrim(v_post ->> 'shoot_note'), ''), nullif(btrim(v_post ->> 'source_note'), ''),
-              coalesce((v_post ->> 'needs_consent')::boolean, false), auth.uid());
+              coalesce((v_post ->> 'needs_consent')::boolean, false),
+              coalesce(v_post ->> 'audience', 'domestic'), coalesce(v_post ->> 'origin', 'data'), auth.uid());
     exception when check_violation or not_null_violation or invalid_datetime_format
                 or datetime_field_overflow or invalid_text_representation then
       raise exception 'INVALID_SNS_POST' using errcode = '22023';
@@ -1832,14 +1858,14 @@ end;
 $$;
 
 revoke all on function public.sns_consent_ok(uuid, uuid, date) from public, anon, authenticated;
-revoke all on function public.save_sns_settings(uuid, text, text, text, integer) from public, anon;
+revoke all on function public.save_sns_settings(uuid, text, text, text, integer, text) from public, anon;
 revoke all on function public.add_sns_posts(uuid, jsonb) from public, anon;
 revoke all on function public.update_sns_post(uuid, time, text, text, text, text, uuid) from public, anon;
 revoke all on function public.set_sns_post_status(uuid, text, text) from public, anon;
 revoke all on function public.delete_sns_post(uuid) from public, anon;
 revoke all on function public.save_sns_consent(uuid, uuid, text, text, boolean, date, date, text) from public, anon;
 revoke all on function public.revoke_sns_consent(uuid) from public, anon;
-grant execute on function public.save_sns_settings(uuid, text, text, text, integer) to authenticated;
+grant execute on function public.save_sns_settings(uuid, text, text, text, integer, text) to authenticated;
 grant execute on function public.add_sns_posts(uuid, jsonb) to authenticated;
 grant execute on function public.update_sns_post(uuid, time, text, text, text, text, uuid) to authenticated;
 grant execute on function public.set_sns_post_status(uuid, text, text) to authenticated;

@@ -1036,3 +1036,12 @@ body[data-route="hq"] #branchSelect { display: none; }
   .st-svc-num { grid-column: 1 / -1; }
 }
 .sn-gen-hint { margin: var(--space-2) 0 0; padding: var(--space-2) var(--space-3); border-radius: 10px; background: var(--accent-soft); font-size: 13px; }
+/* SNS 홍보: 국내용 / 해외용 */
+.sn-gen-en { background: var(--violet); color: #120b26; box-shadow: none; }
+:root[data-theme="light"] .sn-gen-en { color: #fff; }
+.sn-gen-en:hover { background: color-mix(in srgb, var(--violet) 85%, #fff); }
+.sn-meters { display: grid; gap: 4px; margin: 2px 0; }
+.sn-meter-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 6px; font-size: 11.5px; color: var(--fg-muted); }
+.sn-meter-row .sn-meter { margin: 0; }
+.sn-meter.is-en > span { background: var(--violet); }
+.sn-mix-origin .tag { margin-right: 2px; }
