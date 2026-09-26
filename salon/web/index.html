@@ -138,6 +138,7 @@
         <p class="nav-section">홍보</p>
         <ul class="nav-list">
           <li><a href="#/sns" class="nav-link" data-route="sns"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>SNS 홍보<span class="nav-badge" id="navSnsCount" data-zero="true">0</span></a></li>
+          <li><a href="#/trends" class="nav-link" data-route="trends"><svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg>SNS 트렌드<span class="nav-badge nav-new" id="navTrendNew" data-zero="true">N</span></a></li>
         </ul>
         <p class="nav-section">관리</p>
         <ul class="nav-list">
@@ -574,6 +575,61 @@
                 <ul class="sc-list" id="scList"></ul>
               </section>
             </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="trends" hidden aria-labelledby="pageTitle">
+          <div class="card panel tr-head">
+            <div class="toolbar tr-tools">
+              <div class="field">
+                <label for="trWeek">주간 보고서</label>
+                <select id="trWeek"></select>
+              </div>
+              <p class="muted small tr-period" id="trPeriod"></p>
+              <button type="button" class="btn btn-secondary" id="trPrint"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>인쇄</button>
+            </div>
+            <p class="tr-kicker">WEEKLY REPORT · 국내 미용·뷰티 SNS 마케팅 동향</p>
+            <h2 class="tr-headline" id="trHeadline">불러오는 중…</h2>
+            <ol class="tr-summary" id="trSummary"></ol>
+            <ul class="tr-keywords" id="trKeywords" aria-label="이번 주 키워드"></ul>
+          </div>
+          <p class="err-box" id="trError" hidden></p>
+
+          <h3 class="tr-section">플랫폼별 동향</h3>
+          <div class="tr-platforms" id="trPlatforms"></div>
+
+          <div class="rp-grid tr-grid">
+            <section class="card panel" aria-labelledby="trHairHeading">
+              <h3 id="trHairHeading" class="rp-title">헤어 트렌드</h3>
+              <div id="trHair"></div>
+            </section>
+            <section class="card panel" aria-labelledby="trGlobalHeading">
+              <h3 id="trGlobalHeading" class="rp-title">외국인·해외 동향</h3>
+              <ul class="tr-points" id="trGlobal"></ul>
+            </section>
+          </div>
+
+          <section class="card panel tr-actions-panel" aria-labelledby="trActHeading">
+            <div class="panel-head">
+              <div>
+                <h3 id="trActHeading" class="rp-title">H Place 이번 주 실행 제안</h3>
+                <p class="muted small">완료한 항목에 체크하세요 (이 기기에 저장)</p>
+              </div>
+              <a href="#/sns" class="btn btn-primary btn-sm"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>SNS 홍보에서 만들기</a>
+            </div>
+            <ul class="tr-actions" id="trActions"></ul>
+          </section>
+
+          <div class="rp-grid tr-grid">
+            <section class="card panel" aria-labelledby="trWatchHeading">
+              <h3 id="trWatchHeading" class="rp-title">다음 주에 지켜볼 것</h3>
+              <ul class="tr-points" id="trWatch"></ul>
+              <p class="muted small tr-method" id="trMethod"></p>
+            </section>
+            <section class="card panel" aria-labelledby="trSrcHeading">
+              <h3 id="trSrcHeading" class="rp-title">출처</h3>
+              <ol class="tr-sources" id="trSources"></ol>
+            </section>
           </div>
         </section>
 

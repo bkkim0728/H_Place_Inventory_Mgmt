@@ -56,6 +56,7 @@
     manual: '사용 매뉴얼',
     hq: '전체현황',
     sns: 'SNS 홍보',
+    trends: 'SNS 트렌드',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users', 'hq'];  // branch managers use 직원 관리 and 지점 관리 instead
@@ -278,6 +279,7 @@
       $('#loadError').hidden = true;
       renderAll();
       if (state.route === 'sns') renderSns(); else refreshSnsBadge();
+      refreshTrendBadge();
     } catch (e) {
       const err = api.toAppError(e);
       if (err.code === 'NOT_AUTHENTICATED') return showLogin(err.message);
@@ -371,6 +373,7 @@
     if (route === 'sales') loadSales();
     if (route === 'hq') loadHq();
     if (route === 'sns') loadSns();
+    if (route === 'trends') loadTrends();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
     window.scrollTo(0, 0);
@@ -4604,6 +4607,108 @@
     } finally {
       btn.disabled = false; btn.removeAttribute('aria-busy');
     }
+  });
+
+  // ------------------------------------------------------------------
+  // SNS 트렌드: weekly market reports (web/trends/*.json, added every Monday)
+  // ------------------------------------------------------------------
+  state.tr = { list: null, id: '', report: null };
+  const TR_SIGNAL = { up: ['상승', 'tag-receive', '▲'], flat: ['유지', 'tag-note', '■'], down: ['하락', 'tag-off', '▼'] };
+  const TR_PLATFORM_COLOR = { naver: 4, instagram: 1, youtube: 2, tiktok: 3, meta: 7 };
+  const trSeenKey = 'hp-trend-seen';
+  async function loadTrendIndex() {
+    if (state.tr.list) return state.tr.list;
+    const res = await fetch('trends/index.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('보고서 목록을 불러오지 못했습니다.');
+    state.tr.list = (await res.json()).reports || [];
+    return state.tr.list;
+  }
+  // "N" badge on the menu until this device opens the newest report
+  async function refreshTrendBadge() {
+    try {
+      const list = await loadTrendIndex();
+      let seen = ''; try { seen = localStorage.getItem(trSeenKey) || ''; } catch (e) {}
+      const fresh = list.length && list[0].id !== seen;
+      $('#navTrendNew').dataset.zero = String(!fresh);
+      $('#navTrendNew').setAttribute('aria-label', fresh ? '새 보고서' : '');
+    } catch (e) { /* offline or no reports yet */ }
+  }
+  async function loadTrends(id) {
+    const box = $('#trError');
+    try {
+      const list = await loadTrendIndex();
+      if (!list.length) throw new Error('아직 보고서가 없습니다. 매주 월요일 아침에 새 보고서가 올라옵니다.');
+      const pick = id || state.tr.id || list[0].id;
+      $('#trWeek').innerHTML = list.map((r) => `<option value="${esc(r.id)}">${esc(r.title)}</option>`).join('');
+      $('#trWeek').value = pick;
+      if (!state.tr.report || state.tr.report.id !== pick) {
+        const res = await fetch(`trends/${encodeURIComponent(pick)}.json`, { cache: 'no-cache' });
+        if (!res.ok) throw new Error('보고서를 불러오지 못했습니다.');
+        state.tr.report = await res.json();
+      }
+      state.tr.id = pick;
+      if (pick === list[0].id) { try { localStorage.setItem(trSeenKey, pick); } catch (e) {} refreshTrendBadge(); }
+      box.hidden = true;
+      renderTrends();
+    } catch (ex) {
+      box.textContent = ex.message || '보고서를 불러오지 못했습니다.';
+      box.hidden = false;
+      $('#trHeadline').textContent = '';
+    }
+  }
+  function renderTrends() {
+    const r = state.tr.report;
+    if (!r) return;
+    const cite = (ids) => (ids || []).map((n) => `<button type="button" class="tr-cite" data-tr-src="${n}" aria-label="출처 ${n}">${n}</button>`).join('');
+    const dot = (k) => k.replace(/-/g, '.');
+    $('#trPeriod').textContent = `${dot(r.period.from)} ~ ${dot(r.period.to)} · 발행 ${dot(r.published)}`;
+    $('#trHeadline').textContent = r.headline;
+    $('#trSummary').innerHTML = (r.summary || []).map((x) => `<li>${esc(x)}</li>`).join('');
+    $('#trKeywords').innerHTML = (r.keywords || []).map((k) => `<li class="tr-kw"><strong>#${esc(k.k)}</strong><span>${esc(k.why)}</span>${cite(k.src)}</li>`).join('');
+    $('#trPlatforms').innerHTML = (r.platforms || []).map((p) => {
+      const [label, tag, arrow] = TR_SIGNAL[p.signal] || TR_SIGNAL.flat;
+      return `<article class="card tr-pf" style="--br: var(--br-${TR_PLATFORM_COLOR[p.id] || 5})">
+        <div class="tr-pf-head"><span class="sn-dot" aria-hidden="true"></span><h4>${esc(p.name)}</h4><span class="tag ${tag}">${arrow} ${label}</span></div>
+        <ul class="tr-points">${(p.points || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+        <p class="tr-cites">출처 ${cite(p.src)}</p>
+      </article>`;
+    }).join('');
+    const h = r.hair || {};
+    $('#trHair').innerHTML = `<p class="tr-sub">컬러</p><ul class="tr-chips">${(h.colors || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+      <p class="tr-sub">스타일</p><ul class="tr-chips">${(h.styles || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+      ${h.notes ? `<p class="tr-note">${esc(h.notes)}</p>` : ''}<p class="tr-cites">출처 ${cite(h.src)}</p>`;
+    const g = r.global || {};
+    $('#trGlobal').innerHTML = (g.points || []).map((x) => `<li>${esc(x)}</li>`).join('') + (g.src ? `<li class="tr-cites-li"><span class="tr-cites">출처 ${cite(g.src)}</span></li>` : '');
+    let done = {};
+    try { done = JSON.parse(localStorage.getItem(`hp-trend-done-${r.id}`) || '{}'); } catch (e) {}
+    $('#trActions').innerHTML = (r.actions || []).map((a, i) => `<li class="tr-act${done[i] ? ' is-done' : ''}">
+      <label class="check"><input type="checkbox" data-tr-act="${i}" ${done[i] ? 'checked' : ''} /> <strong>${esc(a.title)}</strong></label>
+      <span class="tag ${a.for === 'global' ? 'tag-use' : 'tag-note'}">${a.for === 'global' ? '해외용' : '국내용'}</span>
+      <p>${esc(a.detail)}</p></li>`).join('');
+    $('#trWatch').innerHTML = (r.watch || []).map((x) => `<li>${esc(x)}</li>`).join('');
+    $('#trMethod').textContent = r.method || '';
+    $('#trSources').innerHTML = (r.sources || []).map((x) => `<li id="tr-src-${x.id}" value="${x.id}"><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title)}</a><small class="muted"> · ${esc(x.publisher || '')}${x.date ? ` · ${esc(x.date)}` : ''}</small></li>`).join('');
+  }
+  $('#trWeek').addEventListener('change', (e) => loadTrends(e.target.value));
+  $('#trPrint').addEventListener('click', () => window.print());
+  $('[data-view="trends"]').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-tr-src]');
+    if (!c) return;
+    const li = $(`#tr-src-${c.dataset.trSrc}`);
+    if (!li) return;
+    li.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
+    li.classList.remove('is-flash'); void li.offsetWidth; li.classList.add('is-flash');
+    li.querySelector('a')?.focus({ preventScroll: true });
+  });
+  $('[data-view="trends"]').addEventListener('change', (e) => {
+    const cb = e.target.closest('[data-tr-act]');
+    if (!cb || !state.tr.report) return;
+    const key = `hp-trend-done-${state.tr.report.id}`;
+    let done = {};
+    try { done = JSON.parse(localStorage.getItem(key) || '{}'); } catch (err) {}
+    done[cb.dataset.trAct] = cb.checked;
+    try { localStorage.setItem(key, JSON.stringify(done)); } catch (err) {}
+    cb.closest('.tr-act').classList.toggle('is-done', cb.checked);
   });
 
   // ------------------------------------------------------------------
