@@ -984,3 +984,54 @@ body[data-route="hq"] #branchSelect { display: none; }
 .pd-hide-off { flex: none; white-space: nowrap; font-size: 14px; }
 .pd-show-off { min-height: 28px; margin-left: var(--space-2); font-size: 13px; }
 @media (max-width: 767px) { .pd-hide-off { order: 3; } }
+
+/* 직원 관리: 시술 직원 · 스태프 현황 */
+.st-team { margin-bottom: var(--space-4); }
+.st-team-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.st-team-card { padding: var(--space-4); border-radius: var(--radius-sm); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); display: grid; gap: var(--space-4); align-content: start; min-width: 0; }
+.st-team-card.is-des { box-shadow: inset 0 0 0 1px var(--border), inset 0 3px 0 var(--violet); }
+.st-team-card.is-staff { box-shadow: inset 0 0 0 1px var(--border), inset 0 3px 0 var(--ok); }
+.st-team-head { display: flex; align-items: center; gap: var(--space-3); }
+.st-team-head h3 { margin: 0; font-size: 16px; }
+.st-team-num { margin: 0 0 0 auto; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-team-stats { margin: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+.st-team-stats > div { padding: var(--space-2); border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.st-team-stats dt { font-size: 11.5px; color: var(--fg-muted); white-space: nowrap; }
+.st-team-stats dd { margin: 2px 0 0; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
+.st-team-stats dd small { font-weight: 500; color: var(--fg-muted); }
+.st-team-block .st-mix-title { margin-bottom: 6px; }
+.st-team-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.st-dist, .st-svc { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.st-dist li { display: grid; grid-template-columns: 84px minmax(0, 1fr) 28px; align-items: center; gap: var(--space-2); font-size: 12.5px; }
+.st-dist li.is-muted { color: var(--fg-muted); }
+.st-dist b { text-align: right; font-variant-numeric: tabular-nums; }
+.st-dist-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.st-dist-bar i { display: block; height: 100%; border-radius: inherit; background: var(--violet); }
+.is-staff .st-dist-bar i { background: var(--ok); }
+.st-dist li.is-muted .st-dist-bar i { background: var(--border-strong); }
+.st-svc li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); font-size: 13px; }
+.st-svc-bar { position: relative; height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.st-svc-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: color-mix(in srgb, var(--violet) 35%, transparent); }
+.st-svc-bar i.is-on { background: var(--violet); }
+.st-svc-num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg-muted); }
+.st-svc-num b { color: var(--fg); }
+.st-svc .tag { font-size: 11px; padding: 0 6px; }
+.st-ratio { margin: 0; font-size: 14px; }
+.st-ratio strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.st-bday { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.st-bday-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.st-bday-list li { display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-3) 6px 6px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); font-size: 13px; }
+.st-bday-list li.is-today { box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.st-bday-list li.is-past { opacity: 0.6; }
+.st-bday-when { color: var(--fg-muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.st-bday-note { margin: var(--space-2) 0 0; }
+.st-bday-tag { margin-left: 4px; font-size: 11px; padding: 0 6px; background: var(--accent-soft); color: var(--fg); }
+@media (max-width: 1100px) {
+  .st-team-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .st-team-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .st-team-two { grid-template-columns: minmax(0, 1fr); }
+  .st-svc li { grid-template-columns: 72px minmax(0, 1fr); }
+  .st-svc-num { grid-column: 1 / -1; }
+}

@@ -864,6 +864,51 @@
             </button>
           </div>
 
+          <section class="card panel st-team" id="stTeamPanel" aria-labelledby="stTeamHeading">
+            <div class="panel-head">
+              <div>
+                <h2 id="stTeamHeading">시술 직원 · 스태프 현황</h2>
+                <p class="muted small" id="stTeamSub">재직 기준 · 오늘 근무는 정기 휴무와 근무표를 반영합니다</p>
+              </div>
+            </div>
+            <div class="st-team-grid">
+              <article class="st-team-card is-des" aria-labelledby="stDesHeading">
+                <div class="st-team-head">
+                  <span class="kpi-icon tone-violet" aria-hidden="true"><svg class="icon"><use href="#i-scissors"/></svg></span>
+                  <h3 id="stDesHeading">시술 직원</h3>
+                  <p class="st-team-num" id="stDesNum">0명</p>
+                </div>
+                <dl class="st-team-stats" id="stDesStats"></dl>
+                <div class="st-team-block" id="stDesMix"></div>
+                <div class="st-team-block">
+                  <p class="st-mix-title">담당 시술별 인원 <span class="muted">· 전체 / 오늘 근무</span></p>
+                  <ul class="st-svc" id="stDesSvc"></ul>
+                </div>
+                <div class="st-team-block st-team-two">
+                  <div><p class="st-mix-title">근속</p><ul class="st-dist" id="stDesTenure"></ul></div>
+                  <div><p class="st-mix-title">연령대</p><ul class="st-dist" id="stDesAge"></ul></div>
+                </div>
+              </article>
+              <article class="st-team-card is-staff" aria-labelledby="stStaffHeading">
+                <div class="st-team-head">
+                  <span class="kpi-icon tone-ok" aria-hidden="true"><svg class="icon"><use href="#i-users"/></svg></span>
+                  <h3 id="stStaffHeading">스태프</h3>
+                  <p class="st-team-num" id="stStaffNum">0명</p>
+                </div>
+                <dl class="st-team-stats" id="stStaffStats"></dl>
+                <div class="st-team-block">
+                  <p class="st-mix-title">시술 직원 대비 스태프</p>
+                  <p class="st-ratio" id="stRatio">—</p>
+                </div>
+                <div class="st-team-block st-team-two">
+                  <div><p class="st-mix-title">근속</p><ul class="st-dist" id="stStaffTenure"></ul></div>
+                  <div><p class="st-mix-title">연령대</p><ul class="st-dist" id="stStaffAge"></ul></div>
+                </div>
+              </article>
+            </div>
+            <div class="st-bday" id="stBday"></div>
+          </section>
+
           <section class="card panel st-branches" id="stBranchPanel" aria-labelledby="stBranchHeading" hidden>
             <div class="panel-head">
               <div>
@@ -2148,6 +2193,12 @@
           <div class="form-field">
             <label for="sPhone">연락처 <span class="muted small">(선택)</span></label>
             <input id="sPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off" placeholder="010-0000-0000" />
+          </div>
+          <div class="form-field">
+            <label for="sBirth">생년월일 <span class="muted small">(선택)</span></label>
+            <input id="sBirth" type="date" min="1920-01-01" aria-describedby="sBirthHelp sBirthErr" />
+            <p class="help" id="sBirthHelp" aria-live="polite">전체 관리자와 이 지점 관리자만 볼 수 있습니다.</p>
+            <p class="err" id="sBirthErr" hidden></p>
           </div>
           <div class="form-field">
             <label for="sHired">입사일 <span class="muted small">(선택)</span></label>

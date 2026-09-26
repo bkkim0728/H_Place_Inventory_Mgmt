@@ -48,6 +48,7 @@
     INVALID_STAFF_POSITION: '이 직급을 저장할 수 없습니다. 직급 이름이 바뀐 뒤 데이터베이스가 아직 옛 설정이면 생기는 문제입니다. Supabase SQL Editor에서 최신 schema.sql을 다시 실행해 주세요.',
     INVALID_STAFF_RATE: '인센티브는 0~100% 사이로 입력해 주세요.',
     INVALID_STAFF_DATES: '퇴사일은 입사일과 같거나 그 이후여야 합니다.',
+    INVALID_STAFF_BIRTH: '생년월일을 확인해 주세요. 오늘 이후 날짜는 넣을 수 없습니다.',
     INVALID_STAFF_LEAVE: '연차 일수는 0~60일 사이로 입력해 주세요.',
     INVALID_STAFF_PICK: '선택한 담당 디자이너를 이 지점에서 찾을 수 없습니다. 새로고침 후 다시 선택해 주세요.',
     INVALID_STAFF: '직원 정보를 저장하지 못했습니다. 직급·근무 상태·담당 시술·휴무 요일을 확인해 주세요. 계속되면 데이터베이스가 최신이 아닐 수 있으니 Supabase SQL Editor에서 최신 schema.sql을 다시 실행해 주세요.',
@@ -204,7 +205,7 @@
           p_hired_on: x.hired_on || null, p_status: x.status, p_left_on: x.left_on || null, p_services: x.services || [],
           p_days_off: x.days_off || [], p_incentive_service: x.incentive_service ?? null, p_incentive_retail: x.incentive_retail ?? null,
           p_license_no: x.license_no || null, p_health_cert_expires: x.health_cert_expires || null, p_memo: x.memo || null,
-          p_annual_leave_days: x.annual_leave_days ?? null,
+          p_annual_leave_days: x.annual_leave_days ?? null, p_birth_date: x.birth_date || null,
         })),
       async deleteStaff(id) {
         const path = await run(sb.rpc('delete_staff', { p_id: id }));
@@ -566,6 +567,15 @@
     ['schedule', 'staffMonthly', 'payrollMonths'].forEach((k) => { if (!Array.isArray(state[k])) state[k] = []; });
     if (!Array.isArray(state.dailySales)) state.dailySales = buildDemoDailySales();
     if (!Array.isArray(state.snsPosts)) state.snsPosts = [];
+    // Sample 생년월일 (once per saved demo); two birthdays fall in the current month
+    if (!state.birthSeeded) {
+      const now = new Date(Date.now() + KST), mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+      const later = String(Math.min(28, now.getUTCDate() + 3)).padStart(2, '0');
+      const births = { st1: '1979-03-14', st2: '1986-11-02', st3: `1993-${mm}-${later}`, st4: '1998-06-21', st5: `2003-${mm}-05`,
+        st6: '2001-01-17', st7: '1995-08-30', st8: '1988-12-09', st9: '1996-04-25', st10: '1999-07-12' };
+      state.staff.forEach((x) => { if (births[x.id] && !x.birth_date) x.birth_date = births[x.id]; });
+      state.birthSeeded = true;
+    }
     if (!Array.isArray(state.snsConsents)) state.snsConsents = buildDemoConsents();
     if (!state.snsSettings || typeof state.snsSettings !== 'object') state.snsSettings = {};
     // Sample 지점 설정 prices so 지점별 가격 비교 has something to show (once per saved demo)
@@ -692,6 +702,7 @@
         must(rate(x.incentive_service) && rate(x.incentive_retail), 'INVALID_STAFF_RATE');
         must(!(x.left_on && x.hired_on && x.left_on < x.hired_on), 'INVALID_STAFF_DATES');
         must(x.annual_leave_days == null || (x.annual_leave_days >= 0 && x.annual_leave_days <= 60), 'INVALID_STAFF_LEAVE');
+        must(!x.birth_date || (x.birth_date >= '1920-01-01' && x.birth_date <= new Date(Date.now() + KST).toISOString().slice(0, 10)), 'INVALID_STAFF_BIRTH');
         must(['active', 'leave', 'left'].includes(status)
           && (x.services || []).every((v) => ['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo'].includes(v))
           && (x.days_off || []).every((v) => Number.isInteger(v) && v >= 0 && v <= 6), 'INVALID_STAFF');
@@ -702,7 +713,7 @@
           services: x.position === 'staff' ? [] : [...new Set(x.services || [])].sort(), days_off: [...new Set(x.days_off || [])].sort((a, b) => a - b),
           incentive_service: x.incentive_service ?? null, incentive_retail: x.incentive_retail ?? null,
           license_no: trimOrNull(x.license_no), health_cert_expires: x.health_cert_expires || null, memo: trimOrNull(x.memo),
-          annual_leave_days: x.annual_leave_days ?? null,
+          annual_leave_days: x.annual_leave_days ?? null, birth_date: x.birth_date || null,
         };
         if (row) Object.assign(row, next); else state.staff.push(next);
         save();

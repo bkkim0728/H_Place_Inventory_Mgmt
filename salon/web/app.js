@@ -2244,6 +2244,18 @@
     return m >= 12 ? `${Math.floor(m / 12)}년${m % 12 ? ` ${m % 12}개월` : ''}` : `${m}개월`;
   }
   const dateText = (d) => d.replace(/-/g, '.');
+  // 만 나이 on a date (default today)
+  function ageOn(birth, on = todayKey()) {
+    if (!birth) return null;
+    let a = Number(on.slice(0, 4)) - Number(birth.slice(0, 4));
+    if (on.slice(5) < birth.slice(5)) a -= 1;
+    return a;
+  }
+  function syncBirthHelp() {
+    const b = $('#sBirth').value, a = b && b <= todayKey() ? ageOn(b) : null;
+    $('#sBirthHelp').textContent = a != null ? `만 ${a}세 · 전체 관리자와 이 지점 관리자만 볼 수 있습니다.` : '전체 관리자와 이 지점 관리자만 볼 수 있습니다.';
+  }
+  $('#sBirth').addEventListener('input', syncBirthHelp);
   const daysText = (days) => (days && days.length ? WEEK.filter((d) => days.includes(d)).map((d) => DOW[d]).join('·') : '없음');
   const rateText = (v) => (v == null ? '—' : `${Number(v)}%`);
   const nameList = (xs) => xs.map((x) => esc(x.name)).join(', ');
@@ -2278,8 +2290,10 @@
         state.stSched = list.flatMap((l) => l.sched);
       } else {
         const id = isAdmin() ? state.st.branch : state.branch.id;
-        state.staff = await api.listStaff(id);
-        state.stSched = [];
+        const today = todayKey();
+        const [people, sched] = await Promise.all([api.listStaff(id), api.listSchedule(id, today, today).catch(() => [])]);
+        state.staff = people;
+        state.stSched = sched;
       }
       box.hidden = true;
     } catch (e) {
@@ -2321,6 +2335,7 @@
     $('#stBranchPanel').hidden = !every;
     $('#stRosterPanel').hidden = every;
     if (every) renderStaffBranches(all);
+    renderStaffTeam(all);
 
     // Weekly day-off board
     $('#stRoster').innerHTML = WEEK.map((d) => {
@@ -2356,7 +2371,7 @@
         ? `<div class="svc-chips">${Object.keys(SERVICES).filter((k) => x.services.includes(k)).map((k) => `<span class="svc-chip">${SERVICES[k]}</span>`).join('')}</div>` : '<span class="muted">—</span>';
       return `<tr class="${x.status === 'left' ? 'inactive-row' : ''}">
         <td class="cell-name"><div class="st-cell">${staffAvatar(x)}<div><div class="item-name">${esc(x.name)}<span class="tag pos-tag pos-${x.position}">${POSITIONS[x.position]}</span></div>
-          <div class="item-sku">${x.branch_name ? `<span class="tag st-branch-tag">${esc(x.branch_name)}</span>` : ''}${esc(x.phone || '연락처 없음')}</div>${x.memo ? `<div class="st-memo">${esc(x.memo)}</div>` : ''}</div></div></td>
+          <div class="item-sku">${x.branch_name ? `<span class="tag st-branch-tag">${esc(x.branch_name)}</span>` : ''}${esc(x.phone || '연락처 없음')}${x.birth_date ? ` · ${dateText(x.birth_date)} (만 ${ageOn(x.birth_date)}세)${x.status !== 'left' && x.birth_date.slice(5, 7) === todayKey().slice(5, 7) ? ' <span class="tag st-bday-tag">이번 달 생일</span>' : ''}` : ''}</div>${x.memo ? `<div class="st-memo">${esc(x.memo)}</div>` : ''}</div></div></td>
         <td data-label="담당 시술">${svc}</td>
         <td data-label="정기 휴무">${daysText(x.days_off)}</td>
         <td data-label="입사·근속" class="when">${x.hired_on ? `${dateText(x.hired_on)}<small>${tenure(x.hired_on, x.status === 'left' ? x.left_on : null)}</small>` : '<span class="muted">—</span>'}</td>
@@ -2366,6 +2381,90 @@
         <td class="cell-action"><button type="button" class="btn btn-secondary btn-sm" data-edit-staff="${x.id}" aria-label="${esc(x.name)} 수정">${svgIcon('i-edit')}수정</button></td>
       </tr>`;
     }).join('');
+  }
+
+  // 시술 직원 · 스태프 현황: head count, today's attendance, 직급, 담당 시술, 근속, 연령대, 이번 달 생일
+  function renderStaffTeam(all) {
+    const today = todayKey();
+    const sched = new Map((state.stSched || []).map((r) => [`${r.staff_id}|${r.day}`, r]));
+    const st = (x) => dayState(x, today, sched);
+    const current = all.filter((x) => x.status !== 'left');
+    const active = current.filter((x) => x.status === 'active');
+    const isDes = (x) => DESIGNER_POS.includes(x.position);
+    const groups = { des: active.filter(isDes), staff: active.filter((x) => !isDes(x)) };
+    const onToday = (list) => list.filter((x) => { const v = st(x); return v !== 'na' && workValue(v) > 0; });
+    const months = (x) => { if (!x.hired_on) return null; const a = new Date(`${x.hired_on}T00:00:00Z`), b = new Date(`${today}T00:00:00Z`); let m = (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + b.getUTCMonth() - a.getUTCMonth(); if (b.getUTCDate() < a.getUTCDate()) m -= 1; return m; };
+    const avgText = (vals, fmt) => (vals.length ? fmt(vals.reduce((s, v) => s + v, 0) / vals.length) : '—');
+    const tenureFmt = (m) => (m >= 12 ? `${Math.floor(m / 12)}년${Math.round(m % 12) ? ` ${Math.round(m % 12)}개월` : ''}` : `${Math.round(m)}개월`);
+    const dist = (list, buckets, key, empty) => {
+      const vals = list.map(key);
+      const rows = buckets.map(([label, test]) => ({ label, n: vals.filter((v) => v != null && test(v)).length }));
+      const none = vals.filter((v) => v == null).length;
+      if (none) rows.push({ label: empty, n: none, muted: true });
+      const max = Math.max(1, ...rows.map((r) => r.n));
+      return list.length ? rows.map((r) => `<li class="${r.muted ? 'is-muted' : ''}"><span>${r.label}</span><span class="st-dist-bar" aria-hidden="true"><i style="width:${(r.n / max) * 100}%"></i></span><b>${nf.format(r.n)}</b></li>`).join('')
+        : '<li class="muted small">해당 직원 없음</li>';
+    };
+    const TENURE = [['1년 미만', (m) => m < 12], ['1~3년', (m) => m >= 12 && m < 36], ['3~5년', (m) => m >= 36 && m < 60], ['5년 이상', (m) => m >= 60]];
+    const AGE = [['20대 이하', (a) => a < 30], ['30대', (a) => a >= 30 && a < 40], ['40대', (a) => a >= 40 && a < 50], ['50대 이상', (a) => a >= 50]];
+    const age = (x) => ageOn(x.birth_date);
+    const stats = (key, list) => {
+      const on = onToday(list), half = on.filter((x) => st(x) === 'half').length;
+      const leave = current.filter((x) => x.status === 'leave' && (key === 'des') === isDes(x)).length;
+      const cert = list.filter(needsCert).length;
+      const ages = list.map(age).filter((v) => v != null), ten = list.map(months).filter((v) => v != null && v >= 0);
+      $(`#st${key === 'des' ? 'Des' : 'Staff'}Num`).textContent = `${nf.format(list.length)}명`;
+      $(`#st${key === 'des' ? 'Des' : 'Staff'}Stats`).innerHTML = [
+        ['오늘 근무', `${nf.format(on.length)}명${half ? ` <small>(반차 ${nf.format(half)})</small>` : ''}`],
+        ['휴직', `${nf.format(leave)}명`],
+        ['평균 근속', avgText(ten, tenureFmt)],
+        ['평균 나이', avgText(ages, (v) => `${Math.round(v)}세`)],
+        ['보건증 확인', cert ? `<span class="hq-warn">${nf.format(cert)}명</span>` : '0명'],
+      ].map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+      $(`#st${key === 'des' ? 'Des' : 'Staff'}Tenure`).innerHTML = dist(list, TENURE, months, '입사일 미입력');
+      $(`#st${key === 'des' ? 'Des' : 'Staff'}Age`).innerHTML = dist(list, AGE, age, '생년월일 미입력');
+    };
+    stats('des', groups.des);
+    stats('staff', groups.staff);
+
+    // 직급 구성 (시술 직원)
+    const counts = DESIGNER_POS.map((k) => ({ k, n: groups.des.filter((x) => x.position === k).length })).filter((c) => c.n);
+    $('#stDesMix').innerHTML = counts.length ? `<p class="st-mix-title">직급 구성</p>
+      <div class="st-mix-bar" role="img" aria-label="${counts.map((c) => `${POSITIONS[c.k]} ${c.n}명`).join(', ')}">${counts.map((c) => `<span class="pos-fill-${c.k}" style="flex:${c.n}" title="${POSITIONS[c.k]} ${c.n}명"></span>`).join('')}</div>
+      <ul class="st-mix-legend">${counts.map((c) => `<li><i class="pos-fill-${c.k}"></i>${POSITIONS[c.k]} <b>${nf.format(c.n)}</b></li>`).join('')}</ul>` : '';
+
+    // 담당 시술별: 전체 인원 vs 오늘 근무
+    const desOn = new Set(onToday(groups.des).map((x) => x.id));
+    const svc = Object.keys(SERVICES).map((k) => {
+      const who = groups.des.filter((x) => (x.services || []).includes(k));
+      return { k, n: who.length, on: who.filter((x) => desOn.has(x.id)).length };
+    });
+    const maxSvc = Math.max(1, ...svc.map((v) => v.n));
+    $('#stDesSvc').innerHTML = groups.des.length ? svc.map((v) => `<li class="${v.n && !v.on ? 'is-gap' : ''}">
+      <span class="st-svc-name">${SERVICES[v.k]}</span>
+      <span class="st-svc-bar" aria-hidden="true"><i style="width:${(v.n / maxSvc) * 100}%"></i><i class="is-on" style="width:${(v.on / maxSvc) * 100}%"></i></span>
+      <span class="st-svc-num"><b>${nf.format(v.n)}</b> / 오늘 ${nf.format(v.on)}${v.n && !v.on ? ' <span class="tag tag-off">오늘 없음</span>' : ''}</span>
+    </li>`).join('') : '<li class="muted small">시술 직원이 없습니다.</li>';
+
+    // 시술 직원 대비 스태프
+    const d = groups.des.length, s2 = groups.staff.length;
+    $('#stRatio').innerHTML = d ? `<strong>${(s2 / d).toFixed(1)}명</strong> <span class="muted small">시술 직원 1명당 · 오늘 ${onToday(groups.des).length ? (onToday(groups.staff).length / onToday(groups.des).length).toFixed(1) : '—'}명</span>` : '<span class="muted">시술 직원이 없습니다.</span>';
+
+    // 이번 달 생일 (재직·휴직)
+    const ym = today.slice(5, 7);
+    const bdays = current.filter((x) => x.birth_date && x.birth_date.slice(5, 7) === ym)
+      .sort((a, b) => a.birth_date.slice(8).localeCompare(b.birth_date.slice(8)));
+    const noBirth = current.filter((x) => !x.birth_date).length;
+    $('#stBday').innerHTML = `<p class="st-mix-title">${Number(ym)}월 생일 <span class="muted">· ${nf.format(bdays.length)}명</span></p>
+      ${bdays.length ? `<ul class="st-bday-list">${bdays.map((x) => {
+        let day = `${today.slice(0, 4)}-${x.birth_date.slice(5)}`;
+        if (Number.isNaN(Date.parse(`${day}T00:00:00Z`)) || new Date(`${day}T00:00:00Z`).getUTCDate() !== Number(day.slice(8))) day = `${today.slice(0, 4)}-02-28`;  // 2월 29일생
+        const dd = daysUntil(day);
+        return `<li class="${dd === 0 ? 'is-today' : dd < 0 ? 'is-past' : ''}">${staffAvatar(x, 'st-avatar-xs')}<span><strong>${esc(x.name)}</strong> <span class="muted small">${POSITIONS[x.position]}${x.branch_name ? ` · ${esc(x.branch_name)}` : ''}</span></span>
+          <span class="st-bday-when">${Number(x.birth_date.slice(5, 7))}월 ${Number(x.birth_date.slice(8))}일 · ${dd === 0 ? '오늘' : dd > 0 ? `D-${dd}` : '지남'}</span></li>`;
+      }).join('')}</ul>` : '<p class="muted small">이번 달 생일인 직원이 없습니다.</p>'}
+      ${noBirth ? `<p class="muted small st-bday-note">생년월일 미입력 ${nf.format(noBirth)}명 · 직원 정보 수정에서 넣으면 연령대와 생일에 반영됩니다.</p>` : ''}`;
+    $('#stTeamSub').textContent = `재직 ${nf.format(active.length)}명 기준${stAll() ? ' · 전체 지점' : ''} · 오늘 근무는 정기 휴무와 근무표를 반영합니다`;
   }
 
   // 전체 지점 (admin): head count per branch and the 직급 mix
@@ -2503,6 +2602,9 @@
     $('#sPosition').value = x?.position || 'designer';
     $('#sPhone').value = x?.phone || '';
     $('#sHired').value = x?.hired_on || '';
+    $('#sBirth').value = x?.birth_date || '';
+    $('#sBirth').max = todayKey();
+    syncBirthHelp();
     staffForm.elements.sStatus.value = x?.status || 'active';
     $('#sLeftOn').value = x?.left_on || '';
     $$('input[name="sSvc"]').forEach((c) => { c.checked = !!x?.services?.includes(c.value); });
@@ -2544,6 +2646,8 @@
       fieldError($('#sLeave'), '연차 일수는 0~60 사이, 0.5일 단위로 입력해 주세요.');
       errors.push({ id: 'sLeave', msg: '연차 일수를 확인해 주세요.' });
     }
+    const birth = $('#sBirth').value;
+    if (birth && (birth < '1920-01-01' || birth > todayKey())) { fieldError($('#sBirth'), '생년월일을 확인해 주세요. 오늘 이후 날짜는 넣을 수 없습니다.'); errors.push({ id: 'sBirth', msg: '생년월일을 확인해 주세요.' }); }
     const status = staffForm.elements.sStatus.value;
     const hired = $('#sHired').value, left = status === 'left' ? $('#sLeftOn').value : '';
     if (left && hired && left < hired) { fieldError($('#sLeftOn'), '퇴사일은 입사일 이후여야 합니다.'); errors.push({ id: 'sLeftOn', msg: '퇴사일을 확인해 주세요.' }); }
@@ -2562,7 +2666,7 @@
         days_off: $$('input[name="sDay"]:checked').map((c) => Number(c.value)),
         incentive_service: incS, incentive_retail: incR,
         license_no: $('#sLicense').value, health_cert_expires: $('#sCert').value || null, memo: $('#sMemo').value,
-        annual_leave_days: leaveDays,
+        annual_leave_days: leaveDays, birth_date: birth || null,
       });
       let photoError = null;
       try {
@@ -2578,7 +2682,7 @@
       await loadStaff();
     } catch (ex) {
       const err = api.toAppError(ex);
-      const field = { INVALID_STAFF_NAME: 'sName', INVALID_STAFF_POSITION: 'sPosition', INVALID_STAFF_RATE: 'sIncS', INVALID_STAFF_DATES: 'sLeftOn', INVALID_STAFF_LEAVE: 'sLeave' }[err.code];
+      const field = { INVALID_STAFF_NAME: 'sName', INVALID_STAFF_POSITION: 'sPosition', INVALID_STAFF_RATE: 'sIncS', INVALID_STAFF_DATES: 'sLeftOn', INVALID_STAFF_LEAVE: 'sLeave', INVALID_STAFF_BIRTH: 'sBirth' }[err.code];
       if (field) {
         fieldError($('#' + field), err.message);
         showSummary(staffForm, [{ id: field, msg: err.message }]);

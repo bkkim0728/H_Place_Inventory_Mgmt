@@ -317,6 +317,15 @@ ok((await err(mgr, () => sv(mgr, base(null, b1, { days: [7] }))))?.includes('INV
 ok((await err(mgr, () => sv(mgr, base(null, b1, { s: 120 }))))?.includes('INVALID_STAFF_RATE'), 'incentive over 100% rejected with its own code');
 ok((await err(mgr, () => sv(mgr, base(null, b1, { name: ' ' }))))?.includes('INVALID_STAFF_NAME'), 'blank name rejected with its own code');
 ok((await err(mgr, () => sv(mgr, base(null, b1, { status: 'left', left: '2024-01-01' }))))?.includes('INVALID_STAFF_DATES'), 'leave date before hire date rejected with its own code');
+{
+  const svB = (uid, id, birth) => as(uid, () => one(`select save_staff($1,$2,'생일 테스트','staff',null,null,'active',null,'{}','{}',null,null,null,null,null,null,$3) id`, [id, b1, birth]));
+  const bid = (await svB(mgr, null, '1995-09-30')).id;
+  ok((await one(`select birth_date::text d from staff where id=$1`, [bid])).d === '1995-09-30', 'manager saves 생년월일');
+  ok((await err(mgr, () => svB(mgr, bid, '2999-01-01')))?.includes('INVALID_STAFF_BIRTH'), 'future 생년월일 rejected with its own code');
+  ok((await err(mgr, () => svB(mgr, bid, '1900-01-01')))?.includes('INVALID_STAFF_BIRTH'), 'implausibly old 생년월일 rejected');
+  ok(!('birth_date' in ((await as(staff, () => q(`select * from list_staff_names($1)`, [b1])))[0] || {})), 'staff role name list does not include 생년월일');
+  await q(`delete from staff where id=$1`, [bid]);
+}
 await sv(mgr, base(st1, b1, { status: 'left' }));
 const r2 = await one(`select status, left_on::text d from staff where id=$1`, [st1]);
 ok(r2.status === 'left' && r2.d === (await one(`select current_date::text d`)).d, 'marking 퇴사 without a date records today');
