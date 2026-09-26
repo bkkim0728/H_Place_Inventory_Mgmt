@@ -2893,6 +2893,7 @@
       : '막대: 하루 총매출(시술 매출 + 제품 판매). 막대에 마우스를 올리면 자세히 보입니다.';
     state.rp.chart = { thisWk, prevWk };
     drawReportChart(true);
+    renderUseDetail();
 
     // Amounts: 판매 at the sale price, everything else at cost. Reversals carry the
     // opposite quantity, so sums net out; counts leave both sides out.
@@ -2988,6 +2989,224 @@
   $('#rpToday').addEventListener('click', () => rpGo(todayKey()));
   $('#rpPick').addEventListener('change', (e) => { if (e.target.value) rpGo(e.target.value); });
   $('#rpPrint').addEventListener('click', () => window.print());
+
+  // ------------------------------------------------------------------
+  // 재료 사용 상세 (시술 사용 기록) for the report day, 7 or 30 days
+  // ------------------------------------------------------------------
+  state.ru = { period: 'day', q: '', key: '', rows: null, sales: null, loading: false };
+
+  async function loadUse30() {
+    const r = state.ru, d = state.rp.day, key = `${state.branch.id}|${d}`;
+    if (r.key === key && r.rows) return;
+    r.loading = true; r.key = key; r.rows = null;
+    renderUseDetail();
+    try {
+      const from = addDays(d, -29);
+      const [rows, sales] = await Promise.all([
+        api.listMovementsBetween(state.branch.id, from, d),
+        api.listDailySales(state.branch.id, from, d).catch(() => []),
+      ]);
+      if (r.key !== key) return;
+      r.rows = rows; r.sales = sales;
+    } catch (ex) {
+      if (r.key !== key) return;
+      r.rows = []; r.sales = [];
+      toast(api.toAppError(ex).message, { error: true });
+    }
+    r.loading = false;
+    renderUseDetail();
+  }
+
+  function useWindow() {
+    const d = state.rp.day, p = state.ru.period;
+    const n = p === 'day' ? 1 : Number(p);
+    return { from: addDays(d, -(n - 1)), to: d, n };
+  }
+
+  function useData() {
+    const w = useWindow(), p = state.ru.period;
+    const src = p === '30' ? state.ru.rows || [] : state.rp.all;
+    const sales = p === '30' ? state.ru.sales || [] : state.rp.sales;
+    const inWin = (k) => k >= w.from && k <= w.to;
+    const rows = src.filter((m) => m.type === 'use' && inWin(keyFmt.format(new Date(m.created_at))));
+    const live = rows.filter((m) => !m.reverts_id && !m.reverted);
+    const svc = sales.filter((s) => inWin(s.day));
+    return {
+      w, rows, live,
+      svc: svc.reduce((a, s) => a + (Number(s.service_sales) || 0), 0),
+      cnt: svc.reduce((a, s) => a + (Number(s.service_count) || 0), 0),
+      entered: svc.length,
+    };
+  }
+  const useAmt = (m) => -m.quantity * (m.unit_cost || 0);
+
+  function renderUseDetail() {
+    const r = state.ru;
+    if (r.period === '30' && r.key !== `${state.branch.id}|${state.rp.day}`) { loadUse30(); return; }
+    const u = useData(), w = u.w;
+    const dot = (k) => k.replace(/-/g, '.');
+    $('#ruSub').textContent = r.loading ? '불러오는 중…'
+      : `${w.n === 1 ? `${dot(w.to)} (${DOW[dowOf(w.to)]})` : `${dot(w.from)} ~ ${dot(w.to)} · ${w.n}일`} · 매입가 기준 · 취소된 기록은 빼고 계산`;
+    const amt = u.live.reduce((a, m) => a + useAmt(m), 0);
+    const qty = u.live.reduce((a, m) => a + -m.quantity, 0);
+    const kinds = new Set(u.live.map((m) => m.product_id)).size;
+    const stat = (label, value, sub, hot) => `<div class="pc-stat${hot ? ' is-hot' : ''}"><span>${label}</span><strong>${value}</strong><small>${sub}</small></div>`;
+    $('#ruStats').innerHTML = [
+      stat('재료 사용액', won.format(amt), w.n > 1 ? `하루 평균 ${won.format(Math.round(amt / w.n))}` : '보고 있는 날', true),
+      stat('사용 건수 · 수량', `${nf.format(u.live.length)}건`, `${nf.format(qty)}개 · ${nf.format(kinds)}개 품목`),
+      stat('시술 1건당 재료비', u.cnt ? won.format(Math.round(amt / u.cnt)) : '—', u.cnt ? `시술 ${nf.format(u.cnt)}건 기준` : '시술 건수 미입력'),
+      stat('재료비율', u.svc ? `${pct1.format((amt / u.svc) * 100)}%` : '—', u.svc ? `시술 매출 ${won.format(u.svc)} 대비` : '시술 매출 미입력'),
+    ].join('');
+
+    // Trend: hours for one day, days otherwise
+    drawUseChart(u);
+
+    // By category
+    const cat = new Map();
+    u.live.forEach((m) => { const c = itemById(m.product_id)?.category || '기타'; cat.set(c, (cat.get(c) || 0) + useAmt(m)); });
+    const cats = [...cat].sort((a, b) => b[1] - a[1]);
+    const cmax = Math.max(1, ...cats.map((c) => c[1]));
+    $('#ruCats').innerHTML = cats.length ? cats.map(([c, v], i) => `<li><div class="sl-bar-top"><span class="sl-rank">${i + 1}</span><span class="rp-name">${esc(c)}</span><span class="rp-val">${amt ? pct1.format((v / amt) * 100) : '0.0'}% · <strong>${won.format(v)}</strong></span></div>
+      <span class="sl-bar" aria-hidden="true"><span style="width:${Math.max(2, (v / cmax) * 100).toFixed(1)}%"></span></span></li>`).join('') : '<li class="muted rp-empty">사용 기록이 없습니다.</li>';
+
+    // By designer
+    const des = new Map();
+    u.live.forEach((m) => {
+      const k = m.staff_id || '-';
+      const x = des.get(k) || { name: m.staff_id ? m.staff_name || '—' : '담당 미지정', n: 0, amt: 0 };
+      x.n += 1; x.amt += useAmt(m);
+      des.set(k, x);
+    });
+    const dl = [...des.values()].sort((a, b) => b.amt - a.amt);
+    $('#ruDes').innerHTML = dl.length ? dl.map((x) => `<tr><td class="cell-name">${esc(x.name)}</td><td class="num" data-label="건수">${nf.format(x.n)}건</td><td class="num" data-label="금액">${won.format(x.amt)}</td><td class="num" data-label="비중">${amt ? pct1.format((x.amt / amt) * 100) : '0.0'}%</td></tr>`).join('')
+      : '<tr><td colspan="4" class="muted rp-empty">사용 기록이 없습니다.</td></tr>';
+
+    // By product, with how long the stock lasts at this pace
+    const items = new Map();
+    u.live.forEach((m) => {
+      const x = items.get(m.product_id) || { id: m.product_id, name: m.product_name, sku: m.sku, unit: m.unit, qty: 0, n: 0, amt: 0 };
+      x.qty += -m.quantity; x.n += 1; x.amt += useAmt(m);
+      items.set(m.product_id, x);
+    });
+    const il = [...items.values()].sort((a, b) => b.amt - a.amt || b.qty - a.qty);
+    $('#ruItems').innerHTML = il.length ? il.map((x) => {
+      const inv = itemById(x.id);
+      const stock = inv ? inv.stock : null;
+      const perDay = x.qty / w.n;
+      const left = stock == null || perDay <= 0 ? null : stock / perDay;
+      const leftText = left == null ? '—' : left < 1 ? '<span class="tag tag-off">1일 미만</span>' : `<span class="${left <= 7 ? 'hq-warn' : ''}">${nf.format(Math.floor(left))}일</span>`;
+      return `<tr><td class="cell-name"><div class="item-name">${esc(x.name)}</div><div class="item-sku">${esc(x.sku)}${inv ? ` · ${esc(inv.category)}` : ''}</div></td>
+        <td class="num" data-label="사용 수량">${nf.format(x.qty)}${esc(x.unit)}</td>
+        <td class="num" data-label="건수">${nf.format(x.n)}건</td>
+        <td class="num" data-label="금액"><strong>${won.format(x.amt)}</strong></td>
+        <td class="num" data-label="비중">${amt ? pct1.format((x.amt / amt) * 100) : '0.0'}%</td>
+        <td class="num" data-label="현재고">${stock == null ? '—' : `${nf.format(stock)}${esc(x.unit)}`}${inv && inv.status !== 'ok' ? ` ${badge(inv.status)}` : ''}</td>
+        <td class="num" data-label="남은 일수">${w.n === 1 ? '—' : leftText}</td></tr>`;
+    }).join('') : `<tr><td colspan="7" class="muted rp-empty">${r.loading ? '불러오는 중…' : '이 기간에 시술 사용 기록이 없습니다.'}</td></tr>`;
+
+    // Records
+    const q = r.q.trim().toLowerCase();
+    const log = u.rows.filter((m) => !m.reverts_id && (!q || m.product_name.toLowerCase().includes(q) || (m.staff_name || '').toLowerCase().includes(q)
+      || (m.memo || '').toLowerCase().includes(q) || whoText(m).toLowerCase().includes(q)))
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+    const shown = log.slice(0, 200);
+    $('#ruLog').innerHTML = shown.length ? shown.map((m) => {
+      const d = new Date(m.created_at);
+      return `<tr class="${m.reverted ? 'is-reverted' : ''}">
+        <td class="cell-name when"><span class="item-name">${esc(m.product_name)}</span><small>${w.n === 1 ? '' : `${dayFmt.format(d)} `}${timeFmt.format(d)} · ${esc(m.sku)}</small></td>
+        <td class="num" data-label="수량">${nf.format(-m.quantity)}${esc(m.unit)}</td>
+        <td class="num" data-label="매입가">${won.format(m.unit_cost || 0)}</td>
+        <td class="num" data-label="금액">${won.format(useAmt(m))}${m.reverted ? ' <span class="tag tag-note">취소됨</span>' : ''}</td>
+        <td data-label="담당 · 등록">${m.staff_name ? esc(m.staff_name) : '<span class="muted">미지정</span>'}<small class="mv-staff">등록 ${esc(whoText(m))}</small></td>
+        <td data-label="메모"><span class="memo">${esc(m.memo || '—')}</span></td></tr>`;
+    }).join('') : `<tr><td colspan="6" class="muted rp-empty">${r.loading ? '불러오는 중…' : q ? '검색 결과가 없습니다.' : '사용 기록이 없습니다.'}</td></tr>`;
+    $('#ruFoot').textContent = log.length > 200 ? `최근 200건만 표시합니다 (전체 ${nf.format(log.length)}건은 엑셀로 받을 수 있습니다).` : log.length ? `${nf.format(log.length)}건` : '';
+    $('#ruXlsx').disabled = log.length === 0;
+  }
+
+  function drawUseChart(u) {
+    const box = $('#ruChart');
+    const w = u.w, oneDay = w.n === 1;
+    let keys;
+    if (oneDay) {
+      const hrs = u.live.map((m) => Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: TZ }).format(new Date(m.created_at))));
+      const lo = Math.min(10, ...hrs), hi = Math.max(20, ...hrs);
+      keys = Array.from({ length: hi - lo + 1 }, (_, i) => ({ k: lo + i, label: `${lo + i}시`, v: 0 }));
+      u.live.forEach((m, i) => { const b = keys.find((x) => x.k === hrs[i]); if (b) b.v += useAmt(m); });
+    } else {
+      keys = Array.from({ length: w.n }, (_, i) => { const k = addDays(w.from, i); return { k, label: `${Number(k.slice(5, 7))}/${Number(k.slice(8))}`, long: `${mdText(k)} (${DOW[dowOf(k)]})`, v: 0 }; });
+      const idx = new Map(keys.map((x, i) => [x.k, i]));
+      u.live.forEach((m) => { const i = idx.get(keyFmt.format(new Date(m.created_at))); if (i != null) keys[i].v += useAmt(m); });
+    }
+    $('#ruTrendWrap').querySelector('h3').firstChild.textContent = oneDay ? '시간대별 재료 사용액 ' : '일별 재료 사용액 ';
+    const W = Math.max(280, Math.round(box.clientWidth || 700)), H = 190;
+    const pad = { l: 12, r: 8, t: 10, b: 26 };
+    const max = Math.max(1, ...keys.map((x) => x.v));
+    const step = niceStep(max / 3), top = Math.ceil(max / step) * step;
+    const ticks = []; for (let v = 0; v <= top + step / 2; v += step) ticks.push(v);
+    pad.l = Math.max(...ticks.map((v) => won.format(v).length)) * 7 + 10;
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const y = (v) => pad.t + ih - (v / top) * ih;
+    const slot = iw / keys.length, bw = Math.max(2, Math.min(32, slot * 0.6));
+    const every = Math.ceil(keys.length / Math.max(1, Math.floor(iw / 48)));
+    const avg = keys.reduce((a, x) => a + x.v, 0) / keys.length;
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${oneDay ? '시간대별' : '일별'} 재료 사용액, 최고 ${won.format(max === 1 ? 0 : max)}" class="${reduceMotion.matches ? '' : 'is-animated'}">
+      ${ticks.map((v) => `<line class="rp-grid-line" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="${pad.l - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${won.format(v)}</text>`).join('')}
+      ${keys.map((x, i) => {
+        const h = x.v ? Math.max(2, pad.t + ih - y(x.v)) : 0;
+        const cx = pad.l + slot * i + (slot - bw) / 2;
+        return `<g>${h ? `<rect class="ru-bar" x="${cx.toFixed(1)}" y="${(pad.t + ih - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(4, bw / 2)}" style="--i:${i}"><title>${esc(x.long || x.label)} · ${won.format(x.v)}</title></rect>` : ''}
+          ${i % every === 0 || i === keys.length - 1 ? `<text x="${(pad.l + slot * i + slot / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${x.label}</text>` : ''}</g>`;
+      }).join('')}
+      ${!oneDay && avg > 0 ? `<line class="ru-avg" x1="${pad.l}" x2="${W - pad.r}" y1="${y(avg).toFixed(1)}" y2="${y(avg).toFixed(1)}"/>` : ''}
+    </svg>`;
+    box.dataset.w = String(W);
+    $('#ruTrendNote').textContent = !oneDay && avg > 0 ? `· 점선: 하루 평균 ${won.format(Math.round(avg))}` : '';
+  }
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(() => {
+      const box = $('#ruChart');
+      if (box && box.clientWidth && state.route === 'report' && Math.abs(box.clientWidth - Number(box.dataset.w || 0)) > 4) drawUseChart(useData());
+    }).observe($('#ruChart'));
+  }
+
+  $('#ruPeriod').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ru-period]');
+    if (!b) return;
+    $$('[data-ru-period]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    state.ru.period = b.dataset.ruPeriod;
+    renderUseDetail();
+  });
+  let ruTimer = 0;
+  $('#ruQ').addEventListener('input', (e) => { clearTimeout(ruTimer); ruTimer = setTimeout(() => { state.ru.q = e.target.value; renderUseDetail(); }, 150); });
+  $('#rpUseJump').addEventListener('click', () => {
+    $('#rpUseDetail').scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'start' });
+    $('#ruHeading').setAttribute('tabindex', '-1');
+    $('#ruHeading').focus({ preventScroll: true });
+  });
+  $('#ruXlsx').addEventListener('click', () => {
+    const u = useData();
+    const rows = u.rows.filter((m) => !m.reverts_id).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+    if (!rows.length) { toast('내려받을 사용 기록이 없습니다.', { error: true }); return; }
+    const stamp = (iso) => { const d = new Date(iso); return `${keyFmt.format(d)} ${timeFmt.format(d)}`; };
+    const blob = window.makeXlsx({
+      sheetName: '재료 사용',
+      columns: [
+        { header: '일시', width: 18 }, { header: '품목', width: 30 }, { header: '품목 코드', width: 12 }, { header: '카테고리', width: 13 },
+        { header: '수량', width: 8, type: 'number' }, { header: '단위', width: 7 }, { header: '매입가', width: 11, type: 'number' },
+        { header: '금액', width: 12, type: 'number' }, { header: '담당 디자이너', width: 13 }, { header: '등록', width: 12 },
+        { header: '메모', width: 30 }, { header: '상태', width: 9 },
+      ],
+      rows: rows.map((m) => [stamp(m.created_at), m.product_name, m.sku, itemById(m.product_id)?.category || '', -m.quantity, m.unit,
+        m.unit_cost || 0, useAmt(m), m.staff_name || '', whoText(m), m.memo || '', m.reverted ? '취소됨' : '']),
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `재료사용_${state.branch.name}_${u.w.from}_${u.w.to}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast(`${nf.format(rows.length)}건을 엑셀 파일로 내려받았습니다.`);
+  });
 
   // Grouped bars: each weekday of the last 7 days next to the same weekday a week before
   function drawReportChart(animate) {

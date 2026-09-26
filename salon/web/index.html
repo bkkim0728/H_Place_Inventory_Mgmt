@@ -885,6 +885,7 @@
               <div class="kpi-head"><span class="kpi-label">재료 사용액</span><span class="delta" id="rpUseDelta"></span></div>
               <p class="kpi-value" id="rpUse">₩0</p>
               <p class="kpi-sub muted" id="rpUseSub">—</p>
+              <button type="button" class="link-btn rp-ds-edit rp-use-jump" id="rpUseJump">재료 사용 상세 보기</button>
             </article>
           </div>
 
@@ -912,6 +913,83 @@
                 </table>
               </div>
             </div>
+          </section>
+
+          <!-- 재료(시술) 사용 상세 -->
+          <section class="card panel ru" id="rpUseDetail" aria-labelledby="ruHeading">
+            <div class="panel-head">
+              <div>
+                <h2 id="ruHeading">재료 사용 상세 <span class="muted small">· 시술 사용 기록</span></h2>
+                <p class="muted small" id="ruSub">—</p>
+              </div>
+              <div class="ru-tools">
+                <div class="segmented" role="group" aria-label="기간 선택" id="ruPeriod">
+                  <button type="button" data-ru-period="day" aria-pressed="true">보고 있는 날</button>
+                  <button type="button" data-ru-period="7" aria-pressed="false">최근 7일</button>
+                  <button type="button" data-ru-period="30" aria-pressed="false">최근 30일</button>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="ruXlsx"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>엑셀</button>
+              </div>
+            </div>
+
+            <div class="ru-stats" id="ruStats"></div>
+
+            <div class="ru-trend" id="ruTrendWrap">
+              <h3 class="wb-col-title">일별 재료 사용액 <span class="muted small" id="ruTrendNote"></span></h3>
+              <div class="ru-chart" id="ruChart"></div>
+            </div>
+
+            <div class="rp-grid ru-grid">
+              <div>
+                <h3 class="wb-col-title">카테고리별</h3>
+                <ol class="sl-bars ru-cats" id="ruCats"></ol>
+              </div>
+              <div>
+                <h3 class="wb-col-title">디자이너별</h3>
+                <div class="table-wrap"><table class="inv-table rp-table ru-des">
+                  <caption class="sr-only">디자이너별 재료 사용</caption>
+                  <thead><tr><th scope="col" class="th-plain">담당</th><th scope="col" class="th-plain num">건수</th><th scope="col" class="th-plain num">금액</th><th scope="col" class="th-plain num">비중</th></tr></thead>
+                  <tbody id="ruDes"></tbody>
+                </table></div>
+              </div>
+            </div>
+
+            <h3 class="wb-col-title ru-h">제품별 사용 <span class="muted small">· 남은 일수 = 현재고 ÷ 기간 중 하루 평균 사용량</span></h3>
+            <div class="table-wrap"><table class="inv-table rp-table ru-items">
+              <caption class="sr-only">제품별 재료 사용</caption>
+              <thead><tr>
+                <th scope="col" class="th-plain">품목</th>
+                <th scope="col" class="th-plain num">사용 수량</th>
+                <th scope="col" class="th-plain num">건수</th>
+                <th scope="col" class="th-plain num">금액</th>
+                <th scope="col" class="th-plain num">비중</th>
+                <th scope="col" class="th-plain num">현재고</th>
+                <th scope="col" class="th-plain num">남은 일수</th>
+              </tr></thead>
+              <tbody id="ruItems"></tbody>
+            </table></div>
+
+            <div class="ru-log-head">
+              <h3 class="wb-col-title">사용 기록</h3>
+              <div class="field field-search ru-search">
+                <label for="ruQ" class="sr-only">품목, 담당자, 메모 검색</label>
+                <svg class="icon field-icon" aria-hidden="true"><use href="#i-search"/></svg>
+                <input id="ruQ" type="search" placeholder="품목, 담당자, 메모 검색" autocomplete="off" />
+              </div>
+            </div>
+            <div class="table-wrap"><table class="inv-table rp-table ru-log">
+              <caption class="sr-only">시술 사용 기록 (최신순)</caption>
+              <thead><tr>
+                <th scope="col" class="th-plain">일시 · 품목</th>
+                <th scope="col" class="th-plain num">수량</th>
+                <th scope="col" class="th-plain num">매입가</th>
+                <th scope="col" class="th-plain num">금액</th>
+                <th scope="col" class="th-plain">담당 · 등록</th>
+                <th scope="col" class="th-plain">메모</th>
+              </tr></thead>
+              <tbody id="ruLog"></tbody>
+            </table></div>
+            <p class="muted small rp-foot" id="ruFoot"></p>
           </section>
 
           <div class="rp-grid">
@@ -1301,6 +1379,13 @@
               <summary><span class="man-q">매장 레포트 · 시술 매출 입력</span><span class="tag man-role">지점 관리자</span></summary>
               <div class="man-body">
                 <ol class="man-steps"><li>영업을 마치면 <b>매장 레포트</b> → <b>시술 매출 입력</b>을 누릅니다.</li><li>POS 마감 기준 <b>시술 매출</b>과 <b>시술 건수</b>를 입력하면 객단가가 자동 계산됩니다.</li><li>총매출·제품 판매·재료 사용액과 <b>지난주 같은 요일 대비</b> 증감(▲▼)을 확인합니다.</li><li><b>주간 비교</b>에서 최근 7일과 이전 7일을 그래프와 표로 비교합니다.</li><li><b>인쇄</b>를 누르면 하루 보고서로 출력할 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출을 입력하지 않은 날은 "미입력"으로 표시되고, 총매출에는 제품 판매만 들어갑니다.</p>
+                <a href="#/report" class="btn btn-secondary btn-sm man-go">매장 레포트(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
+            <details class="man-item" id="man-usedetail" data-manager-only>
+              <summary><span class="man-q">재료(시술) 사용 상세 보기</span><span class="tag man-role">지점 관리자</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>매장 레포트</b>의 <b>재료 사용액</b> 카드에서 <b>재료 사용 상세 보기</b>를 누르거나, 아래로 내려 <b>재료 사용 상세</b>로 갑니다.</li><li>기간을 <b>보고 있는 날 / 최근 7일 / 최근 30일</b> 중에서 고릅니다.</li><li>재료 사용액, 사용 건수·수량, <b>시술 1건당 재료비</b>, <b>재료비율</b>과 시간대별·일별 사용액 그래프를 봅니다.</li><li><b>카테고리별</b>, <b>디자이너별</b>, <b>제품별</b>(현재고와 <b>남은 일수</b> 포함) 사용을 비교하고, 아래 <b>사용 기록</b>에서 한 건씩 찾아봅니다.</li><li><b>엑셀</b>로 기간의 사용 기록을 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 남은 일수는 현재고를 기간 중 하루 평균 사용량으로 나눈 값입니다. 7일 이하면 주황색으로 표시되니 미리 발주하세요.</p>
                 <a href="#/report" class="btn btn-secondary btn-sm man-go">매장 레포트(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>

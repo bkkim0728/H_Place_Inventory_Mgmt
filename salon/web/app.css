@@ -789,3 +789,41 @@ body[data-route="hq"] #branchSelect { display: none; }
   .pc-table td::before { flex-basis: 100%; }
   .pc-up-cell, .pc-down-cell, .pc-chg-cell { padding-left: 6px; padding-right: 6px; }
 }
+
+/* 매장 레포트 · 재료 사용 상세 */
+.ru { margin-bottom: var(--space-4); scroll-margin-top: 90px; }
+.ru-tools { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ru-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.ru-trend { margin-bottom: var(--space-4); }
+.ru-chart { min-height: 190px; }
+.ru-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.ru-chart svg text { fill: var(--fg-muted); font-size: 11px; font-family: var(--font); font-variant-numeric: tabular-nums; }
+.ru-bar { fill: var(--chart-out); }
+.ru-bar:hover { opacity: 0.8; }
+.ru-avg { stroke: var(--fg-muted); stroke-width: 1; stroke-dasharray: 4 4; }
+.ru-chart svg.is-animated .ru-bar { transform-box: fill-box; transform-origin: 50% 100%; animation: rp-grow 600ms var(--ease-out) both; animation-delay: calc(var(--i) * 15ms); }
+.ru-grid { margin-bottom: var(--space-4); }
+.ru-h { margin-top: var(--space-2); }
+.ru-log-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: var(--space-4) 0 var(--space-2); flex-wrap: wrap; }
+.ru-log-head h3 { margin: 0; }
+.ru-search { max-width: 280px; flex: 1; }
+.ru-items .badge { margin-left: 4px; transform: scale(0.9); }
+.rp-use-jump { align-self: flex-start; margin-top: 2px; }
+@media (max-width: 767px) {
+  .ru-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ru-tools { width: 100%; }
+  .ru-tools .segmented { flex: 1; }
+  .ru-tools .segmented button { flex: 1; padding-left: 4px; padding-right: 4px; }
+  .ru-search { max-width: none; }
+}
+@media print { .ru-tools, .ru-log-head .ru-search, .rp-use-jump { display: none !important; } .ru-bar { fill: #666 !important; } .ru-chart svg text { fill: #333 !important; } }
+@media (max-width: 767px) {
+  .ru-des { display: table; width: 100%; }
+  .ru-des thead { position: static; width: auto; height: auto; overflow: visible; clip: auto; display: table-header-group; }
+  .ru-des tbody { display: table-row-group; }
+  .ru-des tr { display: table-row; border: 0; margin: 0; padding: 0; }
+  .ru-des th, .ru-des td { display: table-cell; width: auto; padding: 7px 6px; font-size: 12.5px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .ru-des td.cell-name, .ru-des thead th:first-child { text-align: left; padding-left: 10px; }
+  .ru-des td::before { content: none; }
+  .ru-grid .table-wrap:has(.ru-des) { border: 1px solid var(--border); border-radius: var(--radius-sm); }
+}
