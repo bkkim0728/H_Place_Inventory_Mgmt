@@ -57,6 +57,14 @@
     MONTH_CONFIRMED: '정산이 확정된 달입니다. 수정하려면 전체 관리자가 확정을 취소해야 합니다.',
     SCHEMA_OUTDATED: '데이터베이스 설정이 최신이 아닙니다. Supabase SQL Editor에서 최신 schema.sql을 다시 실행해 주세요.',
     PHOTO_UPLOAD_FAILED: '사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    INVALID_SNS_SETTINGS: 'SNS 설정을 확인해 주세요. 해시태그는 500자, 하루 목표는 1~30개까지입니다.',
+    INVALID_SNS_POST: '게시물 내용을 확인해 주세요. 제목은 60자, 본문은 2,200자까지입니다.',
+    SNS_POST_NOT_FOUND: '게시물을 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.',
+    SNS_POST_LOCKED: '게시 완료된 게시물은 바꾸거나 삭제할 수 없습니다.',
+    INVALID_SNS_STATUS: '지금 상태에서는 할 수 없는 작업입니다. 새로고침 후 다시 확인해 주세요.',
+    CONSENT_REQUIRED: '고객이 나오는 게시물입니다. 유효한 고객 게시 동의를 연결해야 승인할 수 있습니다.',
+    INVALID_CONSENT: '게시 동의 정보를 확인해 주세요. 동의일은 오늘 이전이어야 하고, 게시일에 유효한 동의만 연결할 수 있습니다.',
+    CONSENT_NOT_FOUND: '게시 동의 기록을 찾을 수 없거나 이미 철회되었습니다.',
   };
 
   // Next product code for a category (mirrors next_sku() in schema.sql): 클리닉 → CN-004
@@ -264,6 +272,29 @@
           p_quantity: quantity, p_memo: memo || null, p_staff_id: staffId || null,
         })),
       listStaffNames: (branchId) => run(sb.rpc('list_staff_names', { p_branch_id: branchId })),
+      // SNS 홍보
+      getSnsSettings: (branchId) => run(sb.from('sns_settings').select('handle, hashtags, tone, daily_target').eq('branch_id', branchId).maybeSingle()),
+      saveSnsSettings: (branchId, v) =>
+        run(sb.rpc('save_sns_settings', { p_branch_id: branchId, p_handle: v.handle || null, p_hashtags: v.hashtags || null, p_tone: v.tone, p_daily_target: v.daily_target })),
+      listSnsPosts: (branchId, from, to) =>
+        run(sb.from('sns_posts').select('*').eq('branch_id', branchId).gte('day', from).lte('day', to)
+          .order('day').order('slot').order('created_at')),
+      addSnsPosts: (branchId, posts) => run(sb.rpc('add_sns_posts', { p_branch_id: branchId, p_posts: posts })),
+      updateSnsPost: (id, v) =>
+        run(sb.rpc('update_sns_post', {
+          p_post_id: id, p_slot: v.slot || null, p_title: v.title, p_caption: v.caption,
+          p_hashtags: v.hashtags || null, p_shoot_note: v.shoot_note || null, p_consent_id: v.consent_id || null,
+        })),
+      setSnsPostStatus: (id, status, note) => run(sb.rpc('set_sns_post_status', { p_post_id: id, p_status: status, p_note: note || null })),
+      deleteSnsPost: (id) => run(sb.rpc('delete_sns_post', { p_post_id: id })),
+      listSnsConsents: (branchId) =>
+        run(sb.from('sns_consents').select('*').eq('branch_id', branchId).order('signed_on', { ascending: false }).order('created_at', { ascending: false })),
+      saveSnsConsent: (branchId, c) =>
+        run(sb.rpc('save_sns_consent', {
+          p_consent_id: c.id || null, p_branch_id: branchId, p_customer: c.customer, p_scope: c.scope, p_show_face: c.show_face,
+          p_signed_on: c.signed_on, p_expires_on: c.expires_on, p_memo: c.memo || null,
+        })),
+      revokeSnsConsent: (id) => run(sb.rpc('revoke_sns_consent', { p_consent_id: id })),
       listDailySales: (branchId, from, to) =>
         run(sb.from('daily_sales').select('day, service_sales, service_count, memo').eq('branch_id', branchId).gte('day', from).lte('day', to)),
       saveDailySales: (branchId, day, v) =>
@@ -413,6 +444,17 @@
     return out;
   }
 
+  // Sample 고객 게시 동의 for SNS 홍보 (names masked as a salon would record them)
+  function buildDemoConsents() {
+    const d = (n) => new Date(Date.now() + KST + n * DAY).toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+    return [
+      { id: 'sc1', branch_id: 'br01', customer: '김○○ (뒷번호 2381)', scope: 'both', show_face: true, signed_on: d(-12), expires_on: d(353), memo: '웨딩 업스타일 전후 사진·영상', created_by: 'u-mgr1', created_at: now, revoked_at: null },
+      { id: 'sc2', branch_id: 'br01', customer: '이○○ (뒷번호 5520)', scope: 'photo', show_face: false, signed_on: d(-3), expires_on: d(362), memo: '뒷모습 염색 결과만', created_by: 'u-staff1', created_at: now, revoked_at: null },
+      { id: 'sc3', branch_id: 'br02', customer: '박○○ (뒷번호 0917)', scope: 'video', show_face: true, signed_on: d(-20), expires_on: d(345), memo: null, created_by: 'u-mgr2', created_at: now, revoked_at: null },
+    ];
+  }
+
   function buildDemoState() {
     const rand = mulberry32(20260924);
     const now = Date.now();
@@ -507,6 +549,7 @@
     ].map((x) => ({ ...x, branch_id: staff.find((s) => s.id === x.staff_id).branch_id }));
     return {
       branches, users, categories, products, inventory, movements, staff, schedule, staffMonthly, payrollMonths: [], dailySales: buildDemoDailySales(),
+      snsPosts: [], snsConsents: buildDemoConsents(), snsSettings: {},
       nextId: id, signedIn: false, meId: PERSONA.manager,
     };
   }
@@ -522,6 +565,9 @@
     if (!Array.isArray(state.staff)) state.staff = buildDemoStaff();  // saved before 직원 관리 existed
     ['schedule', 'staffMonthly', 'payrollMonths'].forEach((k) => { if (!Array.isArray(state[k])) state[k] = []; });
     if (!Array.isArray(state.dailySales)) state.dailySales = buildDemoDailySales();
+    if (!Array.isArray(state.snsPosts)) state.snsPosts = [];
+    if (!Array.isArray(state.snsConsents)) state.snsConsents = buildDemoConsents();
+    if (!state.snsSettings || typeof state.snsSettings !== 'object') state.snsSettings = {};
     // Sample 지점 설정 prices so 지점별 가격 비교 has something to show (once per saved demo)
     if (!state.branchPricesSeeded) {
       [['br02', 'CL-OX6', { cost_price: 8200 }], ['br02', 'RT-OIL', { retail_price: 24000 }], ['br02', 'RT-ESS', { cost_price: 9200, retail_price: 25000 }],
@@ -554,6 +600,12 @@
     const isMember = (b) => me().active && (me().role === 'admin' || me().branch_id === b);
     const isManager = (b) => me().active && (me().role === 'admin' || (me().role === 'manager' && me().branch_id === b));
     const must = (cond, code) => { if (!cond) throw new AppError(code); };
+    const addDaysKey = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+    const SNS_FORMATS = { instagram: ['feed', 'carousel', 'reels', 'story'], facebook: ['post', 'video'], tiktok: ['video'], naver: ['news'] };
+    const SNS_THEMES = ['designer', 'lineup', 'best', 'product', 'service', 'before_after', 'store', 'tip', 'booking'];
+    const snsPostOk = (x) => (SNS_FORMATS[x.platform] || []).includes(x.format) && SNS_THEMES.includes(x.theme)
+      && (x.hashtags || '').length <= 500 && (x.shoot_note || '').length <= 300 && (x.source_note || '').length <= 200 && Boolean(x.day);
+    const consentOk = (cid, branchId, day) => state.snsConsents.some((c) => c.id === cid && c.branch_id === branchId && !c.revoked_at && c.signed_on <= day && c.expires_on >= day);
 
     function insertMovement(row) {
       const m = { id: state.nextId++, created_by: me().user_id, created_at: new Date().toISOString(), reverts_id: null, ...row };
@@ -670,6 +722,134 @@
         }
         save();
         return delay();
+      },
+      // SNS 홍보 — mirrors the sns_* functions in schema.sql
+      async getSnsSettings(branchId) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        return delay(state.snsSettings[branchId] ? clone(state.snsSettings[branchId]) : null);
+      },
+      async saveSnsSettings(branchId, v) {
+        must(isManager(branchId), 'FORBIDDEN');
+        const handle = trimOrNull(v.handle), hashtags = trimOrNull(v.hashtags);
+        must(['friendly', 'premium', 'trendy'].includes(v.tone) && Number.isInteger(v.daily_target) && v.daily_target >= 1 && v.daily_target <= 30
+          && (handle || '').length <= 40 && (hashtags || '').length <= 500, 'INVALID_SNS_SETTINGS');
+        state.snsSettings[branchId] = { handle, hashtags, tone: v.tone, daily_target: v.daily_target };
+        save();
+        return delay();
+      },
+      async listSnsPosts(branchId, from, to) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        return delay(clone(state.snsPosts.filter((x) => x.branch_id === branchId && x.day >= from && x.day <= to)
+          .sort((a, b) => a.day.localeCompare(b.day) || a.slot.localeCompare(b.slot) || a.created_at.localeCompare(b.created_at))));
+      },
+      async addSnsPosts(branchId, posts) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        must(Array.isArray(posts) && posts.length >= 1 && posts.length <= 40, 'INVALID_SNS_POST');
+        const today = new Date(Date.now() + KST).toISOString().slice(0, 10);
+        const rows = posts.map((x, i) => {
+          const title = trimOrNull(x.title), caption = trimOrNull(x.caption);
+          must(snsPostOk(x) && x.day >= addDaysKey(today, -1) && x.day <= addDaysKey(today, 60) && /^\d{2}:\d{2}$/.test(x.slot)
+            && title && title.length <= 60 && caption && caption.length <= 2200, 'INVALID_SNS_POST');
+          const at = new Date(Date.now() + i).toISOString();
+          return {
+            id: `sp${Date.now()}${i}${Math.floor(Math.random() * 1e4)}`, branch_id: branchId, day: x.day, slot: x.slot,
+            platform: x.platform, format: x.format, theme: x.theme, title, caption,
+            hashtags: trimOrNull(x.hashtags), shoot_note: trimOrNull(x.shoot_note), source_note: trimOrNull(x.source_note),
+            needs_consent: Boolean(x.needs_consent), consent_id: null, status: 'draft', review_note: null,
+            created_by: me().user_id, created_at: at, updated_at: at, approved_by: null, approved_at: null, posted_by: null, posted_at: null,
+          };
+        });
+        state.snsPosts.push(...rows);
+        save();
+        return delay(rows.length);
+      },
+      async updateSnsPost(id, v) {
+        const x = state.snsPosts.find((r) => r.id === id);
+        must(x, 'SNS_POST_NOT_FOUND');
+        must(isMember(x.branch_id), 'NOT_BRANCH_MEMBER');
+        must(x.status !== 'posted', 'SNS_POST_LOCKED');
+        must(!v.consent_id || consentOk(v.consent_id, x.branch_id, x.day), 'INVALID_CONSENT');
+        const title = trimOrNull(v.title), caption = trimOrNull(v.caption);
+        must(title && title.length <= 60 && caption && caption.length <= 2200 && (v.hashtags || '').length <= 500
+          && (v.shoot_note || '').length <= 300 && (!v.slot || /^\d{2}:\d{2}$/.test(v.slot)), 'INVALID_SNS_POST');
+        const status = x.status === 'rejected' ? 'draft'
+          : x.status === 'approved' && (!isManager(x.branch_id) || (x.needs_consent && !v.consent_id)) ? 'draft' : x.status;
+        Object.assign(x, {
+          slot: v.slot || x.slot, title, caption, hashtags: trimOrNull(v.hashtags), shoot_note: trimOrNull(v.shoot_note),
+          consent_id: v.consent_id || null, review_note: status === x.status ? x.review_note : null,
+          approved_by: status === 'approved' ? x.approved_by : null, approved_at: status === 'approved' ? x.approved_at : null,
+          status, updated_at: new Date().toISOString(),
+        });
+        save();
+        return delay(status);
+      },
+      async setSnsPostStatus(id, status, note) {
+        const x = state.snsPosts.find((r) => r.id === id);
+        must(x, 'SNS_POST_NOT_FOUND');
+        must(isMember(x.branch_id), 'NOT_BRANCH_MEMBER');
+        must(!['approved', 'rejected', 'draft'].includes(status) || isManager(x.branch_id), 'FORBIDDEN');
+        must((status === 'approved' && ['draft', 'rejected'].includes(x.status)) || (status === 'rejected' && ['draft', 'approved'].includes(x.status))
+          || (status === 'draft' && ['approved', 'rejected'].includes(x.status)) || (status === 'posted' && x.status === 'approved'), 'INVALID_SNS_STATUS');
+        must(!(status === 'approved' && x.needs_consent && !(x.consent_id && consentOk(x.consent_id, x.branch_id, x.day))), 'CONSENT_REQUIRED');
+        const now = new Date().toISOString();
+        Object.assign(x, {
+          status,
+          review_note: status === 'rejected' ? (trimOrNull(note) || '').slice(0, 200) || null : status === 'posted' ? x.review_note : null,
+          approved_by: status === 'approved' ? me().user_id : status === 'posted' ? x.approved_by : null,
+          approved_at: status === 'approved' ? now : status === 'posted' ? x.approved_at : null,
+          posted_by: status === 'posted' ? me().user_id : null, posted_at: status === 'posted' ? now : null,
+          updated_at: now,
+        });
+        save();
+        return delay();
+      },
+      async deleteSnsPost(id) {
+        const x = state.snsPosts.find((r) => r.id === id);
+        must(x, 'SNS_POST_NOT_FOUND');
+        must(isMember(x.branch_id), 'NOT_BRANCH_MEMBER');
+        must(x.status !== 'posted', 'SNS_POST_LOCKED');
+        must(x.status !== 'approved' || isManager(x.branch_id), 'FORBIDDEN');
+        state.snsPosts = state.snsPosts.filter((r) => r.id !== id);
+        save();
+        return delay();
+      },
+      async listSnsConsents(branchId) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        return delay(clone(state.snsConsents.filter((c) => c.branch_id === branchId)
+          .sort((a, b) => b.signed_on.localeCompare(a.signed_on) || b.created_at.localeCompare(a.created_at))));
+      },
+      async saveSnsConsent(branchId, c) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        const today = new Date(Date.now() + KST).toISOString().slice(0, 10);
+        const customer = trimOrNull(c.customer);
+        must(customer && customer.length <= 40 && ['photo', 'video', 'both'].includes(c.scope) && c.signed_on && c.expires_on
+          && c.signed_on <= today && c.expires_on >= c.signed_on && c.expires_on <= addDaysKey(c.signed_on, 1830) && (c.memo || '').length <= 200, 'INVALID_CONSENT');
+        const next = { customer, scope: c.scope, show_face: Boolean(c.show_face), signed_on: c.signed_on, expires_on: c.expires_on, memo: trimOrNull(c.memo) };
+        if (c.id) {
+          const row = state.snsConsents.find((r) => r.id === c.id && r.branch_id === branchId && !r.revoked_at);
+          must(row, 'CONSENT_NOT_FOUND');
+          Object.assign(row, next);
+          save();
+          return delay(row.id);
+        }
+        const row = { id: `sc${Date.now()}`, branch_id: branchId, ...next, created_by: me().user_id, created_at: new Date().toISOString(), revoked_at: null };
+        state.snsConsents.push(row);
+        save();
+        return delay(row.id);
+      },
+      async revokeSnsConsent(id) {
+        const c = state.snsConsents.find((r) => r.id === id && !r.revoked_at);
+        must(c, 'CONSENT_NOT_FOUND');
+        must(isManager(c.branch_id), 'FORBIDDEN');
+        const now = new Date().toISOString();
+        c.revoked_at = now;
+        state.snsPosts.forEach((x) => {
+          if (x.consent_id !== id) return;
+          if (x.status === 'approved') Object.assign(x, { status: 'draft', approved_by: null, approved_at: null, consent_id: null, updated_at: now });
+          else if (x.status !== 'posted') Object.assign(x, { consent_id: null, updated_at: now });
+        });
+        save();
+        return delay(state.snsPosts.filter((x) => x.consent_id === id && x.status === 'posted').length);
       },
       async listStaffNames(branchId) {
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');

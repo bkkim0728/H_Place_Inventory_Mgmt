@@ -6,9 +6,10 @@
 --   · 현재고 → 0 (안전재고·보관 위치·지점 가격·사용 여부는 그대로)  inventory.stock
 --   · 시술 매출 입력                                             daily_sales
 --   · 월 실적 입력·정산 확정                                      staff_monthly, payroll_months
+--   · SNS 홍보 게시물·고객 게시 동의 기록                          sns_posts, sns_consents
 --   · (선택) 근무표 기록: 연차·반차·휴무 등                        staff_schedule
 -- 그대로 두는 것:
---   지점 정보·사진, 로그인 계정, 카테고리, 제품 목록, 직원 정보·사진, 다른 지점의 모든 데이터
+--   지점 정보·사진, 로그인 계정, 카테고리, 제품 목록, 직원 정보·사진, SNS 설정, 다른 지점의 모든 데이터
 --
 -- 사용 방법 (Supabase → SQL Editor):
 --   1) 아래 [1단계]만 선택해 실행 → 정리될 건수를 확인합니다. (아무것도 지우지 않음)
@@ -30,6 +31,8 @@ select t.code as 지점코드, t.name as 지점명,
        (select count(*) from public.daily_sales s where s.branch_id = t.id)                 as 시술매출_입력,
        (select count(*) from public.staff_monthly s where s.branch_id = t.id)               as 월실적_입력,
        (select count(*) from public.payroll_months p where p.branch_id = t.id)              as 정산확정_월,
+       (select count(*) from public.sns_posts x where x.branch_id = t.id)                   as SNS_게시물,
+       (select count(*) from public.sns_consents x where x.branch_id = t.id)                as SNS_게시동의,
        (select count(*) from public.staff_schedule s where s.branch_id = t.id)              as 근무표_기록
 from t;
 
@@ -43,7 +46,7 @@ declare
   v_id         uuid;
   v_name       text;
   v_n          integer;
-  v_mv integer; v_stock integer; v_sales integer; v_monthly integer; v_payroll integer; v_sched integer := 0;
+  v_mv integer; v_stock integer; v_sales integer; v_monthly integer; v_payroll integer; v_sns integer; v_sched integer := 0;
 begin
   select count(*) into v_n from public.branches where name = v_branch or code = v_branch;
   if v_n = 0 then
@@ -74,13 +77,17 @@ begin
   delete from public.staff_monthly where branch_id = v_id;
   get diagnostics v_monthly = row_count;
 
+  delete from public.sns_posts where branch_id = v_id;
+  get diagnostics v_sns = row_count;
+  delete from public.sns_consents where branch_id = v_id;
+
   if v_schedule then
     delete from public.staff_schedule where branch_id = v_id;
     get diagnostics v_sched = row_count;
   end if;
 
-  raise notice '% 정리 완료: 입출고 기록 %건 삭제, 재고 %개 품목 0으로, 시술 매출 %일 삭제, 월 실적 %건·정산 확정 %개월 삭제, 근무표 %건 삭제',
-    v_name, v_mv, v_stock, v_sales, v_monthly, v_payroll, v_sched;
+  raise notice '% 정리 완료: 입출고 기록 %건 삭제, 재고 %개 품목 0으로, 시술 매출 %일 삭제, 월 실적 %건·정산 확정 %개월 삭제, SNS 게시물 %건 삭제, 근무표 %건 삭제',
+    v_name, v_mv, v_stock, v_sales, v_monthly, v_payroll, v_sns, v_sched;
 end;
 $$;
 
@@ -95,5 +102,7 @@ select t.code as 지점코드, t.name as 지점명,
        (select count(*) from public.daily_sales s where s.branch_id = t.id)                 as 시술매출_입력,
        (select count(*) from public.staff_monthly s where s.branch_id = t.id)               as 월실적_입력,
        (select count(*) from public.payroll_months p where p.branch_id = t.id)              as 정산확정_월,
+       (select count(*) from public.sns_posts x where x.branch_id = t.id)                   as SNS_게시물,
+       (select count(*) from public.sns_consents x where x.branch_id = t.id)                as SNS_게시동의,
        (select count(*) from public.staff_schedule s where s.branch_id = t.id)              as 근무표_기록
 from t;

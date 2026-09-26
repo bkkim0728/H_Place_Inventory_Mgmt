@@ -453,6 +453,66 @@ ok((await err(mgr, () => q(`select save_daily_sales($1,($2::date + 1),1,1,null)`
 await as(mgr, () => q(`select save_daily_sales($1,$2,0,0,' ')`, [b1, today]));
 ok((await one(`select count(*)::int n from daily_sales where branch_id=$1 and day=$2`, [b1, today])).n === 0, 'all zero clears the day');
 
+console.log('SNS 홍보');
+{
+  const oth = await mk('sns-b2@x.kr');  // manager of the other branch
+  await db.query(`update profiles set branch_id=$1, role='manager' where user_id=$2`, [b2, oth]);
+  const post = (o = {}) => ({ day: today, slot: '11:00', platform: 'instagram', format: 'feed', theme: 'designer', title: '오늘의 디자이너', caption: '안녕하세요', hashtags: '#미용실', ...o });
+  const add = (uid, b, posts) => as(uid, () => one(`select add_sns_posts($1,$2::jsonb) n`, [b, JSON.stringify(posts)]));
+  ok((await add(staff, b1, [post(), post({ platform: 'tiktok', format: 'video', theme: 'before_after', needs_consent: true }), post({ platform: 'naver', format: 'news', theme: 'store' })])).n === 3, 'staff adds drafts for their branch');
+  ok((await err(staff, () => q(`select add_sns_posts($1,$2::jsonb)`, [b2, JSON.stringify([post()])])))?.includes('NOT_BRANCH_MEMBER'), 'cannot add drafts to another branch');
+  ok((await err(staff, () => q(`select add_sns_posts($1,$2::jsonb)`, [b1, JSON.stringify([post({ platform: 'tiktok', format: 'story' })])])))?.includes('INVALID_SNS_POST'), 'platform/format mismatch rejected');
+  ok((await err(staff, () => q(`select add_sns_posts($1,$2::jsonb)`, [b1, JSON.stringify([post({ caption: ' ' })])])))?.includes('INVALID_SNS_POST'), 'empty caption rejected');
+  ok((await err(staff, () => q(`select add_sns_posts($1,$2::jsonb)`, [b1, JSON.stringify([post({ day: '2020-01-01' })])])))?.includes('INVALID_SNS_POST'), 'old posting day rejected');
+  ok((await err(staff, () => q(`select add_sns_posts($1,'[]'::jsonb)`, [b1])))?.includes('INVALID_SNS_POST'), 'empty batch rejected');
+  ok((await as(oth, () => q(`select * from sns_posts`))).length === 0, 'other branch cannot read the posts');
+  const ids = Object.fromEntries((await q(`select theme, id from sns_posts where branch_id=$1`, [b1])).map((r) => [r.theme, r.id]));
+
+  ok((await err(staff, () => q(`select set_sns_post_status($1,'approved',null)`, [ids.designer])))?.includes('FORBIDDEN'), 'staff cannot approve');
+  await as(mgr, () => q(`select set_sns_post_status($1,'approved',null)`, [ids.designer]));
+  ok((await one(`select status, approved_by from sns_posts where id=$1`, [ids.designer])).approved_by === mgr, 'manager approves');
+  ok((await err(mgr, () => q(`select set_sns_post_status($1,'approved',null)`, [ids.before_after])))?.includes('CONSENT_REQUIRED'), 'customer post needs a consent to be approved');
+  ok((await as(staff, () => one(`select update_sns_post($1,'12:30','오늘의 디자이너','문구 수정',null,null,null) s`, [ids.designer]))).s === 'draft', 'staff edit sends an approved post back to 초안');
+  await as(mgr, () => q(`select set_sns_post_status($1,'approved',null)`, [ids.designer]));
+  ok((await as(mgr, () => one(`select update_sns_post($1,null,'오늘의 디자이너','점장 수정',null,null,null) s`, [ids.designer]))).s === 'approved', 'manager edit keeps the approval');
+
+  const signed = (await one(`select ($1::date - 3)::text d`, [today])).d;
+  const cid = (await as(staff, () => one(`select save_sns_consent(null,$1,'김○○ (1234)','both',true,$2::date,($2::date + 365),null) id`, [b1, signed]))).id;
+  ok(Boolean(cid), 'staff records a customer consent');
+  ok((await err(staff, () => q(`select save_sns_consent(null,$1,'x','both',false,($2::date + 1),($2::date + 30),null)`, [b1, today])))?.includes('INVALID_CONSENT'), 'future consent date rejected');
+  ok((await err(oth, () => q(`select update_sns_post($1,null,'t','c',null,null,$2)`, [ids.before_after, cid])))?.includes('NOT_BRANCH_MEMBER'), 'other branch cannot edit');
+  const cid2 = (await as(oth, () => one(`select save_sns_consent(null,$1,'박○○','photo',false,$2::date,($2::date + 30),null) id`, [b2, today]))).id;
+  ok((await err(staff, () => q(`select update_sns_post($1,null,'t','c',null,null,$2)`, [ids.before_after, cid2])))?.includes('INVALID_CONSENT'), "another branch's consent cannot be attached");
+  await as(staff, () => q(`select update_sns_post($1,null,'시술 전후','전후 영상',null,null,$2)`, [ids.before_after, cid]));
+  await as(mgr, () => q(`select set_sns_post_status($1,'approved',null)`, [ids.before_after]));
+  ok((await one(`select status from sns_posts where id=$1`, [ids.before_after])).status === 'approved', 'approved once the consent is attached');
+
+  ok((await err(staff, () => q(`select set_sns_post_status($1,'posted',null)`, [ids.store])))?.includes('INVALID_SNS_STATUS'), 'only approved posts can be marked 게시 완료');
+  await as(staff, () => q(`select set_sns_post_status($1,'posted',null)`, [ids.designer]));
+  const posted = await one(`select status, posted_by, approved_by from sns_posts where id=$1`, [ids.designer]);
+  ok(posted.status === 'posted' && posted.posted_by === staff && posted.approved_by === mgr, 'staff marks an approved post 게시 완료, approval kept');
+  ok((await err(mgr, () => q(`select update_sns_post($1,null,'t','c',null,null,null)`, [ids.designer])))?.includes('SNS_POST_LOCKED'), 'published posts cannot be edited');
+  ok((await err(mgr, () => q(`select delete_sns_post($1)`, [ids.designer])))?.includes('SNS_POST_LOCKED'), 'published posts cannot be deleted');
+  await as(mgr, () => q(`select set_sns_post_status($1,'rejected','사진 교체 필요')`, [ids.store]));
+  ok((await one(`select status, review_note from sns_posts where id=$1`, [ids.store])).review_note === '사진 교체 필요', 'manager returns a post with a note');
+  ok((await as(staff, () => one(`select update_sns_post($1,null,'매장 소식','새 사진으로 교체',null,null,null) s`, [ids.store]))).s === 'draft', 'editing a returned post resubmits it');
+
+  ok((await err(staff, () => q(`select revoke_sns_consent($1)`, [cid])))?.includes('FORBIDDEN'), 'staff cannot record a withdrawal');
+  await as(mgr, () => q(`select set_sns_post_status($1,'approved',null)`, [ids.store]));
+  ok((await as(mgr, () => one(`select revoke_sns_consent($1) n`, [cid]))).n === 0, 'manager records a withdrawal (none published)');
+  const ba = await one(`select status, consent_id from sns_posts where id=$1`, [ids.before_after]);
+  ok(ba.status === 'draft' && ba.consent_id === null, 'approved post relying on it goes back to 초안');
+  ok((await err(staff, () => q(`select delete_sns_post($1)`, [ids.store])))?.includes('FORBIDDEN'), 'staff cannot delete an approved post');
+  await as(staff, () => q(`select delete_sns_post($1)`, [ids.before_after]));
+  ok(!(await one(`select 1 x from sns_posts where id=$1`, [ids.before_after])), 'staff deletes a draft');
+
+  await as(mgr, () => q(`select save_sns_settings($1,'@hplace','#서초미용실 #아크로비스타','premium',14)`, [b1]));
+  ok((await as(staff, () => one(`select daily_target from sns_settings where branch_id=$1`, [b1]))).daily_target === 14, 'manager saves SNS settings; staff can read them');
+  ok((await err(staff, () => q(`select save_sns_settings($1,null,null,'friendly',12)`, [b1])))?.includes('FORBIDDEN'), 'staff cannot change SNS settings');
+  ok((await err(mgr, () => q(`select save_sns_settings($1,null,null,'loud',12)`, [b1])))?.includes('INVALID_SNS_SETTINGS'), 'unknown tone rejected');
+  ok((await err(null, () => q(`select * from sns_posts`)))?.includes('permission denied'), 'anon cannot read posts');
+}
+
 console.log('reset_branch_test_data.sql (본사 정리 스크립트)');
 {
   const script = readFileSync(root + 'reset_branch_test_data.sql', 'utf8');
@@ -464,10 +524,11 @@ console.log('reset_branch_test_data.sql (본사 정리 스크립트)');
       (select coalesce(sum(stock),0)::int from inventory where branch_id=$1) stock,
       (select count(*)::int from daily_sales where branch_id=$1) sales,
       (select count(*)::int from staff_monthly where branch_id=$1) monthly,
-      (select count(*)::int from staff_schedule where branch_id=$1) sched`, [b]);
+      (select count(*)::int from staff_schedule where branch_id=$1) sched,
+      (select count(*)::int from sns_posts where branch_id=$1) + (select count(*)::int from sns_consents where branch_id=$1) sns`, [b]);
   const before1 = await counts(b1), before2 = await counts(b2);
   const keep = await one(`select (select count(*)::int from products) p, (select count(*)::int from staff) s, (select count(*)::int from inventory) i, (select count(*)::int from branches) b`);
-  ok(before1.mv > 0 && before1.stock > 0 && before1.sales > 0, 'test branch has records before the reset');
+  ok(before1.mv > 0 && before1.stock > 0 && before1.sales > 0 && before1.sns > 0, 'test branch has records before the reset');
   let e1 = null; try { await db.exec(forBranch('BR01')); } catch (x) { e1 = x.message; }
   ok(e1?.includes('확인 전이라'), 'without 예 the script stops and deletes nothing');
   ok(JSON.stringify(await counts(b1)) === JSON.stringify(before1), 'nothing changed before confirming');
@@ -475,7 +536,7 @@ console.log('reset_branch_test_data.sql (본사 정리 스크립트)');
   ok(e2?.includes('찾을 수 없습니다'), 'unknown branch is refused');
   await db.exec(forBranch('BR01').replace("v_confirm    text    := '아니오'", "v_confirm    text    := '예'"));
   const after1 = await counts(b1);
-  ok(after1.mv === 0 && after1.stock === 0 && after1.sales === 0 && after1.monthly === 0, 'movements, stock, 시술 매출 and 월 실적 cleared (by branch code)');
+  ok(after1.mv === 0 && after1.stock === 0 && after1.sales === 0 && after1.monthly === 0 && after1.sns === 0, 'movements, stock, 시술 매출, 월 실적 and SNS posts/consents cleared (by branch code)');
   ok(after1.sched === before1.sched, 'schedule kept unless asked');
   ok(JSON.stringify(await counts(b2)) === JSON.stringify(before2), 'other branch untouched');
   ok(JSON.stringify(await one(`select (select count(*)::int from products) p, (select count(*)::int from staff) s, (select count(*)::int from inventory) i, (select count(*)::int from branches) b`)) === JSON.stringify(keep), 'products, staff, inventory rows and branches kept');

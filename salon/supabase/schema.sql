@@ -1488,6 +1488,358 @@ $$;
 revoke all on function public.save_daily_sales(uuid, date, bigint, integer, text) from public, anon;
 grant execute on function public.save_daily_sales(uuid, date, bigint, integer, text) to authenticated;
 
+-- ---------------------------------------------------------------------------
+-- SNS 홍보: a daily post plan per branch. Anyone at the branch drafts and edits,
+-- the branch manager approves or sends back, and anyone at the branch marks an
+-- approved post as 게시 완료 after publishing it. A post that shows a customer
+-- (needs_consent) can be approved only with a valid 게시 동의 (sns_consents).
+-- ---------------------------------------------------------------------------
+create table if not exists public.sns_settings (
+  branch_id     uuid primary key references public.branches(id) on delete cascade,
+  handle        text,
+  hashtags      text,
+  tone          text not null default 'friendly',
+  daily_target  integer not null default 12,
+  updated_by    uuid references auth.users(id) on delete set null,
+  updated_at    timestamptz not null default now(),
+  constraint sns_settings_chk check (
+    tone in ('friendly', 'premium', 'trendy') and daily_target between 1 and 30
+    and char_length(coalesce(handle, '')) <= 40 and char_length(coalesce(hashtags, '')) <= 500)
+);
+
+create table if not exists public.sns_consents (
+  id          uuid primary key default gen_random_uuid(),
+  branch_id   uuid not null references public.branches(id) on delete cascade,
+  customer    text not null,
+  scope       text not null default 'both',
+  show_face   boolean not null default false,
+  signed_on   date not null,
+  expires_on  date not null,
+  memo        text,
+  created_by  uuid references auth.users(id) on delete set null,
+  created_at  timestamptz not null default now(),
+  revoked_at  timestamptz,
+  revoked_by  uuid references auth.users(id) on delete set null,
+  constraint sns_consents_chk check (
+    char_length(customer) between 1 and 40 and scope in ('photo', 'video', 'both')
+    and expires_on >= signed_on and char_length(coalesce(memo, '')) <= 200)
+);
+create index if not exists sns_consents_branch_idx on public.sns_consents (branch_id, signed_on desc);
+
+create table if not exists public.sns_posts (
+  id             uuid primary key default gen_random_uuid(),
+  branch_id      uuid not null references public.branches(id) on delete cascade,
+  day            date not null,
+  slot           time not null,
+  platform       text not null,
+  format         text not null,
+  theme          text not null,
+  title          text not null,
+  caption        text not null,
+  hashtags       text,
+  shoot_note     text,
+  source_note    text,
+  needs_consent  boolean not null default false,
+  consent_id     uuid references public.sns_consents(id) on delete set null,
+  status         text not null default 'draft',
+  review_note    text,
+  created_by     uuid references auth.users(id) on delete set null,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  approved_by    uuid references auth.users(id) on delete set null,
+  approved_at    timestamptz,
+  posted_by      uuid references auth.users(id) on delete set null,
+  posted_at      timestamptz,
+  constraint sns_posts_chk check (
+    ((platform = 'instagram' and format in ('feed', 'carousel', 'reels', 'story'))
+      or (platform = 'facebook' and format in ('post', 'video'))
+      or (platform = 'tiktok' and format = 'video')
+      or (platform = 'naver' and format = 'news'))
+    and theme in ('designer', 'lineup', 'best', 'product', 'service', 'before_after', 'store', 'tip', 'booking')
+    and status in ('draft', 'approved', 'rejected', 'posted')
+    and char_length(btrim(title)) between 1 and 60 and char_length(btrim(caption)) between 1 and 2200
+    and char_length(coalesce(hashtags, '')) <= 500 and char_length(coalesce(shoot_note, '')) <= 300
+    and char_length(coalesce(source_note, '')) <= 200 and char_length(coalesce(review_note, '')) <= 200)
+);
+create index if not exists sns_posts_branch_day_idx on public.sns_posts (branch_id, day, slot);
+
+alter table public.sns_settings enable row level security;
+alter table public.sns_consents enable row level security;
+alter table public.sns_posts    enable row level security;
+drop policy if exists "sns_settings: members read" on public.sns_settings;
+create policy "sns_settings: members read" on public.sns_settings
+  for select to authenticated using (public.is_branch_member(branch_id));
+drop policy if exists "sns_consents: members read" on public.sns_consents;
+create policy "sns_consents: members read" on public.sns_consents
+  for select to authenticated using (public.is_branch_member(branch_id));
+drop policy if exists "sns_posts: members read" on public.sns_posts;
+create policy "sns_posts: members read" on public.sns_posts
+  for select to authenticated using (public.is_branch_member(branch_id));
+revoke all on public.sns_settings, public.sns_consents, public.sns_posts from anon, authenticated;
+grant select on public.sns_settings, public.sns_consents, public.sns_posts to authenticated;
+
+-- A consent covers a post when it is from the same branch, not withdrawn and
+-- still valid on the posting day.
+create or replace function public.sns_consent_ok(p_consent_id uuid, p_branch_id uuid, p_day date)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.sns_consents c
+    where c.id = p_consent_id and c.branch_id = p_branch_id and c.revoked_at is null
+      and c.signed_on <= p_day and c.expires_on >= p_day
+  );
+$$;
+
+-- save_sns_settings: branch managers. Errors: FORBIDDEN, INVALID_SNS_SETTINGS
+create or replace function public.save_sns_settings(
+  p_branch_id uuid, p_handle text, p_hashtags text, p_tone text, p_daily_target integer
+)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if p_branch_id is null or not public.is_branch_manager(p_branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  begin
+    insert into public.sns_settings (branch_id, handle, hashtags, tone, daily_target, updated_by)
+    values (p_branch_id, nullif(btrim(p_handle), ''), nullif(btrim(p_hashtags), ''), coalesce(p_tone, 'friendly'), coalesce(p_daily_target, 12), auth.uid())
+    on conflict (branch_id) do update
+      set handle = excluded.handle, hashtags = excluded.hashtags, tone = excluded.tone,
+          daily_target = excluded.daily_target, updated_by = excluded.updated_by, updated_at = now();
+  exception when check_violation then
+    raise exception 'INVALID_SNS_SETTINGS' using errcode = '22023';
+  end;
+end;
+$$;
+
+-- add_sns_posts: new drafts (1–40 at a time) for a posting day from yesterday
+-- up to 60 days ahead. Returns how many were added.
+-- Errors: NOT_BRANCH_MEMBER, INVALID_SNS_POST
+create or replace function public.add_sns_posts(p_branch_id uuid, p_posts jsonb)
+returns integer
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
+  v_post jsonb;
+  v_day date;
+  v_n integer := 0;
+begin
+  if p_branch_id is null or not public.is_branch_member(p_branch_id) then
+    raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_posts) is distinct from 'array' or jsonb_array_length(p_posts) not between 1 and 40 then
+    raise exception 'INVALID_SNS_POST' using errcode = '22023';
+  end if;
+  for v_post in select value from jsonb_array_elements(p_posts) loop
+    begin
+      v_day := (v_post ->> 'day')::date;
+      if v_day is null or v_day < v_today - 1 or v_day > v_today + 60 then
+        raise exception 'INVALID_SNS_POST' using errcode = '22023';
+      end if;
+      insert into public.sns_posts (branch_id, day, slot, platform, format, theme, title, caption, hashtags,
+                                    shoot_note, source_note, needs_consent, created_by)
+      values (p_branch_id, v_day, (v_post ->> 'slot')::time, v_post ->> 'platform', v_post ->> 'format', v_post ->> 'theme',
+              btrim(v_post ->> 'title'), btrim(v_post ->> 'caption'), nullif(btrim(v_post ->> 'hashtags'), ''),
+              nullif(btrim(v_post ->> 'shoot_note'), ''), nullif(btrim(v_post ->> 'source_note'), ''),
+              coalesce((v_post ->> 'needs_consent')::boolean, false), auth.uid());
+    exception when check_violation or not_null_violation or invalid_datetime_format
+                or datetime_field_overflow or invalid_text_representation then
+      raise exception 'INVALID_SNS_POST' using errcode = '22023';
+    end;
+    v_n := v_n + 1;
+  end loop;
+  return v_n;
+end;
+$$;
+
+-- update_sns_post: edit a post that is not published yet. An edit by staff sends
+-- an approved post back for approval; an edit of a returned post resubmits it.
+-- Returns the post's status after the edit.
+-- Errors: SNS_POST_NOT_FOUND, NOT_BRANCH_MEMBER, SNS_POST_LOCKED, INVALID_CONSENT, INVALID_SNS_POST
+create or replace function public.update_sns_post(
+  p_post_id uuid, p_slot time, p_title text, p_caption text, p_hashtags text, p_shoot_note text, p_consent_id uuid
+)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v public.sns_posts;
+  v_status text;
+begin
+  select * into v from public.sns_posts where id = p_post_id for update;
+  if not found then raise exception 'SNS_POST_NOT_FOUND' using errcode = 'P0002'; end if;
+  if not public.is_branch_member(v.branch_id) then raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501'; end if;
+  if v.status = 'posted' then raise exception 'SNS_POST_LOCKED' using errcode = '22023'; end if;
+  if p_consent_id is not null and not public.sns_consent_ok(p_consent_id, v.branch_id, v.day) then
+    raise exception 'INVALID_CONSENT' using errcode = '22023';
+  end if;
+  v_status := case
+    when v.status = 'rejected' then 'draft'
+    when v.status = 'approved' and not public.is_branch_manager(v.branch_id) then 'draft'
+    when v.status = 'approved' and v.needs_consent and p_consent_id is null then 'draft'
+    else v.status end;
+  begin
+    update public.sns_posts
+       set slot = coalesce(p_slot, slot), title = btrim(p_title), caption = btrim(p_caption),
+           hashtags = nullif(btrim(p_hashtags), ''), shoot_note = nullif(btrim(p_shoot_note), ''),
+           consent_id = p_consent_id, status = v_status,
+           review_note = case when v_status = v.status then review_note else null end,
+           approved_by = case when v_status = 'approved' then approved_by end,
+           approved_at = case when v_status = 'approved' then approved_at end,
+           updated_at = now()
+     where id = p_post_id;
+  exception when check_violation or not_null_violation then
+    raise exception 'INVALID_SNS_POST' using errcode = '22023';
+  end;
+  return v_status;
+end;
+$$;
+
+-- set_sns_post_status:
+--   approved / rejected / draft (승인 취소) — branch managers; a post that shows a
+--     customer needs a valid consent to be approved
+--   posted — anyone at the branch, only after approval; published posts are final
+-- Errors: SNS_POST_NOT_FOUND, NOT_BRANCH_MEMBER, FORBIDDEN, INVALID_SNS_STATUS, CONSENT_REQUIRED
+create or replace function public.set_sns_post_status(p_post_id uuid, p_status text, p_note text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v public.sns_posts;
+begin
+  select * into v from public.sns_posts where id = p_post_id for update;
+  if not found then raise exception 'SNS_POST_NOT_FOUND' using errcode = 'P0002'; end if;
+  if not public.is_branch_member(v.branch_id) then raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501'; end if;
+  if p_status in ('approved', 'rejected', 'draft') and not public.is_branch_manager(v.branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if not ((p_status = 'approved' and v.status in ('draft', 'rejected'))
+       or (p_status = 'rejected' and v.status in ('draft', 'approved'))
+       or (p_status = 'draft' and v.status in ('approved', 'rejected'))
+       or (p_status = 'posted' and v.status = 'approved')) then
+    raise exception 'INVALID_SNS_STATUS' using errcode = '22023';
+  end if;
+  if p_status = 'approved' and v.needs_consent
+     and (v.consent_id is null or not public.sns_consent_ok(v.consent_id, v.branch_id, v.day)) then
+    raise exception 'CONSENT_REQUIRED' using errcode = '22023';
+  end if;
+  update public.sns_posts
+     set status = p_status,
+         review_note = case when p_status = 'rejected' then left(nullif(btrim(p_note), ''), 200) when p_status = 'posted' then review_note end,
+         approved_by = case p_status when 'approved' then auth.uid() when 'posted' then approved_by end,
+         approved_at = case p_status when 'approved' then now() when 'posted' then approved_at end,
+         posted_by = case when p_status = 'posted' then auth.uid() end,
+         posted_at = case when p_status = 'posted' then now() end,
+         updated_at = now()
+   where id = p_post_id;
+end;
+$$;
+
+-- delete_sns_post: staff delete drafts and returned posts; managers also
+-- approved ones. Published posts stay as the record.
+-- Errors: SNS_POST_NOT_FOUND, NOT_BRANCH_MEMBER, FORBIDDEN, SNS_POST_LOCKED
+create or replace function public.delete_sns_post(p_post_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v public.sns_posts;
+begin
+  select * into v from public.sns_posts where id = p_post_id for update;
+  if not found then raise exception 'SNS_POST_NOT_FOUND' using errcode = 'P0002'; end if;
+  if not public.is_branch_member(v.branch_id) then raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501'; end if;
+  if v.status = 'posted' then raise exception 'SNS_POST_LOCKED' using errcode = '22023'; end if;
+  if v.status = 'approved' and not public.is_branch_manager(v.branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  delete from public.sns_posts where id = p_post_id;
+end;
+$$;
+
+-- save_sns_consent: record (or correct) a customer's 게시 동의. Withdrawn
+-- consents cannot be edited. Errors: NOT_BRANCH_MEMBER, CONSENT_NOT_FOUND, INVALID_CONSENT
+create or replace function public.save_sns_consent(
+  p_consent_id uuid, p_branch_id uuid, p_customer text, p_scope text, p_show_face boolean,
+  p_signed_on date, p_expires_on date, p_memo text
+)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id uuid := p_consent_id;
+begin
+  if p_branch_id is null or not public.is_branch_member(p_branch_id) then
+    raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501';
+  end if;
+  if p_signed_on is null or p_expires_on is null or p_signed_on > (now() at time zone 'Asia/Seoul')::date
+     or p_expires_on > p_signed_on + 1830 then
+    raise exception 'INVALID_CONSENT' using errcode = '22023';
+  end if;
+  begin
+    if v_id is null then
+      insert into public.sns_consents (branch_id, customer, scope, show_face, signed_on, expires_on, memo, created_by)
+      values (p_branch_id, btrim(p_customer), coalesce(p_scope, 'both'), coalesce(p_show_face, false),
+              p_signed_on, p_expires_on, nullif(btrim(p_memo), ''), auth.uid())
+      returning id into v_id;
+    else
+      update public.sns_consents
+         set customer = btrim(p_customer), scope = coalesce(p_scope, 'both'), show_face = coalesce(p_show_face, false),
+             signed_on = p_signed_on, expires_on = p_expires_on, memo = nullif(btrim(p_memo), '')
+       where id = v_id and branch_id = p_branch_id and revoked_at is null;
+      if not found then raise exception 'CONSENT_NOT_FOUND' using errcode = 'P0002'; end if;
+    end if;
+  exception when check_violation or not_null_violation then
+    raise exception 'INVALID_CONSENT' using errcode = '22023';
+  end;
+  return v_id;
+end;
+$$;
+
+-- revoke_sns_consent: branch managers record a withdrawal. Approved posts that
+-- rely on it go back to 초안; returns how many already published posts use it
+-- (those must be taken down on the SNS itself).
+-- Errors: CONSENT_NOT_FOUND, FORBIDDEN
+create or replace function public.revoke_sns_consent(p_consent_id uuid)
+returns integer
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v public.sns_consents;
+  v_live integer;
+begin
+  select * into v from public.sns_consents where id = p_consent_id for update;
+  if not found or v.revoked_at is not null then raise exception 'CONSENT_NOT_FOUND' using errcode = 'P0002'; end if;
+  if not public.is_branch_manager(v.branch_id) then raise exception 'FORBIDDEN' using errcode = '42501'; end if;
+  update public.sns_consents set revoked_at = now(), revoked_by = auth.uid() where id = p_consent_id;
+  update public.sns_posts
+     set status = 'draft', approved_by = null, approved_at = null, consent_id = null, updated_at = now()
+   where consent_id = p_consent_id and status = 'approved';
+  update public.sns_posts set consent_id = null, updated_at = now()
+   where consent_id = p_consent_id and status in ('draft', 'rejected');
+  select count(*) into v_live from public.sns_posts where consent_id = p_consent_id and status = 'posted';
+  return v_live;
+end;
+$$;
+
+revoke all on function public.sns_consent_ok(uuid, uuid, date) from public, anon, authenticated;
+revoke all on function public.save_sns_settings(uuid, text, text, text, integer) from public, anon;
+revoke all on function public.add_sns_posts(uuid, jsonb) from public, anon;
+revoke all on function public.update_sns_post(uuid, time, text, text, text, text, uuid) from public, anon;
+revoke all on function public.set_sns_post_status(uuid, text, text) from public, anon;
+revoke all on function public.delete_sns_post(uuid) from public, anon;
+revoke all on function public.save_sns_consent(uuid, uuid, text, text, boolean, date, date, text) from public, anon;
+revoke all on function public.revoke_sns_consent(uuid) from public, anon;
+grant execute on function public.save_sns_settings(uuid, text, text, text, integer) to authenticated;
+grant execute on function public.add_sns_posts(uuid, jsonb) to authenticated;
+grant execute on function public.update_sns_post(uuid, time, text, text, text, text, uuid) to authenticated;
+grant execute on function public.set_sns_post_status(uuid, text, text) to authenticated;
+grant execute on function public.delete_sns_post(uuid) to authenticated;
+grant execute on function public.save_sns_consent(uuid, uuid, text, text, boolean, date, date, text) to authenticated;
+grant execute on function public.revoke_sns_consent(uuid) to authenticated;
+
 revoke all on function public.list_staff_names(uuid) from public, anon;
 revoke all on function public.set_schedule(uuid, date, text, text) from public, anon;
 revoke all on function public.save_staff_month(uuid, date, bigint, integer, bigint, text) from public, anon;
