@@ -1535,27 +1535,19 @@
   const productForm = $('#productForm');
   let editingId = null;
 
-  // 단위: common units, plus any already used in this branch, plus 직접 입력
+  // 단위: common units, plus any already used in this branch
   const UNITS = ['개', '병', '통', '박스', '팩', '롤', '세트', '튜브', '봉', '장', '캔', '매'];
-  const UNIT_CUSTOM = '__custom';
   function fillUnits(current) {
     const used = [...new Set(state.inventory.map((i) => i.unit).filter(Boolean))].filter((u) => !UNITS.includes(u)).sort((a, b) => a.localeCompare(b, 'ko'));
     const list = [...UNITS, ...used];
     if (current && !list.includes(current)) list.push(current);
-    $('#pUnit').innerHTML = list.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join('') + `<option value="${UNIT_CUSTOM}">직접 입력…</option>`;
+    $('#pUnit').innerHTML = list.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join('');
   }
   function setUnit(u) {
     fillUnits(u);
     $('#pUnit').value = u;
-    $('#pUnitCustom').value = '';
-    $('#pUnitCustom').hidden = true;
   }
-  const unitValue = () => ($('#pUnit').value === UNIT_CUSTOM ? $('#pUnitCustom').value.trim() : $('#pUnit').value);
-  $('#pUnit').addEventListener('change', () => {
-    const custom = $('#pUnit').value === UNIT_CUSTOM;
-    $('#pUnitCustom').hidden = !custom;
-    if (custom) $('#pUnitCustom').focus();
-  });
+  const unitValue = () => $('#pUnit').value;
 
   function openProduct(item) {
     productForm.reset();
@@ -1670,12 +1662,7 @@
       errors.push({ id: 'pSku', msg: '품목 코드 형식을 확인해 주세요.' });
     }
     if (!$('#pCategory').value) { fieldError($('#pCategory'), '카테고리를 선택해 주세요.'); errors.push({ id: 'pCategory', msg: '카테고리를 선택해 주세요.' }); }
-    if (!unitValue()) {
-      const el = $('#pUnit').value === UNIT_CUSTOM ? $('#pUnitCustom') : $('#pUnit');
-      fieldError(el, '단위를 선택하거나 입력해 주세요.');
-      const err = $('#pUnitErr'); err.textContent = '단위를 선택하거나 입력해 주세요.'; err.hidden = false;
-      errors.push({ id: el.id, msg: '단위를 선택하거나 입력해 주세요.' });
-    }
+    if (!unitValue()) { fieldError($('#pUnit'), '단위를 선택해 주세요.'); errors.push({ id: 'pUnit', msg: '단위를 선택해 주세요.' }); }
     const cost = intField('pCost', '매입가', true);
     const retail = intField('pRetail', '판매가', false);
     const safety = intField('pSafety', '안전재고', true);

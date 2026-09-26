@@ -859,7 +859,3 @@ body[data-route="hq"] #branchSelect { display: none; }
   .man-overview, .man-flow { display: none !important; }
   .man-no { background: #000 !important; color: #fff !important; }
 }
-
-/* 제품 등록: 단위 직접 입력 */
-#pUnitCustom { margin-top: 6px; }
-#pUnitCustom[hidden] { display: none; }
