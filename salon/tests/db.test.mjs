@@ -544,5 +544,68 @@ console.log('reset_branch_test_data.sql (본사 정리 스크립트)');
   ok((await counts(b1)).sched === 0, 'schedule cleared when v_schedule is true');
 }
 
+console.log('reset_branch_for_launch.sql (운영 시작 정리 · 다른 지점 보호)');
+{
+  const script = readFileSync(root + 'reset_branch_for_launch.sql', 'utf8');
+  const run = async ({ confirm = true, cutoff = today, products = true } = {}) => {
+    let sql = script.replace("date '2026-09-27';      -- 실제", `date '${cutoff}';      -- 실제`);
+    if (confirm) sql = sql.replace("v_confirm   text    := '아니오'", "v_confirm   text    := '예'");
+    if (!products) sql = sql.replace('v_products  boolean := true', 'v_products  boolean := false');
+    try { await db.exec(sql); return null; } catch (x) { return x.message; }
+  };
+  // Target branch with test data; b1 and b2 keep their own data
+  const t = (await one(`insert into branches(code,name) values('BR09','서초 아크로비스타점') returning id`)).id;
+  await q(`insert into inventory(branch_id, product_id, stock, safety_stock, location) select $1, id, 4, 2, '선반' from products`, [t]);
+  const mkp = async (sku) => (await one(`insert into products(sku,name,category,unit,cost_price) values($1,$1,(select name from categories limit 1),'개',1000) returning id`, [sku])).id;
+  const px = await mkp('TX-ONLY'), py = await mkp('TY-SHARED');
+  await q(`insert into inventory(branch_id, product_id) select b.id, p from branches b, unnest($1::uuid[]) p on conflict do nothing`, [[px, py]]);
+  await q(`update inventory set stock = 6 where branch_id=$1 and product_id = any($2::uuid[])`, [t, [px, py]]);
+  await q(`update inventory set stock = 3 where branch_id=$1 and product_id=$2`, [b2, py]);   // b2 uses TY-SHARED
+  await q(`insert into stock_movements(branch_id, product_id, type, quantity, stock_after, created_at)
+           select $1, product_id, 'receive', 4, 4, now() - interval '3 days' from inventory where branch_id=$1`, [t]);
+  const yday = (await one(`select ($1::date - 1)::text d`, [today])).d;
+  await q(`insert into daily_sales(branch_id, day, service_sales, service_count) values ($1,$2,900000,9)`, [t, yday]);
+  const st = (await one(`insert into staff(branch_id, name) values ($1,'아크로 디자이너') returning id`, [t])).id;
+  await q(`insert into staff_schedule(branch_id, staff_id, day, kind) values ($1,$2,$3,'annual')`, [t, st, yday]);
+  await q(`insert into sns_posts(branch_id, day, slot, platform, format, theme, title, caption) values ($1,$2,'11:00','instagram','feed','store','매장','소개')`, [t, today]);
+  await q(`insert into sns_settings(branch_id, hashtags) values ($1,'#서초미용실')`, [t]);
+
+  const others = async () => JSON.stringify(await q(`select
+      (select json_agg(m order by m.id) from stock_movements m where m.branch_id <> $1) mv,
+      (select json_agg(i order by i.branch_id, i.product_id) from inventory i where i.branch_id <> $1 and i.product_id <> $2) inv,
+      (select json_agg(p order by p.id) from products p where p.id <> $2) prod,
+      (select json_agg(s order by s.branch_id, s.day) from daily_sales s where s.branch_id <> $1) sales,
+      (select json_agg(s order by s.staff_id, s.month) from staff_monthly s where s.branch_id <> $1) monthly,
+      (select json_agg(s order by s.id) from staff s where s.branch_id <> $1) staff,
+      (select json_agg(s order by s.id) from sns_posts s where s.branch_id <> $1) sns`, [t, px]));
+  const before = await others();
+  const tCount = async () => one(`select (select count(*)::int from stock_movements where branch_id=$1) mv, (select count(*)::int from daily_sales where branch_id=$1) sales`, [t]);
+
+  ok((await run({ confirm: false }))?.includes('확인 전이라'), 'without 예 nothing is deleted');
+  ok((await tCount()).mv > 0, 'target still has records after the unconfirmed run');
+  ok((await run({ cutoff: '2000-01-01' }))?.includes('이후 입출고 기록'), 'stops when records exist on or after the launch date');
+  ok((await tCount()).mv > 0 && (await one(`select 1 x from products where id=$1`, [px])), 'nothing changed after the stop');
+
+  ok((await run()) === null, 'runs with 예 and a launch date after the test records');
+  const c = await tCount();
+  ok(c.mv === 0 && c.sales === 0, 'target movements and 시술 매출 deleted');
+  ok(!(await one(`select 1 x from products where id=$1`, [px])), 'product used only by the target is deleted from the catalog');
+  ok(Boolean(await one(`select 1 x from products where id=$1`, [py])), 'product used by another branch is kept');
+  ok(Boolean(await one(`select 1 x from products where sku='CL-6N'`)), 'seed products configured in other branches are kept');
+  const inv = await one(`select count(*)::int n, sum(stock)::int s, count(*) filter (where in_use)::int used, count(*) filter (where safety_stock <> 0 or location is not null)::int set from inventory where branch_id=$1`, [t]);
+  ok(inv.n > 0 && inv.s === 0 && inv.used === 0 && inv.set === 0, 'kept products are reset and hidden at the target only');
+  ok((await others()) === before, 'other branches: movements, inventory, products, sales, 실적, staff and SNS identical');
+  ok((await one(`select stock from inventory where branch_id=$1 and product_id=$2`, [b2, py])).stock === 3, "other branch's stock of the shared product unchanged");
+  const kept = await one(`select (select count(*)::int from staff where branch_id=$1) staff, (select count(*)::int from staff_schedule where branch_id=$1) sched,
+      (select count(*)::int from sns_posts where branch_id=$1) sns, (select count(*)::int from sns_settings where branch_id=$1) sset`, [t]);
+  ok(kept.staff === 1 && kept.sched === 1 && kept.sns === 1 && kept.sset === 1, 'target staff, 근무표 and SNS kept');
+
+  // v_products = false: nothing leaves the catalog
+  const pz = await mkp('TZ-ONLY');
+  await q(`insert into inventory(branch_id, product_id) select b.id, $1 from branches b on conflict do nothing`, [pz]);
+  await q(`update inventory set stock=2, in_use=true where branch_id=$1 and product_id=$2`, [t, pz]);
+  ok((await run({ products: false })) === null && Boolean(await one(`select 1 x from products where id=$1`, [pz])), 'v_products false keeps every product and only hides it at the target');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
