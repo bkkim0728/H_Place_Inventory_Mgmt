@@ -453,5 +453,35 @@ ok((await err(mgr, () => q(`select save_daily_sales($1,($2::date + 1),1,1,null)`
 await as(mgr, () => q(`select save_daily_sales($1,$2,0,0,' ')`, [b1, today]));
 ok((await one(`select count(*)::int n from daily_sales where branch_id=$1 and day=$2`, [b1, today])).n === 0, 'all zero clears the day');
 
+console.log('reset_branch_test_data.sql (본사 정리 스크립트)');
+{
+  const script = readFileSync(root + 'reset_branch_test_data.sql', 'utf8');
+  const forBranch = (name) => script.replaceAll("'본사'", `'${name}'`);
+  // make sure there is something to clear in both branches
+  await q(`insert into daily_sales(branch_id, day, service_sales, service_count) values ($1,$2,1000000,10), ($3,$2,500000,5) on conflict do nothing`, [b1, today, b2]);
+  const counts = async (b) => one(`select
+      (select count(*)::int from stock_movements where branch_id=$1) mv,
+      (select coalesce(sum(stock),0)::int from inventory where branch_id=$1) stock,
+      (select count(*)::int from daily_sales where branch_id=$1) sales,
+      (select count(*)::int from staff_monthly where branch_id=$1) monthly,
+      (select count(*)::int from staff_schedule where branch_id=$1) sched`, [b]);
+  const before1 = await counts(b1), before2 = await counts(b2);
+  const keep = await one(`select (select count(*)::int from products) p, (select count(*)::int from staff) s, (select count(*)::int from inventory) i, (select count(*)::int from branches) b`);
+  ok(before1.mv > 0 && before1.stock > 0 && before1.sales > 0, 'test branch has records before the reset');
+  let e1 = null; try { await db.exec(forBranch('BR01')); } catch (x) { e1 = x.message; }
+  ok(e1?.includes('확인 전이라'), 'without 예 the script stops and deletes nothing');
+  ok(JSON.stringify(await counts(b1)) === JSON.stringify(before1), 'nothing changed before confirming');
+  let e2 = null; try { await db.exec(forBranch('없는지점').replace("v_confirm    text    := '아니오'", "v_confirm    text    := '예'")); } catch (x) { e2 = x.message; }
+  ok(e2?.includes('찾을 수 없습니다'), 'unknown branch is refused');
+  await db.exec(forBranch('BR01').replace("v_confirm    text    := '아니오'", "v_confirm    text    := '예'"));
+  const after1 = await counts(b1);
+  ok(after1.mv === 0 && after1.stock === 0 && after1.sales === 0 && after1.monthly === 0, 'movements, stock, 시술 매출 and 월 실적 cleared (by branch code)');
+  ok(after1.sched === before1.sched, 'schedule kept unless asked');
+  ok(JSON.stringify(await counts(b2)) === JSON.stringify(before2), 'other branch untouched');
+  ok(JSON.stringify(await one(`select (select count(*)::int from products) p, (select count(*)::int from staff) s, (select count(*)::int from inventory) i, (select count(*)::int from branches) b`)) === JSON.stringify(keep), 'products, staff, inventory rows and branches kept');
+  await db.exec(forBranch('BR01').replace("v_confirm    text    := '아니오'", "v_confirm    text    := '예'").replace("v_schedule   boolean := false", "v_schedule   boolean := true"));
+  ok((await counts(b1)).sched === 0, 'schedule cleared when v_schedule is true');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
