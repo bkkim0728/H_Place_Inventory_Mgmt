@@ -827,3 +827,35 @@ body[data-route="hq"] #branchSelect { display: none; }
   .ru-des td::before { content: none; }
   .ru-grid .table-wrap:has(.ru-des) { border: 1px solid var(--border); border-radius: var(--radius-sm); }
 }
+
+/* 사용 매뉴얼 · 업무 프로세스 */
+.man-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
+.man-overview[hidden] { display: none; }
+.man-proc-card { display: flex; flex-direction: column; gap: var(--space-2); }
+.man-proc-card p { margin: 0; }
+.man-proc-go { align-self: flex-start; margin-top: auto; }
+.man-proc-head { display: flex; align-items: center; gap: 10px; }
+.man-proc-head h2 { font-size: 17px; margin: 0; }
+.man-proc-no { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 15px; background: var(--accent); color: var(--on-accent); }
+.man-proc-intro { margin: 6px 0 var(--space-3); }
+.man-flow { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 0; }
+.man-flow[hidden] { display: none; }
+.man-flow li { display: inline-flex; align-items: center; }
+.man-flow li + li::before { content: ""; width: 14px; height: 2px; margin: 0 4px; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 2px; }
+.man-flow-step { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px 0 4px; border-radius: 999px; border: 1px solid var(--border-strong);
+  background: var(--surface-2); color: var(--fg); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
+.man-flow-step:hover { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.man-flow-step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.man-flow-no { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11.5px; font-weight: 800; background: var(--accent); color: var(--on-accent); }
+.man-flow-mini .man-flow-step { min-height: 26px; font-size: 12px; padding-right: 9px; }
+.man-flow-mini .man-flow-no { width: 18px; height: 18px; font-size: 10.5px; }
+.man-flow-mini li + li::before { width: 8px; margin: 0 2px; }
+.man-no { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 800;
+  background: var(--accent-soft); color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
+.man-item[open] .man-no { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.man-process .man-item { scroll-margin-top: 90px; }
+@media (max-width: 1100px) { .man-overview { grid-template-columns: minmax(0, 1fr); } }
+@media print {
+  .man-overview, .man-flow { display: none !important; }
+  .man-no { background: #000 !important; color: #fff !important; }
+}
