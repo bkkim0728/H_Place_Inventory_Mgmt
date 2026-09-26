@@ -55,6 +55,7 @@
     branches: '지점 관리',
     manual: '사용 매뉴얼',
     hq: '전체현황',
+    sns: 'SNS 홍보',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users', 'hq'];  // branch managers use 직원 관리 and 지점 관리 instead
@@ -243,6 +244,7 @@
     if (state.route === 'report') loadReport();
     if (state.route === 'schedule') loadSchedule();
     if (state.route === 'payroll') loadPayroll();
+    if (state.route === 'sns') loadSns(); else refreshSnsBadge();
   });
 
   $('#demoRole').addEventListener('change', async (e) => {
@@ -275,6 +277,7 @@
       if (state.mv.days === 'custom' && state.mv.from) loadMovementRange();
       $('#loadError').hidden = true;
       renderAll();
+      if (state.route === 'sns') renderSns(); else refreshSnsBadge();
     } catch (e) {
       const err = api.toAppError(e);
       if (err.code === 'NOT_AUTHENTICATED') return showLogin(err.message);
@@ -304,6 +307,7 @@
       else if (r === 'payroll') await loadPayroll();
       else if (r === 'users') await loadUsers();
       else if (r === 'hq') await loadHq();
+      else if (r === 'sns') await loadSns();
       else if (r === 'branches') {
         state.branches = await api.listBranches();
         state.branch = state.branches.find((b) => b.id === state.branch.id) || state.branch;
@@ -366,6 +370,7 @@
     if (route === 'manual') renderManual();
     if (route === 'sales') loadSales();
     if (route === 'hq') loadHq();
+    if (route === 'sns') loadSns();
     closeSidebar();
     if (moveFocus) $('#main').focus({ preventScroll: true });
     window.scrollTo(0, 0);
@@ -378,7 +383,11 @@
   const ROLE_NAMES = { admin: '전체 관리자', manager: '지점 관리자', staff: '직원' };
   function renderManual() {
     const role = state.profile?.role || 'staff';
-    $('#manRoleNote').textContent = `${ROLE_NAMES[role] || '직원'}${state.branch && role !== 'admin' ? ` · ${state.branch.name}` : ''} 권한에서 쓸 수 있는 단계만 보여 줍니다. 1 제품관리 → 2 근무관리 → 3 매장 레포트 순서로 따라 해 보세요.`;
+    $('#manRoleNote').textContent = `${ROLE_NAMES[role] || '직원'}${state.branch && role !== 'admin' ? ` · ${state.branch.name}` : ''} 권한에서 쓸 수 있는 단계만 보여 줍니다. 프로세스 번호 순서대로 따라 해 보세요.`;
+    // Number the processes this role can see (매장 레포트 is hidden for staff)
+    const procs = $$('.man-proc-card').filter((c) => getComputedStyle(c).display !== 'none').map((c) => c.dataset.manJump);
+    procs.forEach((k, i) => { $$(`[data-man-jump="${k}"] .man-proc-no, #man-${k} > .man-proc-head .man-proc-no`).forEach((n) => { n.textContent = String(i + 1); }); });
+    $$('.man-toc .man-chip').forEach((c) => { const i = procs.indexOf(c.dataset.manJump); if (i >= 0) c.textContent = c.textContent.replace(/^\d+\./, `${i + 1}.`); });
     // Number the steps this role can see and draw each process as a flow
     $$('.man-process').forEach((g) => {
       const steps = $$('.man-item', g).filter((d) => getComputedStyle(d).display !== 'none');
@@ -3405,6 +3414,755 @@
       if (dsTrigger) dsTrigger.focus();
     } catch (ex) {
       showServerError(dsForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // SNS 홍보: a daily post plan built from the branch's own data (근무표,
+  // 판매 내역, 재고, 재료 사용). Anyone at the branch drafts and edits, the
+  // branch manager approves, anyone marks 게시 완료 after posting it.
+  // ------------------------------------------------------------------
+  const SNS_PLATFORM = {
+    instagram: { label: '인스타그램', color: 1 },
+    facebook: { label: '페이스북', color: 2 },
+    tiktok: { label: '틱톡', color: 3 },
+    naver: { label: '네이버 플레이스', color: 4 },
+  };
+  const SNS_FORMAT = { feed: '피드', carousel: '캐러셀', reels: '릴스', story: '스토리', post: '게시물', video: '영상', news: '소식' };
+  const SNS_THEME = {
+    designer: '디자이너 소개', lineup: '오늘의 라인업', best: '베스트 제품', product: '추천 제품', service: '시술 과정',
+    before_after: '시술 전후', store: '매장 소개', tip: '홈케어 팁', booking: '예약 안내',
+  };
+  const SNS_STATUS = {
+    draft: { label: '승인 대기', tag: 'tag-warn' },
+    approved: { label: '승인됨', tag: 'tag-sale' },
+    rejected: { label: '반려', tag: 'tag-off' },
+    posted: { label: '게시 완료', tag: 'tag-receive' },
+  };
+  const SNS_TONE = { friendly: '친근하게', premium: '고급스럽게', trendy: '트렌디하게' };
+  const CONSENT_SCOPE = { photo: '사진', video: '영상', both: '사진·영상' };
+  const SVC_TAGS = {
+    color: '#염색 #뿌리염색 #염색잘하는곳', perm: '#펌 #볼륨펌 #펌잘하는곳', clinic: '#헤어클리닉 #손상모케어',
+    scalp: '#두피케어 #두피스케일링', cut: '#커트 #레이어드컷', styling: '#드라이 #헤어스타일링', updo: '#업스타일 #웨딩헤어',
+  };
+  const SVC_QUOTE = {
+    color: '피부 톤에 맞는 컬러를 함께 찾아 드릴게요.', perm: '손질이 쉬운 자연스러운 컬을 만들어 드려요.',
+    cut: '얼굴형에 맞춘 커트로 매일 아침이 편해져요.', clinic: '손상모도 꾸준히 관리하면 다시 건강해져요.',
+    scalp: '건강한 모발은 건강한 두피에서 시작해요.', updo: '특별한 날, 가장 빛나는 스타일을 만들어 드려요.',
+    styling: '평소에도 쉽게 따라 할 수 있는 스타일링을 알려 드려요.',
+  };
+  const SVC_TIPS = {
+    color: ['염색 컬러 오래 유지하는 법', ['염색 당일에는 샴푸를 쉬어 주세요.', '뜨거운 물 대신 미지근한 물로 헹궈 주세요.', '드라이 전에 에센스를 발라 열로부터 컬러를 지켜 주세요.']],
+    perm: ['펌 컬 살리는 드라이법', ['수건으로 비비지 말고 꾹꾹 눌러 물기를 빼 주세요.', '에센스를 바른 뒤 손으로 컬을 말아 쥐어 주세요.', '드라이어는 약한 바람으로 아래에서 위로 말려 주세요.']],
+    clinic: ['손상모 홈케어 루틴', ['샴푸 후 트리트먼트는 끝부분 위주로 3분 두었다 헹궈 주세요.', '자기 전 오일을 한두 방울만 발라 주세요.', '고데기는 150도 이하로 짧게 사용하세요.']],
+    scalp: ['두피 관리 루틴', ['샴푸는 저녁에, 손끝으로 두피를 마사지하듯 감아 주세요.', '두피부터 완전히 말린 뒤 잠자리에 드세요.', '일주일에 한 번 스케일링 샴푸로 각질을 정리해 주세요.']],
+  };
+  const catToService = (cat) => (/염|탈색/.test(cat) ? 'color' : /펌/.test(cat) ? 'perm' : /두피/.test(cat) ? 'scalp' : /클리닉|트리트먼트/.test(cat) ? 'clinic' : null);
+  const hhmm = (t) => String(t || '').slice(0, 5);
+  // 받침 → the first particle form (을/이/과/이에요), otherwise the second
+  const josa = (w, withB, without) => { const c = String(w).trim().slice(-1).charCodeAt(0); return `${w}${c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? withB : without}`; };
+  const dotDate = (k) => k.replace(/-/g, '.');
+
+  state.sn = { day: '', platform: '', status: '', posts: [], consents: [], settings: null, people: [], sched: [], moves: [], loading: false, ticket: 0, loadedFor: '' };
+
+  async function loadSns() {
+    if (!state.branch) return;
+    const f = state.sn;
+    if (!f.day) f.day = todayKey();
+    const bid = state.branch.id, day = f.day;
+    const ticket = (f.ticket += 1);
+    f.loading = true;
+    renderSns();
+    try {
+      const [settings, posts, consents, people, sched, moves] = await Promise.all([
+        api.getSnsSettings(bid),
+        api.listSnsPosts(bid, day, day),
+        api.listSnsConsents(bid),
+        (isManager() ? api.listStaff(bid) : api.listStaffNames(bid)).catch(() => []),
+        api.listSchedule(bid, day, addDays(day, 1)).catch(() => []),
+        api.listMovementsBetween(bid, addDays(todayKey(), -27), todayKey()).catch(() => []),
+      ]);
+      if (ticket !== f.ticket) return;
+      Object.assign(f, { settings, posts, consents, people, sched, moves, loadedFor: `${bid}|${day}` });
+      $('#snError').hidden = true;
+      if (day === todayKey()) setSnsBadge(posts);
+    } catch (ex) {
+      if (ticket !== f.ticket) return;
+      Object.assign(f, { posts: [], consents: [], loadedFor: '' });
+      $('#snError').textContent = api.toAppError(ex).message;
+      $('#snError').hidden = false;
+    }
+    f.loading = false;
+    renderSns();
+  }
+
+  // Nav badge: what waits on this person today (managers: 승인 대기, staff: 승인됨 · 게시 전)
+  function setSnsBadge(posts) {
+    const n = posts.filter((p) => p.status === (isManager() ? 'draft' : 'approved')).length;
+    const b = $('#navSnsCount');
+    b.textContent = n;
+    b.dataset.zero = String(n === 0);
+    b.setAttribute('aria-label', `${isManager() ? '승인 대기' : '게시 전'} ${n}개`);
+  }
+  async function refreshSnsBadge() {
+    if (!state.branch) return;
+    try { setSnsBadge(await api.listSnsPosts(state.branch.id, todayKey(), todayKey())); } catch (e) { /* SNS tables not installed yet */ }
+  }
+
+  // What the branch's own data says about the posting day
+  function snsFacts() {
+    const f = state.sn, day = f.day;
+    const sched = new Map(f.sched.map((r) => [`${r.staff_id}|${r.day}`, r]));
+    const designers = (d) => f.people
+      .filter((x) => x.status !== 'leave' && DESIGNER_POS.includes(x.position) && workValue(dayState(x, d, sched)) > 0)
+      .sort((a, b) => POS_RANK[a.position] - POS_RANK[b.position] || a.name.localeCompare(b.name, 'ko'));
+    const working = designers(day), tomorrow = designers(addDays(day, 1));
+    const live = f.moves.filter((m) => !m.reverts_id && !m.reverted);
+    const sold = new Map();
+    live.filter((m) => m.type === 'sale').forEach((m) => {
+      const it = itemById(m.product_id);
+      if (!it || !it.active || it.stock <= 0) return;
+      const x = sold.get(m.product_id) || { item: it, qty: 0 };
+      x.qty += -m.quantity;
+      sold.set(m.product_id, x);
+    });
+    const best = [...sold.values()].sort((a, b) => b.qty - a.qty).slice(0, 3);
+    const roomy = activeItems().filter((i) => i.is_retail && i.stock > i.safety_stock)
+      .sort((a, b) => (b.stock - b.safety_stock) - (a.stock - a.safety_stock));
+    const rec = roomy.find((i) => !best.some((x) => x.item.product_id === i.product_id)) || roomy[0] || null;
+    const used = new Map();
+    live.filter((m) => m.type === 'use').forEach((m) => {
+      const cat = itemById(m.product_id)?.category || '';
+      const svc = catToService(cat);
+      if (!svc) return;
+      const x = used.get(svc) || { svc, cat, qty: 0 };
+      x.qty += -m.quantity;
+      used.set(svc, x);
+    });
+    const top = [...used.values()].sort((a, b) => b.qty - a.qty)[0] || null;
+    const svc = top?.svc || 'color';
+    const seed = Math.round(Date.parse(`${day}T00:00:00Z`) / DAY);
+    const spotlight = working.length ? working[seed % working.length] : null;
+    const svcDesigner = working.find((x) => (x.services || []).includes(svc)) || spotlight;
+    return { working, tomorrow, best, rec, svc, top, spotlight, svcDesigner, seed };
+  }
+
+  // Branch hashtags: from SNS 설정, otherwise from the branch name and address
+  function snsBaseTags() {
+    const set = state.sn.settings?.hashtags;
+    if (set) return set.trim();
+    const b = state.branch;
+    const gu = (b.address || '').match(/([가-힣]{1,4})구(?:\s|$)/)?.[1];
+    const words = b.name.split(/\s+/).map((w) => w.replace(/(지점|점)$/, '')).filter((w) => w.length >= 2 && !/\d/.test(w));
+    const tags = ['#HPlace', `#HPlace${b.name.replace(/\s+/g, '')}`, ...words.map((w) => `#${w}미용실`)];
+    if (gu) tags.push(`#${gu}미용실`, `#${gu}헤어샵`);
+    return [...new Set(tags)].join(' ');
+  }
+
+  // One day's plan, most important first. Each entry is a ready-to-edit draft.
+  function snsPlan() {
+    const f = state.sn, day = f.day, b = state.branch;
+    const facts = snsFacts();
+    const tone = f.settings?.tone || 'friendly';
+    const t = (o) => o[tone] ?? o.friendly;
+    const place = `H Place ${b.name}`;
+    const contact = [b.address ? `📍 ${b.address}` : '', b.phone ? `☎ ${b.phone}` : ''].filter(Boolean).join('\n');
+    const base = snsBaseTags().split(/\s+/).filter(Boolean);
+    const tags = (extra, n = 99) => [...new Set([...base.slice(0, n), ...String(extra || '').split(/\s+/).filter(Boolean)])].join(' ');
+    const pos = (x) => POSITIONS[x.position] || '디자이너';
+    const svcs = (x) => Object.keys(SERVICES).filter((k) => (x.services || []).includes(k)).map((k) => SERVICES[k]);
+    const svcName = SERVICES[facts.svc] || '염색';
+    const md = mdText(day), mdT = mdText(addDays(day, 1));
+    const lineup = (list) => list.map((x) => `· ${x.name} ${pos(x)}${svcs(x).length ? ` — ${svcs(x).slice(0, 2).join('·')}` : ''}`).join('\n');
+    const names = (list) => list.map((x) => `${x.name} ${pos(x)}`).join(', ');
+    const out = [];
+    const add = (o) => out.push({ day, hashtags: '', shoot_note: '', source_note: '', needs_consent: false, ...o });
+    const W = facts.working, S = facts.spotlight, D = facts.svcDesigner, best = facts.best, rec = facts.rec;
+    const useSrc = facts.top ? `재료 사용 최근 4주: ${facts.top.cat} ${nf.format(facts.top.qty)}개 사용 (1위)` : '재료 사용 기록이 적어 염색을 기본 주제로 정했습니다';
+
+    // 1 오늘의 라인업 (story)
+    if (W.length) {
+      add({ platform: 'instagram', format: 'story', theme: 'lineup', slot: '10:00', title: '오늘의 디자이너 라인업',
+        caption: t({
+          friendly: `오늘 ${place}에서 만날 수 있는 디자이너예요 ✂️\n${lineup(W)}\n\n원하는 디자이너로 예약하세요!\n${contact}`,
+          premium: `${place}, 오늘의 디자이너를 소개합니다.\n${lineup(W)}\n\n원하시는 디자이너로 예약해 주세요.\n${contact}`,
+          trendy: `오늘 출근 완료 🙌 ${place} 라인업\n${lineup(W)}\n\n자리 있을 때 바로 예약 GO 👉\n${contact}`,
+        }),
+        hashtags: tags('#오늘의디자이너', 2), shoot_note: '매장 입구나 거울 앞 단체 사진 1장 + 이름 스티커. 예약 링크 스티커를 함께 붙이세요.',
+        source_note: `근무표: ${md} 근무 디자이너 ${W.length}명` });
+    } else {
+      add({ platform: 'instagram', format: 'story', theme: 'booking', slot: '10:00', title: `${mdT} 예약 안내`,
+        caption: t({
+          friendly: `오늘(${md})은 쉬어 가는 날이에요 🌿\n${facts.tomorrow.length ? `내일 만날 디자이너\n${lineup(facts.tomorrow)}\n\n` : ''}내일 예약은 지금 받고 있어요!\n${contact}`,
+          premium: `오늘(${md})은 휴무입니다.\n${facts.tomorrow.length ? `내일 근무 디자이너\n${lineup(facts.tomorrow)}\n\n` : ''}예약은 지금 받고 있습니다.\n${contact}`,
+        }),
+        hashtags: tags('#미용실예약', 2), shoot_note: '매장 내부 사진 1장 + "내일 예약 가능" 텍스트', source_note: `근무표: ${md} 근무 디자이너 없음` });
+    }
+    // 2 디자이너 소개 (feed) + 3 페이스북 같은 내용
+    if (S) {
+      const years = S.hired_on ? Math.floor(dayDiff(S.hired_on, day) / 365) : 0;
+      const quote = SVC_QUOTE[(S.services || [])[0]] || '고객님께 꼭 맞는 스타일을 찾아 드릴게요.';
+      const body = [svcs(S).length ? `전문 시술: ${svcs(S).join(' · ')}` : '', years >= 1 ? `${josa(place, '과', '와')} 함께한 지 ${years}년째` : ''].filter(Boolean).join('\n');
+      const cap = t({
+        friendly: `${place}의 ${josa(`${S.name} ${pos(S)}`, '을', '를')} 소개합니다 😊\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n${S.name} ${pos(S)} 상담·예약은 DM이나 전화로 편하게 문의하세요.\n${contact}`,
+        premium: `${place} ${josa(`${S.name} ${pos(S)}`, '을', '를')} 소개합니다.\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n상담과 예약은 DM 또는 전화로 문의해 주세요.\n${contact}`,
+        trendy: `오늘의 디자이너 👉 ${S.name} ${pos(S)}\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n지금 DM으로 예약 문의 💬\n${contact}`,
+      });
+      const tg = tags(`#헤어디자이너 #디자이너추천 ${SVC_TAGS[(S.services || [])[0]] || ''}`);
+      const shoot = `${S.name} ${pos(S)} 상반신 사진 1장(자연광) + 대표 시술 결과 2장을 여러 장으로 올리기`;
+      const src = `근무표: ${md} 근무 · 직원 관리: ${pos(S)}${svcs(S).length ? ', 담당 시술' : ''}`;
+      add({ platform: 'instagram', format: 'feed', theme: 'designer', slot: '11:00', title: `디자이너 소개 · ${S.name} ${pos(S)}`, caption: cap, hashtags: tg, shoot_note: shoot, source_note: src });
+      out.push({ ...out[out.length - 1], platform: 'facebook', format: 'post', slot: '11:10', hashtags: tags('#헤어디자이너', 3) });
+    }
+    // 4 네이버 플레이스 소식
+    add({ platform: 'naver', format: 'news', theme: 'booking', slot: '09:30', title: `${md} ${place} 예약 안내`,
+      caption: t({
+        friendly: `안녕하세요, ${place}입니다.\n\n오늘(${md}) 근무 디자이너: ${W.length ? names(W) : '없음 (휴무)'}\n요즘 ${svcName} 시술 문의가 많아요. 원하는 시간이 있다면 미리 예약해 주세요.\n\n${contact}\n네이버 예약으로 원하는 시간을 바로 잡을 수 있어요.`,
+        premium: `안녕하세요, ${place}입니다.\n\n오늘(${md}) 근무 디자이너: ${W.length ? names(W) : '없음 (휴무)'}\n최근 ${svcName} 시술 문의가 많아 예약을 권해 드립니다.\n\n${contact}\n네이버 예약으로 편하게 예약하실 수 있습니다.`,
+      }),
+      shoot_note: '매장 외관 또는 카운터 사진 1장', source_note: `근무표 · ${useSrc}` });
+    // 5 추천 제품 (story)
+    if (rec) {
+      add({ platform: 'instagram', format: 'story', theme: 'product', slot: '13:00', title: `추천 홈케어 · ${rec.name}`,
+        caption: t({
+          friendly: `시술 후 집에서도 그대로 ✨\n${rec.name}${rec.retail_price ? `\n${won.format(rec.retail_price)}` : ''}\n\n${D ? `${josa(`${D.name} ${pos(D)}`, '이', '가')} 추천하는` : '디자이너가 추천하는'} 홈케어 아이템이에요. 매장에서 바로 구매할 수 있어요.`,
+          premium: `시술 후의 컨디션을 집에서도.\n${rec.name}${rec.retail_price ? `\n${won.format(rec.retail_price)}` : ''}\n\n디자이너가 추천하는 홈케어 제품입니다. 매장에서 구매하실 수 있습니다.`,
+          trendy: `요즘 디자이너 픽 💛\n${rec.name}${rec.retail_price ? ` · ${won.format(rec.retail_price)}` : ''}\n\n매장에서 바로 GET!`,
+        }),
+        hashtags: tags('#홈케어추천', 2), shoot_note: '카운터 조명 아래에서 제품을 손에 든 사진 또는 10초 영상',
+        source_note: `재고: ${rec.name} ${nf.format(rec.stock)}${rec.unit} (안전재고 ${nf.format(rec.safety_stock)}) — 재고가 넉넉한 판매 제품` });
+    }
+    // 6 홈케어 팁 (tiktok)
+    const [tipTitle, tipSteps] = SVC_TIPS[facts.svc] || SVC_TIPS.color;
+    const tipBy = D || S;
+    add({ platform: 'tiktok', format: 'video', theme: 'tip', slot: '12:30', title: `${tipBy ? `${tipBy.name} ${pos(tipBy)}의 ` : ''}${tipTitle}`,
+      caption: t({
+        friendly: `${tipTitle} 💡${tipBy ? ` by ${tipBy.name} ${pos(tipBy)}` : ''}\n${tipSteps.map((x, i) => `${i + 1}. ${x}`).join('\n')}\n\n더 궁금한 건 댓글로 물어봐 주세요!`,
+        premium: `${tipTitle}${tipBy ? ` — ${tipBy.name} ${pos(tipBy)}` : ''}\n${tipSteps.map((x, i) => `${i + 1}. ${x}`).join('\n')}\n\n궁금하신 점은 댓글로 남겨 주세요.`,
+        trendy: `이것만 알면 끝 ✅ ${tipTitle}\n${tipSteps.map((x, i) => `${i + 1}. ${x}`).join('\n')}\n\n저장해 두고 따라 해 보세요 📌`,
+      }),
+      hashtags: tags(`#헤어팁 #홈케어 ${SVC_TAGS[facts.svc] || ''}`, 3), shoot_note: '세로 영상 15~30초: 디자이너가 3단계를 직접 시연 (디자이너만 나오게)',
+      source_note: useSrc });
+    // 7 시술 과정 (reels) — shows a customer
+    add({ platform: 'instagram', format: 'reels', theme: 'service', slot: '20:00', title: `${svcName} 시술 과정`, needs_consent: true,
+      caption: t({
+        friendly: `${svcName} 시술, 처음부터 끝까지 🎬\n${D ? `${D.name} ${pos(D)}의 ` : ''}${svcName} 과정을 담았어요.\n\n요즘 ${place}에서 가장 많이 찾는 시술이에요.\n예약은 프로필 링크 또는 전화로!${b.phone ? `\n☎ ${b.phone}` : ''}`,
+        premium: `${svcName} 시술 과정을 소개합니다.\n${D ? `${josa(`${D.name} ${pos(D)}`, '이', '가')} ` : ''}처음부터 완성까지 정성껏 진행합니다.\n\n예약은 프로필 링크 또는 전화로 가능합니다.${b.phone ? `\n☎ ${b.phone}` : ''}`,
+        trendy: `${svcName} 과정 풀버전 🎬 끝까지 보세요\n${D ? `by ${D.name} ${pos(D)}\n` : ''}\n요즘 제일 많이 하는 시술 1위!\n예약은 프로필 링크 👆`,
+      }),
+      hashtags: tags(`#헤어릴스 ${SVC_TAGS[facts.svc] || ''}`), shoot_note: '세로 영상 15~30초: 시술 전 → 과정 2컷 → 완성. 고객이 나오므로 게시 동의를 꼭 연결하세요.',
+      source_note: useSrc });
+    // 8 비포 애프터 (story) — shows a customer
+    add({ platform: 'instagram', format: 'story', theme: 'before_after', slot: '15:00', title: '오늘의 비포 & 애프터', needs_consent: true,
+      caption: t({
+        friendly: `Before → After ✨\n${svcName}${D ? ` by ${D.name} ${pos(D)}` : ''}\n\n같은 시술이 궁금하면 DM 주세요!`,
+        premium: `Before & After\n${svcName}${D ? ` — ${D.name} ${pos(D)}` : ''}\n\n상담은 DM으로 문의해 주세요.`,
+      }),
+      hashtags: tags('#비포애프터', 2), shoot_note: '같은 각도·같은 조명으로 전후 사진 2장. 얼굴이 나오면 동의서의 "얼굴 노출"을 확인하세요.',
+      source_note: useSrc });
+    // 9 베스트 제품 (carousel) + 10 페이스북
+    if (best.length) {
+      const list = best.map((x, i) => `${i + 1}위 ${x.item.name}${x.item.retail_price ? ` · ${won.format(x.item.retail_price)}` : ''}`).join('\n');
+      add({ platform: 'instagram', format: 'carousel', theme: 'best', slot: '19:00', title: `이번 달 베스트 홈케어 TOP ${best.length}`,
+        caption: t({
+          friendly: `${place} 고객님들이 가장 많이 고른 홈케어 🛍️\n\n${list}\n\n매장에서 바로 구매할 수 있어요. 어떤 제품이 맞을지 디자이너에게 편하게 물어보세요!`,
+          premium: `${place} 고객님들이 선택한 홈케어 제품입니다.\n\n${list}\n\n매장에서 구매하실 수 있으며, 모발 상태에 맞는 제품을 디자이너가 안내해 드립니다.`,
+          trendy: `요즘 제일 잘 나가는 홈케어 TOP ${best.length} 🔥\n\n${list}\n\n품절 전에 매장에서 GET 🛒`,
+        }),
+        hashtags: tags('#홈케어추천 #헤어에센스 #미용실제품'), shoot_note: `제품 단독 사진 ${best.length}장 + 사용하는 모습 1장 (여러 장으로 올리기)`,
+        source_note: `판매 내역 최근 4주: ${best.map((x) => `${x.item.name} ${nf.format(x.qty)}${x.item.unit}`).join(', ')}` });
+      out.push({ ...out[out.length - 1], platform: 'facebook', format: 'post', slot: '19:10', hashtags: tags('#홈케어추천', 3) });
+    }
+    // 11 비포 애프터 숏폼 (tiktok) — shows a customer
+    add({ platform: 'tiktok', format: 'video', theme: 'before_after', slot: '20:30', title: `${svcName} 비포 애프터`, needs_consent: true,
+      caption: t({
+        friendly: `${svcName} 전후 차이 실화? 😮\n${D ? `${D.name} ${pos(D)} 손길로 ` : ''}완성!\n\n${place}`,
+        premium: `${svcName} 전후를 비교해 보세요.\n${D ? `${D.name} ${pos(D)} 시술\n` : ''}\n${place}`,
+      }),
+      hashtags: tags(`#비포애프터 #헤어변신 ${SVC_TAGS[facts.svc] || ''}`, 3), shoot_note: '세로 영상 10~15초: 전 → 손가락 튕기기 전환 → 후',
+      source_note: useSrc });
+    // 12 내일 예약 안내 (story)
+    if (facts.tomorrow.length && W.length) {
+      add({ platform: 'instagram', format: 'story', theme: 'booking', slot: '18:00', title: `${mdT} 예약 안내`,
+        caption: t({
+          friendly: `내일(${mdT}) 근무 디자이너예요 📅\n${lineup(facts.tomorrow)}\n\n원하는 시간 놓치기 전에 지금 예약하세요!\n${contact}`,
+          premium: `내일(${mdT}) 근무 디자이너입니다.\n${lineup(facts.tomorrow)}\n\n원하시는 시간에 미리 예약해 주세요.\n${contact}`,
+          trendy: `내일 예약 오픈 🔓 ${mdT}\n${lineup(facts.tomorrow)}\n\n빠른 예약 = 원하는 시간 👉\n${contact}`,
+        }),
+        hashtags: tags('#미용실예약', 2), shoot_note: '예약표 화면 또는 매장 사진 + 예약 링크 스티커', source_note: `근무표: ${mdT} 근무 디자이너 ${facts.tomorrow.length}명` });
+    }
+    // Extras when the target is higher than 12
+    add({ platform: 'instagram', format: 'feed', theme: 'store', slot: '16:00', title: `${place} 매장 소개`,
+      caption: t({
+        friendly: `편하게 쉬었다 가는 곳, ${josa(place, '이에요', '예요')} 🤍\n\n${contact}`,
+        premium: `머무는 시간까지 편안하도록, ${place}.\n\n${contact}`,
+      }),
+      hashtags: tags('#미용실인테리어 #헤어샵'), shoot_note: '오후 자연광이 들어올 때 매장 전체 사진 1장 + 시술 자리 1장', source_note: '지점 관리: 지점 정보' });
+    add({ platform: 'facebook', format: 'video', theme: 'service', slot: '20:10', title: `${svcName} 시술 과정`, needs_consent: true,
+      caption: `${svcName} 시술 과정을 영상으로 담았어요.\n${place}${b.phone ? `\n☎ ${b.phone}` : ''}`,
+      hashtags: tags(SVC_TAGS[facts.svc] || '', 3), shoot_note: '인스타그램 릴스와 같은 영상을 올리세요.', source_note: useSrc });
+    add({ platform: 'instagram', format: 'story', theme: 'tip', slot: '21:00', title: `오늘의 팁 · ${tipTitle}`,
+      caption: `${tipTitle} 💡\n${tipSteps[facts.seed % tipSteps.length]}`,
+      hashtags: tags('#헤어팁', 2), shoot_note: '틱톡 영상의 한 장면 캡처 + 텍스트', source_note: useSrc });
+    if (rec) {
+      add({ platform: 'naver', format: 'news', theme: 'product', slot: '17:00', title: `추천 홈케어 · ${rec.name}`,
+        caption: `${place}에서 추천하는 홈케어 제품을 소개합니다.\n\n${rec.name}${rec.retail_price ? ` · ${won.format(rec.retail_price)}` : ''}\n시술 후 컨디션을 집에서도 유지할 수 있도록 디자이너가 사용법을 안내해 드립니다.\n\n${contact}`,
+        shoot_note: '제품 사진 1장', source_note: `재고: ${rec.name} ${nf.format(rec.stock)}${rec.unit}` });
+    }
+    return out;
+  }
+
+  const snsKey = (p) => `${p.platform}|${p.format}|${p.theme}`;
+  const snsTarget = () => state.sn.settings?.daily_target || 12;
+
+  function renderSns() {
+    const f = state.sn;
+    if (!f.day) f.day = todayKey();
+    const today = todayKey();
+    $('#snDay').value = f.day;
+    $('#snDay').min = addDays(today, -365);
+    $('#snDay').max = addDays(today, 60);
+    $('#snToday').disabled = f.day === today;
+    const posts = f.posts;
+    const target = snsTarget();
+    const n = posts.length;
+    const cnt = (st) => posts.filter((p) => p.status === st).length;
+    $('#snGoal').textContent = `${nf.format(n)} / ${nf.format(target)}개`;
+    $('#snGoalBar').style.width = `${Math.min(100, (n / target) * 100).toFixed(1)}%`;
+    $('#snGoalSub').textContent = f.loading ? '불러오는 중…' : n >= target ? '하루 목표를 채웠어요' : `${nf.format(target - n)}개 더 만들 수 있어요`;
+    const needC = posts.filter((p) => p.status !== 'posted' && p.needs_consent && !p.consent_id).length;
+    $('#snWait').textContent = `${nf.format(cnt('draft'))}개`;
+    $('#snWaitSub').textContent = needC ? `동의 연결 필요 ${nf.format(needC)}개` : cnt('rejected') ? `반려 ${nf.format(cnt('rejected'))}개` : '지점 관리자가 승인합니다';
+    $('#snReady').textContent = `${nf.format(cnt('approved'))}개`;
+    $('#snReadySub').textContent = cnt('approved') ? '올린 뒤 게시 완료로 표시하세요' : '—';
+    $('#snDone').textContent = `${nf.format(cnt('posted'))}개`;
+    $('#snDoneSub').textContent = n ? `오늘 계획의 ${Math.round((cnt('posted') / n) * 100)}%` : '—';
+
+    $('#snMix').innerHTML = Object.entries(SNS_PLATFORM).map(([k, v]) => {
+      const c = posts.filter((p) => p.platform === k).length;
+      return `<li class="sn-mix-item" style="--br: var(--br-${v.color})"><span class="sn-dot" aria-hidden="true"></span>${v.label}<strong>${nf.format(c)}</strong></li>`;
+    }).join('');
+
+    // Generate button
+    const past = f.day < today, far = f.day > addDays(today, 60);
+    const gen = $('#snGenerate');
+    gen.disabled = f.loading || past || far || n >= target;
+    gen.lastChild.textContent = n ? '초안 더 만들기' : '초안 자동 만들기';
+    gen.title = past ? '지난 날짜에는 초안을 만들 수 없습니다.' : n >= target ? '하루 목표만큼 게시물이 있습니다.' : '';
+
+    // List
+    const shown = posts.filter((p) => (!f.platform || p.platform === f.platform) && (!f.status || p.status === f.status));
+    $('#snCount').textContent = f.loading ? '' : `${nf.format(shown.length)}개${shown.length !== n ? ` / 전체 ${nf.format(n)}개` : ''}`;
+    $('#snApproveAll')?.remove();
+    const waiting = posts.filter((p) => p.status === 'draft' && !(p.needs_consent && !p.consent_id));
+    if (isManager() && waiting.length > 1 && !f.loading) {
+      $('#snCount').insertAdjacentHTML('afterend', `<button type="button" class="btn btn-secondary btn-sm" id="snApproveAll">${svgIcon('i-check-circle')}승인 대기 ${nf.format(waiting.length)}개 모두 승인</button>`);
+    }
+    $('#snEmpty').hidden = f.loading || shown.length > 0;
+    if (!shown.length && n) {
+      $('#snEmptyTitle').textContent = '조건에 맞는 게시물이 없습니다.';
+      $('#snEmptyText').textContent = '플랫폼이나 상태 필터를 바꿔 보세요.';
+    } else {
+      $('#snEmptyTitle').textContent = past ? '이 날짜에 기록된 게시물이 없습니다.' : '이 날짜의 게시물이 없습니다.';
+      $('#snEmptyText').textContent = past ? '지난 날짜에는 초안을 새로 만들 수 없습니다.'
+        : `[초안 자동 만들기]를 누르면 근무표·판매·재고·재료 사용 데이터로 하루 ${nf.format(target)}개의 게시물 초안을 만듭니다.`;
+    }
+    const consent = (id) => f.consents.find((c) => c.id === id);
+    $('#snList').innerHTML = shown.map((p) => {
+      const pf = SNS_PLATFORM[p.platform];
+      const st = SNS_STATUS[p.status];
+      const c = p.consent_id ? consent(p.consent_id) : null;
+      const needs = p.needs_consent && !p.consent_id && p.status !== 'posted';
+      const acts = [];
+      acts.push(`<button type="button" class="btn btn-secondary btn-sm" data-sn-copy="${p.id}">${svgIcon('i-copy')}문구 복사</button>`);
+      if (p.status !== 'posted') acts.push(`<button type="button" class="btn btn-secondary btn-sm" data-sn-edit="${p.id}">${svgIcon('i-edit')}수정</button>`);
+      if (isManager() && ['draft', 'rejected'].includes(p.status)) {
+        acts.push(needs
+          ? `<button type="button" class="btn btn-secondary btn-sm" data-sn-edit="${p.id}" data-sn-focus="consent">${svgIcon('i-shield')}동의 연결</button>`
+          : `<button type="button" class="btn btn-primary btn-sm" data-sn-status="approved" data-sn-id="${p.id}">${svgIcon('i-check-circle')}승인</button>`);
+      }
+      if (isManager() && ['draft', 'approved'].includes(p.status)) acts.push(`<button type="button" class="btn btn-secondary btn-sm" data-sn-reject="${p.id}">반려</button>`);
+      if (isManager() && p.status === 'approved') acts.push(`<button type="button" class="btn btn-secondary btn-sm" data-sn-status="draft" data-sn-id="${p.id}">${svgIcon('i-undo')}승인 취소</button>`);
+      if (p.status === 'approved') acts.push(`<button type="button" class="btn btn-primary btn-sm" data-sn-status="posted" data-sn-id="${p.id}">${svgIcon('i-send')}게시 완료</button>`);
+      if (['draft', 'rejected'].includes(p.status) || (p.status === 'approved' && isManager())) {
+        acts.push(`<button type="button" class="icon-btn sn-del" data-sn-delete="${p.id}" aria-label="${esc(p.title)} 삭제">${svgIcon('i-trash')}</button>`);
+      }
+      const when = p.status === 'posted' && p.posted_at ? `게시 ${timeFmt.format(new Date(p.posted_at))}`
+        : p.status === 'approved' && p.approved_at ? `승인 ${timeFmt.format(new Date(p.approved_at))}` : '';
+      return `<li class="sn-post is-${p.status}" style="--br: var(--br-${pf.color})">
+        <div class="sn-when"><strong>${esc(hhmm(p.slot))}</strong><span class="sn-dot" aria-hidden="true"></span></div>
+        <article class="sn-card" aria-label="${esc(hhmm(p.slot))} ${esc(pf.label)} ${esc(p.title)}">
+          <div class="sn-meta">
+            <span class="sn-pf">${esc(pf.label)} · ${esc(SNS_FORMAT[p.format] || p.format)}</span>
+            <span class="tag tag-note">${esc(SNS_THEME[p.theme] || p.theme)}</span>
+            <span class="tag ${st.tag}">${st.label}</span>
+            ${needs ? `<span class="tag tag-off">${svgIcon('i-shield')}동의 연결 필요</span>` : c ? `<span class="tag tag-note">${svgIcon('i-shield')}동의 · ${esc(c.customer)}</span>` : ''}
+            ${when ? `<span class="muted small">${when}</span>` : ''}
+          </div>
+          <h3 class="sn-title">${esc(p.title)}</h3>
+          <p class="sn-caption">${esc(p.caption)}</p>
+          ${p.hashtags ? `<p class="sn-tags">${esc(p.hashtags)}</p>` : ''}
+          ${p.status === 'rejected' && p.review_note ? `<p class="sn-review">${svgIcon('i-alert')}반려 사유: ${esc(p.review_note)}</p>` : ''}
+          <dl class="sn-notes">
+            ${p.shoot_note ? `<div><dt>촬영 가이드</dt><dd>${esc(p.shoot_note)}</dd></div>` : ''}
+            ${p.source_note ? `<div><dt>데이터 근거</dt><dd>${esc(p.source_note)}</dd></div>` : ''}
+          </dl>
+          <div class="sn-acts">${acts.join('')}</div>
+        </article>
+      </li>`;
+    }).join('');
+    if (f.loading && !posts.length) $('#snList').innerHTML = '<li class="muted small sn-loading">불러오는 중…</li>';
+
+    renderSnsFacts();
+    renderConsents();
+  }
+
+  function renderSnsFacts() {
+    const f = state.sn;
+    if (f.loading && !f.loadedFor) { $('#snFacts').innerHTML = '<li class="muted small">불러오는 중…</li>'; return; }
+    const x = snsFacts();
+    const pos = (p) => POSITIONS[p.position] || '';
+    const fact = (icon, label, value, src) => `<li class="sn-fact">${svgIcon(icon)}<div><span class="sn-fact-label">${label}</span><strong>${value}</strong><small class="muted">${src}</small></div></li>`;
+    const items = [
+      fact('i-users', `${mdText(f.day)} 근무 디자이너`, x.working.length ? `${esc(x.working.slice(0, 3).map((p) => `${p.name} ${pos(p)}`).join(', '))}${x.working.length > 3 ? ` 외 ${x.working.length - 3}명` : ''}` : '근무하는 디자이너 없음', '근무표 · 정기 휴무 반영'),
+      fact('i-receipt', '많이 팔린 판매 제품', x.best.length ? esc(x.best.map((b) => `${b.item.name} ${nf.format(b.qty)}${b.item.unit}`).join(' · ')) : '최근 4주 판매 기록 없음', '판매 내역 최근 4주'),
+      fact('i-box', '재고가 넉넉한 추천 제품', x.rec ? `${esc(x.rec.name)} · ${nf.format(x.rec.stock)}${esc(x.rec.unit)}` : '추천할 판매 제품 없음', '재고 목록 · 안전재고보다 많은 판매 제품'),
+      fact('i-scissors', '요즘 많이 한 시술', `${SERVICES[x.svc]}${x.top ? ` · ${esc(x.top.cat)} ${nf.format(x.top.qty)}개 사용` : ''}`, '재료 사용 최근 4주'),
+      fact('i-megaphone', '하루 목표', `${nf.format(snsTarget())}개 · ${SNS_TONE[f.settings?.tone || 'friendly']}`, isManager() ? 'SNS 설정에서 바꿀 수 있어요' : 'SNS 설정 (지점 관리자)'),
+    ];
+    $('#snFacts').innerHTML = items.join('');
+  }
+
+  const consentState = (c, day) => (c.revoked_at ? 'revoked' : c.expires_on < day ? 'expired' : c.signed_on > day ? 'future' : 'valid');
+  function renderConsents() {
+    const f = state.sn, today = todayKey();
+    const order = { valid: 0, future: 1, expired: 2, revoked: 3 };
+    const list = [...f.consents].sort((a, b) => order[consentState(a, today)] - order[consentState(b, today)]);
+    if (!list.length) { $('#scList').innerHTML = '<li class="muted small sc-empty">기록된 게시 동의가 없습니다.</li>'; return; }
+    $('#scList').innerHTML = list.map((c) => {
+      const s = consentState(c, today);
+      const tag = s === 'valid' ? '<span class="tag tag-receive">유효</span>' : s === 'expired' ? '<span class="tag tag-note">만료</span>'
+        : s === 'revoked' ? '<span class="tag tag-off">철회</span>' : '<span class="tag tag-note">예정</span>';
+      return `<li class="sc-item is-${s}">
+        <div class="sc-main"><strong>${esc(c.customer)}</strong>${tag}</div>
+        <p class="muted small">${CONSENT_SCOPE[c.scope]} · ${c.show_face ? '얼굴 노출 가능' : '얼굴 제외'} · ${dotDate(c.signed_on)} ~ ${dotDate(c.expires_on)}${c.memo ? ` · ${esc(c.memo)}` : ''}</p>
+        ${s !== 'revoked' ? `<div class="sc-acts">
+          <button type="button" class="link-btn" data-sc-edit="${c.id}">수정</button>
+          ${isManager() ? `<button type="button" class="link-btn sc-revoke" data-sc-revoke="${c.id}">철회 기록</button>` : ''}
+        </div>` : ''}
+      </li>`;
+    }).join('');
+  }
+
+  // Day navigation & filters
+  const snGo = (day) => { state.sn.day = day; loadSns(); };
+  $('#snDay').addEventListener('change', (e) => { if (e.target.value) snGo(e.target.value); });
+  $('#snPrev').addEventListener('click', () => snGo(addDays(state.sn.day || todayKey(), -1)));
+  $('#snNext').addEventListener('click', () => { const n = addDays(state.sn.day || todayKey(), 1); if (n <= addDays(todayKey(), 60)) snGo(n); });
+  $('#snToday').addEventListener('click', () => snGo(todayKey()));
+  $('#snPlatform').addEventListener('change', (e) => { state.sn.platform = e.target.value; renderSns(); });
+  $('#snStatus').addEventListener('change', (e) => { state.sn.status = e.target.value; renderSns(); });
+
+  $('#snGenerate').addEventListener('click', async (e) => {
+    const f = state.sn, btn = e.currentTarget;
+    const have = new Set(f.posts.map(snsKey));
+    const need = snsTarget() - f.posts.length;
+    const fresh = snsPlan().filter((p) => !have.has(snsKey(p))).slice(0, Math.max(0, need));
+    if (!fresh.length) { toast(need > 0 ? '더 만들 수 있는 새 주제가 없습니다. 직접 수정해서 채워 주세요.' : '이미 하루 목표만큼 게시물이 있습니다.'); return; }
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      const count = await api.addSnsPosts(state.branch.id, fresh);
+      toast(`${mdText(f.day)} 게시물 초안 ${nf.format(count)}개를 만들었습니다. 내용을 확인하고 ${isManager() ? '승인해' : '지점 관리자에게 승인을 받아'} 주세요.`);
+      await loadSns();
+    } catch (ex) {
+      toast(api.toAppError(ex).message, { error: true });
+    } finally {
+      btn.removeAttribute('aria-busy');
+      renderSns();
+    }
+  });
+
+  async function snsSetStatus(id, status, note, trigger) {
+    const p = state.sn.posts.find((x) => x.id === id);
+    if (!p) return;
+    const msg = { approved: '게시물을 승인했습니다.', draft: '게시물 승인을 취소했습니다.', posted: '게시물을 게시 완료로 표시했습니다.', rejected: '게시물을 반려했습니다.' }[status];
+    if (trigger) { trigger.disabled = true; trigger.setAttribute('aria-busy', 'true'); }
+    try {
+      await api.setSnsPostStatus(id, status, note);
+      toast(`"${p.title}" ${msg}`);
+      await loadSns();
+    } catch (ex) {
+      toast(api.toAppError(ex).message, { error: true });
+      if (trigger && document.contains(trigger)) { trigger.disabled = false; trigger.removeAttribute('aria-busy'); }
+    }
+  }
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall back below */ }
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+
+  $('[data-view="sns"]').addEventListener('click', async (e) => {
+    const cp = e.target.closest('[data-sn-copy]');
+    if (cp) {
+      const p = state.sn.posts.find((x) => x.id === cp.dataset.snCopy);
+      const ok = await copyText([p.caption, p.hashtags].filter(Boolean).join('\n\n'));
+      toast(ok ? `"${p.title}" 문구와 해시태그를 복사했습니다. ${SNS_PLATFORM[p.platform].label}에 붙여 넣으세요.` : '복사하지 못했습니다. 수정 창에서 직접 선택해 복사해 주세요.', { error: !ok });
+      return;
+    }
+    const ed = e.target.closest('[data-sn-edit]');
+    if (ed) return openSnsPost(state.sn.posts.find((x) => x.id === ed.dataset.snEdit), ed.dataset.snFocus);
+    const stb = e.target.closest('[data-sn-status]');
+    if (stb) return snsSetStatus(stb.dataset.snId, stb.dataset.snStatus, null, stb);
+    const rj = e.target.closest('[data-sn-reject]');
+    if (rj) return openSnsReject(state.sn.posts.find((x) => x.id === rj.dataset.snReject));
+    const del = e.target.closest('[data-sn-delete]');
+    if (del) {
+      const p = state.sn.posts.find((x) => x.id === del.dataset.snDelete);
+      return askConfirm({
+        title: '게시물 삭제', text: `${hhmm(p.slot)} ${SNS_PLATFORM[p.platform].label} "${p.title}" 게시물을 삭제할까요?`,
+        run: async () => { await api.deleteSnsPost(p.id); toast(`"${p.title}" 게시물을 삭제했습니다.`); await loadSns(); },
+      });
+    }
+    if (e.target.closest('#snApproveAll')) {
+      const btn = e.target.closest('#snApproveAll');
+      const list = state.sn.posts.filter((p) => p.status === 'draft' && !(p.needs_consent && !p.consent_id));
+      btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+      let done = 0, fail = '';
+      for (const p of list) {
+        try { await api.setSnsPostStatus(p.id, 'approved', null); done += 1; } catch (ex) { fail = api.toAppError(ex).message; }
+      }
+      const left = state.sn.posts.filter((p) => p.status === 'draft' && p.needs_consent && !p.consent_id).length;
+      toast(fail ? `${nf.format(done)}개를 승인했고 일부는 승인하지 못했습니다. ${fail}` : `${nf.format(done)}개를 승인했습니다.${left ? ` 동의 연결이 필요한 ${nf.format(left)}개는 남겨 두었습니다.` : ''}`, { error: Boolean(fail) });
+      await loadSns();
+      return;
+    }
+    const sce = e.target.closest('[data-sc-edit]');
+    if (sce) return openConsent(state.sn.consents.find((c) => c.id === sce.dataset.scEdit));
+    const scr = e.target.closest('[data-sc-revoke]');
+    if (scr) {
+      const c = state.sn.consents.find((x) => x.id === scr.dataset.scRevoke);
+      return askConfirm({
+        title: '게시 동의 철회 기록', button: '철회 기록',
+        text: `${c.customer} 고객의 게시 동의 철회를 기록할까요? 이 동의를 쓰는 승인된 게시물은 다시 승인 대기로 돌아갑니다. 이미 SNS에 올린 게시물은 각 SNS에서 직접 내려야 합니다.`,
+        run: async () => {
+          const live = await api.revokeSnsConsent(c.id);
+          toast(live ? `철회를 기록했습니다. 이 고객이 나온 게시 완료 게시물 ${nf.format(live)}개를 SNS에서 직접 내려 주세요.` : '철회를 기록했습니다.', { error: live > 0 });
+          await loadSns();
+        },
+      });
+    }
+  });
+  $('#scNew').addEventListener('click', () => openConsent(null));
+  $('#snSettingsBtn').addEventListener('click', openSnsSettings);
+
+  // Edit a post (with a live preview)
+  const snDialog = setupDialog($('#snDialog'));
+  const snForm = $('#snForm');
+  let snEditing = null;
+  function snPreview() {
+    const p = snEditing;
+    if (!p) return;
+    const handle = (state.sn.settings?.handle || `hplace_${state.branch.code || ''}`).replace(/^@/, '');
+    $('#snPvHandle').textContent = handle.toLowerCase();
+    $('#snPvPlatform').textContent = `${SNS_PLATFORM[p.platform].label} ${SNS_FORMAT[p.format]}`;
+    $('#snPvShoot').textContent = $('#snShoot').value.trim() || '사진·영상';
+    $('#snPvCaption').textContent = $('#snCaption').value;
+    $('#snPvTags').textContent = $('#snTags').value;
+    $('#snPvMedia').dataset.format = p.format;
+    const len = $('#snCaption').value.length;
+    $('#snCaptionHelp').textContent = `${nf.format(len)}자 / 2,200자`;
+    const n = ($('#snTags').value.match(/#[^\s#]+/g) || []).length;
+    $('#snTagsHelp').textContent = p.platform === 'instagram' && n > 30 ? `해시태그 ${n}개 — 인스타그램은 30개까지만 쓸 수 있어요.` : `해시태그 ${n}개`;
+    $('#snTagsHelp').classList.toggle('is-warn', p.platform === 'instagram' && n > 30);
+  }
+  function openSnsPost(p, focus) {
+    if (!p) return;
+    snEditing = p;
+    snForm.reset();
+    clearErrors(snForm);
+    $('#snDlgTitle').textContent = p.status === 'approved' && !isManager() ? '게시물 수정 (저장하면 다시 승인 대기)' : '게시물 수정';
+    $('#snDlgMeta').innerHTML = `<span class="sn-pf" style="--br: var(--br-${SNS_PLATFORM[p.platform].color})"><span class="sn-dot" aria-hidden="true"></span>${esc(SNS_PLATFORM[p.platform].label)} · ${esc(SNS_FORMAT[p.format])}</span>
+      <span class="tag tag-note">${esc(SNS_THEME[p.theme])}</span><span class="tag ${SNS_STATUS[p.status].tag}">${SNS_STATUS[p.status].label}</span><span class="muted small">${esc(dayLabel(p.day))}</span>`;
+    $('#snSlot').value = hhmm(p.slot);
+    $('#snTitle').value = p.title;
+    $('#snCaption').value = p.caption;
+    $('#snTags').value = p.hashtags || '';
+    $('#snShoot').value = p.shoot_note || '';
+    const valid = state.sn.consents.filter((c) => consentState(c, p.day) === 'valid');
+    const cur = state.sn.consents.find((c) => c.id === p.consent_id);
+    $('#snConsent').innerHTML = `<option value="">${p.needs_consent ? '선택하세요' : '연결 안 함'}</option>`
+      + [...valid, ...(cur && !valid.includes(cur) ? [cur] : [])].map((c) => `<option value="${esc(c.id)}">${esc(c.customer)} · ${CONSENT_SCOPE[c.scope]}${c.show_face ? ' · 얼굴 O' : ''} · ~${dotDate(c.expires_on)}</option>`).join('');
+    $('#snConsent').value = p.consent_id || '';
+    $('#snConsentHelp').textContent = p.needs_consent
+      ? `고객이 나오는 게시물이라 승인 전에 게시일(${mdText(p.day)})에 유효한 동의를 연결해야 합니다.${valid.length ? '' : ' 먼저 [고객 게시 동의]에서 동의를 기록하세요.'}`
+      : '고객이 나오지 않으면 연결하지 않아도 됩니다.';
+    snPreview();
+    snDialog.open();
+    (focus === 'consent' ? $('#snConsent') : $('#snCaption')).focus();
+  }
+  ['snCaption', 'snTags', 'snShoot'].forEach((id) => $('#' + id).addEventListener('input', snPreview));
+  snForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(snForm);
+    const p = snEditing;
+    const errors = [];
+    const title = $('#snTitle').value.trim(), caption = $('#snCaption').value.trim();
+    if (!title) { fieldError($('#snTitle'), '제목을 입력해 주세요.'); errors.push({ id: 'snTitle', msg: '제목을 입력해 주세요.' }); }
+    if (!caption) { fieldError($('#snCaption'), '본문을 입력해 주세요.'); errors.push({ id: 'snCaption', msg: '본문을 입력해 주세요.' }); }
+    const cid = $('#snConsent').value;
+    const c = state.sn.consents.find((x) => x.id === cid);
+    if (c && ['reels', 'video'].includes(p.format) && c.scope === 'photo') {
+      fieldError($('#snConsent'), '이 동의는 사진만 허용합니다. 영상 게시물에는 영상 동의가 필요합니다.');
+      errors.push({ id: 'snConsent', msg: '영상 게시물에 사진 동의가 연결되었습니다.' });
+    } else if (c && !['reels', 'video'].includes(p.format) && c.scope === 'video') {
+      fieldError($('#snConsent'), '이 동의는 영상만 허용합니다. 사진 게시물에는 사진 동의가 필요합니다.');
+      errors.push({ id: 'snConsent', msg: '사진 게시물에 영상 동의가 연결되었습니다.' });
+    }
+    if (errors.length) return showSummary(snForm, errors);
+    const btn = $('#snSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      const status = await api.updateSnsPost(p.id, {
+        slot: $('#snSlot').value || null, title, caption, hashtags: $('#snTags').value, shoot_note: $('#snShoot').value, consent_id: cid || null,
+      });
+      $('#snDialog').close();
+      toast(`"${title}" 게시물을 저장했습니다.${status === 'draft' && p.status !== 'draft' ? ' 다시 승인 대기로 바뀌었습니다.' : ''}`);
+      await loadSns();
+    } catch (ex) {
+      showServerError(snForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  // Reject with a note
+  const snRejectDialog = setupDialog($('#snRejectDialog'));
+  let snRejecting = null;
+  function openSnsReject(p) {
+    snRejecting = p;
+    $('#snRejectForm').reset();
+    $('#snRejError').hidden = true;
+    $('#snRejText').textContent = `${hhmm(p.slot)} ${SNS_PLATFORM[p.platform].label} "${p.title}" 게시물을 작성자에게 돌려보냅니다. 수정해서 저장하면 다시 승인 대기로 올라옵니다.`;
+    snRejectDialog.open();
+    $('#snRejNote').focus();
+  }
+  $('#snRejectForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#snRejSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      await api.setSnsPostStatus(snRejecting.id, 'rejected', $('#snRejNote').value);
+      $('#snRejectDialog').close();
+      toast(`"${snRejecting.title}" 게시물을 반려했습니다.`);
+      await loadSns();
+    } catch (ex) {
+      $('#snRejError').textContent = api.toAppError(ex).message;
+      $('#snRejError').hidden = false;
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  // 고객 게시 동의
+  const scDialog = setupDialog($('#scDialog'));
+  const scForm = $('#scForm');
+  let scEditing = null;
+  function openConsent(c) {
+    scEditing = c;
+    scForm.reset();
+    clearErrors(scForm);
+    $('#scTitle').textContent = c ? '게시 동의 수정' : '고객 게시 동의 기록';
+    $('#scCustomer').value = c?.customer || '';
+    $$('input[name="scScope"]').forEach((r) => { r.checked = r.value === (c?.scope || 'both'); });
+    $('#scFace').checked = Boolean(c?.show_face);
+    $('#scSigned').value = c?.signed_on || todayKey();
+    $('#scSigned').max = todayKey();
+    const days = c ? dayDiff(c.signed_on, c.expires_on) : 365;
+    $('#scPeriod').value = days <= 190 ? '182' : days <= 400 ? '365' : '730';
+    $('#scMemo').value = c?.memo || '';
+    scDialog.open();
+    $('#scCustomer').focus();
+  }
+  scForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(scForm);
+    const errors = [];
+    const customer = $('#scCustomer').value.trim(), signed = $('#scSigned').value;
+    if (!customer) { fieldError($('#scCustomer'), '고객을 알아볼 수 있게 입력해 주세요.'); errors.push({ id: 'scCustomer', msg: '고객을 입력해 주세요.' }); }
+    else if (/\d{3,4}-?\d{4}$/.test(customer.replace(/\s/g, '')) && /01\d/.test(customer)) { fieldError($('#scCustomer'), '전화번호 전체는 적지 마세요. 뒷번호 4자리만 적습니다.'); errors.push({ id: 'scCustomer', msg: '전화번호 전체가 들어 있습니다.' }); }
+    if (!signed) { fieldError($('#scSigned'), '동의일을 골라 주세요.'); errors.push({ id: 'scSigned', msg: '동의일을 골라 주세요.' }); }
+    else if (signed > todayKey()) { fieldError($('#scSigned'), '동의일은 오늘이나 그 이전이어야 합니다.'); errors.push({ id: 'scSigned', msg: '동의일을 확인해 주세요.' }); }
+    if (errors.length) return showSummary(scForm, errors);
+    const btn = $('#scSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      await api.saveSnsConsent(state.branch.id, {
+        id: scEditing?.id, customer, scope: $('input[name="scScope"]:checked').value, show_face: $('#scFace').checked,
+        signed_on: signed, expires_on: addDays(signed, Number($('#scPeriod').value)), memo: $('#scMemo').value,
+      });
+      $('#scDialog').close();
+      toast(scEditing ? '게시 동의를 수정했습니다.' : `${customer} 고객의 게시 동의를 기록했습니다.`);
+      await loadSns();
+    } catch (ex) {
+      showServerError(scForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  // SNS 설정 (managers)
+  const snSetDialog = setupDialog($('#snSetDialog'));
+  const snSetForm = $('#snSetForm');
+  function openSnsSettings() {
+    const s = state.sn.settings || {};
+    snSetForm.reset();
+    clearErrors(snSetForm);
+    $('#snSetBranch').textContent = `${state.branch.name}에 적용됩니다. 새로 만드는 초안부터 반영돼요.`;
+    $('#snSetHandle').value = s.handle || '';
+    $('#snSetTarget').value = s.daily_target || 12;
+    $('#snSetTags').value = s.hashtags || '';
+    $('#snSetTags').placeholder = `비워 두면: ${snsBaseTagsDefault()}`;
+    $$('input[name="snTone"]').forEach((r) => { r.checked = r.value === (s.tone || 'friendly'); });
+    snSetDialog.open();
+    $('#snSetHandle').focus();
+  }
+  function snsBaseTagsDefault() {
+    const keep = state.sn.settings;
+    state.sn.settings = keep ? { ...keep, hashtags: null } : null;
+    const tags = snsBaseTags();
+    state.sn.settings = keep;
+    return tags;
+  }
+  snSetForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(snSetForm);
+    const target = Number($('#snSetTarget').value);
+    if (!Number.isInteger(target) || target < 1 || target > 30) {
+      fieldError($('#snSetTarget'), '하루 목표는 1~30개로 입력해 주세요.');
+      return showSummary(snSetForm, [{ id: 'snSetTarget', msg: '하루 목표를 확인해 주세요.' }]);
+    }
+    const btn = $('#snSetSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      const handle = $('#snSetHandle').value.trim();
+      await api.saveSnsSettings(state.branch.id, {
+        handle: handle && !handle.startsWith('@') ? `@${handle}` : handle, hashtags: $('#snSetTags').value,
+        tone: $('input[name="snTone"]:checked').value, daily_target: target,
+      });
+      $('#snSetDialog').close();
+      toast('SNS 설정을 저장했습니다. 새로 만드는 초안부터 반영됩니다.');
+      await loadSns();
+    } catch (ex) {
+      showServerError(snSetForm, api.toAppError(ex).message);
     } finally {
       btn.disabled = false; btn.removeAttribute('aria-busy');
     }
