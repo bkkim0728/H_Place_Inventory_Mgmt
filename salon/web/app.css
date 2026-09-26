@@ -1035,3 +1035,4 @@ body[data-route="hq"] #branchSelect { display: none; }
   .st-svc li { grid-template-columns: 72px minmax(0, 1fr); }
   .st-svc-num { grid-column: 1 / -1; }
 }
+.sn-gen-hint { margin: var(--space-2) 0 0; padding: var(--space-2) var(--space-3); border-radius: 10px; background: var(--accent-soft); font-size: 13px; }
