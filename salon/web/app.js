@@ -4653,42 +4653,114 @@
     } catch (ex) {
       box.textContent = ex.message || '보고서를 불러오지 못했습니다.';
       box.hidden = false;
-      $('#trHeadline').textContent = '';
+      $('#trDeck').innerHTML = '';
     }
+  }
+  const TR_TONE = { positive: ['긍정 우세', 2, 'tr-pos'], mixed: ['엇갈림', 1, 'tr-mix'], negative: ['부정 우세', 0, 'tr-neg'], na: ['자료 부족', -1, 'tr-na'] };
+  const TR_PF_NAME = { naver: '네이버', instagram: '인스타그램', youtube: '유튜브', tiktok: '틱톡', meta: '메타', global: '해외 후기' };
+  // Card news: every section of the report as a 4:5 card
+  function trCards(r) {
+    const cite = (ids) => (ids && ids.length ? `<p class="tr-cites">출처 ${ids.map((n) => `<button type="button" class="tr-cite" data-tr-src="${n}" aria-label="출처 ${n}">${n}</button>`).join('')}</p>` : '');
+    const toneMeter = (t) => {
+      const [label, pos, cls] = TR_TONE[t] || TR_TONE.na;
+      return `<span class="tr-tone ${cls}" role="img" aria-label="분위기 ${label}"><span class="tr-tone-bar"><i class="n"></i><i class="m"></i><i class="p"></i>${pos >= 0 ? `<b style="left:${[16.7, 50, 83.3][pos]}%"></b>` : ''}</span><em>${label}</em></span>`;
+    };
+    const cards = [];
+    const add = (kind, label, body, src) => cards.push({ kind, label, body, src });
+    const wk = r.title.replace(/\s*미용·뷰티 SNS 마케팅 동향$/, '');
+    add('cover', 'WEEKLY REPORT', `<p class="tr-c-week">${esc(wk)}</p><h3 class="tr-c-title">미용·뷰티<br>SNS 마케팅 동향</h3>
+      <p class="tr-c-headline">${esc(r.headline)}</p>
+      <ul class="tr-c-plats">${(r.platforms || []).map((p) => `<li style="--br: var(--br-${TR_PLATFORM_COLOR[p.id] || 5})"><span class="sn-dot"></span>${esc(TR_PF_NAME[p.id] || p.name)}</li>`).join('')}</ul>`);
+    add('summary', '이번 주 핵심', `<ol class="tr-c-sum">${(r.summary || []).map((x, i) => `<li><span class="tr-num">${i + 1}</span><p>${esc(x)}</p></li>`).join('')}</ol>`);
+    if (r.stats?.length) {
+      add('stats', '숫자로 보는 이번 주', `<ul class="tr-c-stats">${r.stats.map((x) => `<li><strong>${esc(x.value)}</strong><span>${esc(x.label)}</span></li>`).join('')}</ul>`,
+        [...new Set(r.stats.flatMap((x) => x.src || []))]);
+    }
+    add('keywords', '이번 주 키워드', `<ul class="tr-c-cloud">${(r.keywords || []).map((k, i) => `<li class="s${i < 2 ? 1 : i < 5 ? 2 : 3}"><strong>#${esc(k.k)}</strong><span>${esc(k.why)}</span></li>`).join('')}</ul>`,
+      [...new Set((r.keywords || []).flatMap((k) => k.src || []))]);
+    const comm = new Map((r.community?.platforms || []).map((c) => [c.id, c]));
+    (r.platforms || []).forEach((p) => {
+      const [label, tag, arrow] = TR_SIGNAL[p.signal] || TR_SIGNAL.flat;
+      const c = comm.get(p.id);
+      add('platform', '플랫폼 동향', `<div class="tr-c-pfhead" style="--br: var(--br-${TR_PLATFORM_COLOR[p.id] || 5})"><h3>${esc(p.name)}</h3><span class="tr-signal tr-sig-${p.signal || 'flat'}"><b>${arrow}</b>${label}</span></div>
+        <ul class="tr-c-points">${(p.points || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+        ${c ? `<div class="tr-c-comm"><p class="tr-c-sub">커뮤니티 반응 ${toneMeter(c.tone)}</p><ul class="tr-c-chips">${(c.keywords || []).map((k) => `<li>${esc(k)}</li>`).join('')}</ul></div>` : ''}`,
+        [...new Set([...(p.src || []), ...(c?.src || [])])]);
+    });
+    if (r.community) {
+      const list = r.community.platforms || [];
+      add('community', '커뮤니티·댓글 반응', `<p class="tr-c-lead">${esc(r.community.overview || '')}</p>
+        <ul class="tr-c-tones">${list.map((c) => `<li><span class="tr-c-tname">${esc(c.name)}</span>${toneMeter(c.tone)}</li>`).join('')}</ul>
+        <p class="tr-c-foot">${esc(r.community.note || '')}</p>`);
+      const voices = list.flatMap((c) => (c.voices || []).slice(0, 1).map((v) => ({ v, c })));
+      add('voices', '대표 반응 (요약)', `<ul class="tr-c-voices">${voices.map((x, i) => `<li class="${i % 2 ? 'r' : ''} ${TR_TONE[x.c.tone]?.[2] || ''}"><span class="tr-c-who">${esc(x.c.name)}</span><p>${esc(x.v)}</p></li>`).join('')}</ul>`,
+        [...new Set(list.flatMap((c) => c.src || []))]);
+    }
+    if (r.investor) {
+      const iv = r.investor;
+      add('investor', '투자자 커뮤니티 · 스톡트윗츠·벤징가', `<p class="tr-c-lead"><strong>${esc(iv.headline || '')}</strong></p>
+        <ul class="tr-c-tickers">${(iv.items || []).map((x) => `<li class="tr-mv-${x.move}"><span class="tr-tk">${esc(x.ticker)}</span><span class="tr-arrow">${x.move === 'up' ? '▲' : x.move === 'down' ? '▼' : '■'}</span><div><strong>${esc(x.name)}</strong><p>${esc(x.text)}</p></div></li>`).join('')}</ul>
+        <p class="tr-c-take">💡 ${esc(iv.takeaway || '')}</p><p class="tr-c-foot">${esc(iv.note || '')}</p>`,
+        [...new Set((iv.items || []).flatMap((x) => x.src || []))]);
+    }
+    const h = r.hair || {};
+    const colors = (h.colors || []).map((c) => (typeof c === 'string' ? { name: c } : c));
+    add('hair', '헤어 트렌드', `<ul class="tr-c-swatch">${colors.map((c) => `<li><span style="background:${c.hex2 ? `linear-gradient(135deg, ${c.hex}, ${c.hex2})` : c.hex || 'var(--surface-2)'}"></span>${esc(c.name)}</li>`).join('')}</ul>
+      <p class="tr-c-sub">스타일</p><ul class="tr-c-chips big">${(h.styles || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+      ${h.notes ? `<p class="tr-c-lead">${esc(h.notes)}</p>` : ''}`, h.src);
+    const g = r.global || {};
+    add('global', '외국인·해외 동향', `<ul class="tr-c-icons">${(g.points || []).map((x, i) => `<li><span class="tr-ic">${['✈️', '💆', '✨', '🌏'][i % 4]}</span><p>${esc(x)}</p></li>`).join('')}</ul>`, g.src);
+    let done = {};
+    try { done = JSON.parse(localStorage.getItem(`hp-trend-done-${r.id}`) || '{}'); } catch (e) {}
+    add('actions', 'H Place 이번 주 실행', `<ul class="tr-c-acts">${(r.actions || []).map((a, i) => `<li class="tr-act${done[i] ? ' is-done' : ''}">
+        <label class="check"><input type="checkbox" data-tr-act="${i}" ${done[i] ? 'checked' : ''} /> <strong>${esc(a.title)}</strong></label>
+        <span class="tag ${a.for === 'global' ? 'tag-use' : 'tag-note'}">${a.for === 'global' ? '해외용' : '국내용'}</span><p>${esc(a.detail)}</p></li>`).join('')}</ul>
+      <a href="#/sns" class="btn btn-primary btn-sm tr-c-go"><svg class="icon" aria-hidden="true"><use href="#i-megaphone"/></svg>SNS 홍보에서 만들기</a>`);
+    add('watch', '다음 주에 지켜볼 것', `<ol class="tr-c-watch">${(r.watch || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
+      <p class="tr-c-foot">${esc(r.method || '')}</p>`);
+    return cards.map((c, i) => ({ ...c, html: `<li class="tr-card tr-k-${c.kind}" id="tr-card-${i}" aria-label="${i + 1}번 카드: ${esc(c.label)}">
+      <div class="tr-card-top"><span>H PLACE WEEKLY</span><span>${String(i + 1).padStart(2, '0')} / ${String(cards.length).padStart(2, '0')}</span></div>
+      <p class="tr-card-label">${esc(c.label)}</p>
+      <div class="tr-card-body">${c.body}</div>
+      ${cite(c.src)}
+    </li>` }));
   }
   function renderTrends() {
     const r = state.tr.report;
     if (!r) return;
-    const cite = (ids) => (ids || []).map((n) => `<button type="button" class="tr-cite" data-tr-src="${n}" aria-label="출처 ${n}">${n}</button>`).join('');
     const dot = (k) => k.replace(/-/g, '.');
     $('#trPeriod').textContent = `${dot(r.period.from)} ~ ${dot(r.period.to)} · 발행 ${dot(r.published)}`;
-    $('#trHeadline').textContent = r.headline;
-    $('#trSummary').innerHTML = (r.summary || []).map((x) => `<li>${esc(x)}</li>`).join('');
-    $('#trKeywords').innerHTML = (r.keywords || []).map((k) => `<li class="tr-kw"><strong>#${esc(k.k)}</strong><span>${esc(k.why)}</span>${cite(k.src)}</li>`).join('');
-    $('#trPlatforms').innerHTML = (r.platforms || []).map((p) => {
-      const [label, tag, arrow] = TR_SIGNAL[p.signal] || TR_SIGNAL.flat;
-      return `<article class="card tr-pf" style="--br: var(--br-${TR_PLATFORM_COLOR[p.id] || 5})">
-        <div class="tr-pf-head"><span class="sn-dot" aria-hidden="true"></span><h4>${esc(p.name)}</h4><span class="tag ${tag}">${arrow} ${label}</span></div>
-        <ul class="tr-points">${(p.points || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-        <p class="tr-cites">출처 ${cite(p.src)}</p>
-      </article>`;
-    }).join('');
-    const h = r.hair || {};
-    $('#trHair').innerHTML = `<p class="tr-sub">컬러</p><ul class="tr-chips">${(h.colors || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-      <p class="tr-sub">스타일</p><ul class="tr-chips">${(h.styles || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-      ${h.notes ? `<p class="tr-note">${esc(h.notes)}</p>` : ''}<p class="tr-cites">출처 ${cite(h.src)}</p>`;
-    const g = r.global || {};
-    $('#trGlobal').innerHTML = (g.points || []).map((x) => `<li>${esc(x)}</li>`).join('') + (g.src ? `<li class="tr-cites-li"><span class="tr-cites">출처 ${cite(g.src)}</span></li>` : '');
-    let done = {};
-    try { done = JSON.parse(localStorage.getItem(`hp-trend-done-${r.id}`) || '{}'); } catch (e) {}
-    $('#trActions').innerHTML = (r.actions || []).map((a, i) => `<li class="tr-act${done[i] ? ' is-done' : ''}">
-      <label class="check"><input type="checkbox" data-tr-act="${i}" ${done[i] ? 'checked' : ''} /> <strong>${esc(a.title)}</strong></label>
-      <span class="tag ${a.for === 'global' ? 'tag-use' : 'tag-note'}">${a.for === 'global' ? '해외용' : '국내용'}</span>
-      <p>${esc(a.detail)}</p></li>`).join('');
-    $('#trWatch').innerHTML = (r.watch || []).map((x) => `<li>${esc(x)}</li>`).join('');
+    const cards = trCards(r);
+    $('#trDeck').innerHTML = cards.map((c) => c.html).join('');
+    $('#trDeck').scrollLeft = 0;
+    syncTrCount();
     $('#trMethod').textContent = r.method || '';
     $('#trSources').innerHTML = (r.sources || []).map((x) => `<li id="tr-src-${x.id}" value="${x.id}"><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title)}</a><small class="muted"> · ${esc(x.publisher || '')}${x.date ? ` · ${esc(x.date)}` : ''}</small></li>`).join('');
   }
+  // Carousel (phones): which card is in view, prev/next
+  function trIndex() {
+    const deck = $('#trDeck'), cards = $$('.tr-card', deck);
+    if (!cards.length) return { i: 0, n: 0 };
+    const x = deck.scrollLeft + deck.clientWidth / 2;
+    let best = 0, dist = Infinity;
+    cards.forEach((c, i) => { const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - x); if (d < dist) { dist = d; best = i; } });
+    return { i: best, n: cards.length };
+  }
+  function syncTrCount() {
+    const { i, n } = trIndex();
+    $('#trCount').textContent = n ? `${i + 1} / ${n}` : '';
+    $('#trPrev').disabled = i <= 0;
+    $('#trNext').disabled = i >= n - 1;
+  }
+  function trGo(step) {
+    const deck = $('#trDeck'), { i, n } = trIndex();
+    const to = $$('.tr-card', deck)[Math.max(0, Math.min(n - 1, i + step))];
+    if (to) deck.scrollTo({ left: to.offsetLeft - (deck.clientWidth - to.offsetWidth) / 2, behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+  }
+  let trScrollT = 0;
+  $('#trDeck').addEventListener('scroll', () => { clearTimeout(trScrollT); trScrollT = setTimeout(syncTrCount, 80); });
+  $('#trPrev').addEventListener('click', () => trGo(-1));
+  $('#trNext').addEventListener('click', () => trGo(1));
   $('#trWeek').addEventListener('change', (e) => loadTrends(e.target.value));
   $('#trPrint').addEventListener('click', () => window.print());
   $('[data-view="trends"]').addEventListener('click', (e) => {
