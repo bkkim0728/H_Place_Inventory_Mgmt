@@ -1600,20 +1600,20 @@
             <p class="err" id="pNameErr" hidden></p>
           </div>
           <div class="form-field">
-            <label for="pSku">품목 코드 <span class="req" aria-hidden="true">*</span></label>
-            <input data-catalog id="pSku" type="text" maxlength="30" required autocapitalize="characters" aria-describedby="pSkuHelp pSkuErr" />
-            <p class="help" id="pSkuHelp">영문·숫자·하이픈. 예: CL-6N</p>
-            <p class="err" id="pSkuErr" hidden></p>
+            <label for="pCategory">카테고리 <span class="req" aria-hidden="true">*</span></label>
+            <select data-catalog data-manager-edit id="pCategory" required aria-describedby="pCategoryHelp pCategoryErr"></select>
+            <p class="help" id="pCategoryHelp">목록에 없으면 카테고리 관리에서 먼저 추가해 주세요.</p>
+            <p class="err" id="pCategoryErr" hidden></p>
           </div>
           <div class="form-field">
             <label for="pBrand">브랜드 <span class="muted small">(선택)</span></label>
             <input data-catalog data-manager-edit id="pBrand" type="text" maxlength="40" />
           </div>
           <div class="form-field">
-            <label for="pCategory">카테고리 <span class="req" aria-hidden="true">*</span></label>
-            <select data-catalog data-manager-edit id="pCategory" required aria-describedby="pCategoryHelp pCategoryErr"></select>
-            <p class="help" id="pCategoryHelp">목록에 없으면 카테고리 관리에서 먼저 추가해 주세요.</p>
-            <p class="err" id="pCategoryErr" hidden></p>
+            <label for="pSku">품목 코드 <span class="req" aria-hidden="true">*</span></label>
+            <input data-catalog id="pSku" type="text" maxlength="30" required autocapitalize="characters" aria-describedby="pSkuHelp pSkuErr" />
+            <p class="help" id="pSkuHelp">영문·숫자·하이픈. 예: CL-6N</p>
+            <p class="err" id="pSkuErr" hidden></p>
           </div>
           <div class="form-field">
             <label for="pUnit">단위 <span class="req" aria-hidden="true">*</span></label>
