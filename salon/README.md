@@ -166,8 +166,8 @@ salon/
 ├── README.md
 ├── supabase/
 │   ├── schema.sql          테이블, RLS, 함수, 뷰 (여러 번 실행해도 안전)
-│   ├── seed.sql
-│   ├── reset_branch_test_data.sql   # 한 지점의 테스트 데이터 정리 (운영 전환용)            1호점 샘플 데이터
+│   ├── seed.sql            1호점 샘플 데이터
+│   ├── reset_branch_test_data.sql   한 지점의 테스트 데이터 정리 (운영 전환용)
 │   └── functions/
 │       └── admin-users/    계정 생성·아이디 변경·비밀번호 변경 (Edge Function)
 ├── scripts/
