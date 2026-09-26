@@ -1325,7 +1325,7 @@
             <details class="man-item" id="man-inuse" data-short="사용 제품 정리">
               <summary><span class="man-no" aria-hidden="true"></span><span class="man-q">우리 지점에서 안 쓰는 제품 숨기기</span></summary>
               <div class="man-body">
-                <ol class="man-steps"><li><b>제품 관리</b>에서 제품의 <b>이 지점 사용</b> 스위치를 끕니다.</li><li>이 지점의 재고 목록과 입출고 등록에서만 숨겨지고, 다른 지점에는 영향이 없습니다.</li><li>다시 쓰려면 스위치를 켜면 됩니다.</li></ol>
+                <ol class="man-steps"><li><b>제품 관리</b>에서 제품의 <b>이 지점 사용</b> 스위치를 끕니다.</li><li>이 지점의 재고 목록과 입출고 등록에서만 숨겨지고, 다른 지점에는 영향이 없습니다.</li><li>다시 쓰려면 스위치를 켜면 됩니다.</li></ol><p class="man-tip"><strong>참고</strong> 재고가 남아 있으면 확인 창이 뜹니다. <b>남은 수량을 폐기로 등록하고 끄기</b>(권장), <b>재고는 그대로 두고 끄기</b>, 또는 지점 관리자는 <b>재고 실사</b>로 실제 수량부터 맞출 수 있습니다. 그대로 두고 끄면 수량은 남지만 재고 금액 합계에서 빠집니다.</p>
                 <a href="#/products" class="btn btn-secondary btn-sm man-go">제품 관리(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>
@@ -1845,6 +1845,37 @@
   </dialog>
 
   <!-- Confirm dialog -->
+  <!-- 사용 안 함 with stock left -->
+  <dialog class="modal" id="offDialog" aria-labelledby="offTitle" aria-describedby="offText">
+    <form id="offForm" novalidate>
+      <div class="modal-head">
+        <h2 id="offTitle">사용 안 함으로 바꾸기</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="off-stock" id="offText"></p>
+        <p class="muted small">사용 안 함으로 바꾸면 재고 목록·입출고 등록·재고 금액 합계에서 빠지지만, 남은 수량은 지워지지 않고 그대로 남습니다. 먼저 정리하는 것을 권합니다.</p>
+        <fieldset class="form-field off-choices">
+          <legend>남은 재고를 어떻게 할까요?</legend>
+          <label class="radio off-choice"><input type="radio" name="offChoice" value="dispose" checked />
+            <span><strong id="offDisposeLabel">남은 수량을 폐기로 등록하고 끄기</strong><small>입출고 내역에 폐기 기록이 남고 현재고가 0이 됩니다.</small></span></label>
+          <label class="radio off-choice"><input type="radio" name="offChoice" value="keep" />
+            <span><strong>재고는 그대로 두고 끄기</strong><small>다시 켜면 지금 수량 그대로 돌아옵니다.</small></span></label>
+        </fieldset>
+        <div class="form-field" id="offMemoField">
+          <label for="offMemo">폐기 메모 <span class="muted small">(선택)</span></label>
+          <input id="offMemo" type="text" maxlength="100" />
+        </div>
+        <button type="button" class="link-btn off-adjust" id="offAdjust" data-manager-only>수량이 실제와 다르면: 재고 실사로 실제 수량부터 맞추기</button>
+        <p class="err-box" id="offError" role="alert" hidden></p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="offSubmit">사용 안 함으로 바꾸기</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog class="modal" id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmText">
     <form id="confirmForm" novalidate>
       <div class="modal-head">

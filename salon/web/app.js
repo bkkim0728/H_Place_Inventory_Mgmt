@@ -1204,9 +1204,29 @@
     if (!sw) return;
     const item = itemById(sw.dataset.inUse);
     const on = sw.checked;
+    let disposed = false;
+    if (!on && item.stock > 0) {
+      sw.checked = true;  // until the choice is made
+      const ans = await confirmStockOff(item);
+      if (!ans) { sw.focus(); return; }
+      if (ans.choice === 'adjust') {
+        openMove({ productId: item.product_id, type: 'adjust', qty: '' });
+        toast('실제 수량을 맞춘 뒤 다시 "사용 안 함"으로 바꿔 주세요.');
+        return;
+      }
+      sw.checked = false;
+      if (ans.choice === 'dispose') {
+        try { await disposeRest(item, ans.memo); disposed = true; } catch (ex) { sw.checked = true; toast(api.toAppError(ex).message, { error: true }); return; }
+      }
+    }
     sw.disabled = true;
     try {
       await api.setItemInUse(state.branch.id, item.product_id, on);
+      if (disposed) {
+        toast(`${item.name} ${nf.format(item.stock)}${item.unit}${eulReul(item.unit)} 폐기로 등록하고 ${state.branch.name}에서 사용하지 않습니다.`);
+        await loadData();
+        return;
+      }
       item.in_use = on;
       item.active = item.catalog_active !== false && on;
       sw.nextElementSibling.nextElementSibling.textContent = on ? '사용 중' : '사용 안 함';
@@ -1220,6 +1240,45 @@
       sw.disabled = false;
     }
   });
+  // 사용 안 함 with stock left: dispose it first, keep it, or go count it (재고 실사)
+  const offDialog = setupDialog($('#offDialog'));
+  // 을/를 after a Korean word (받침 → 을)
+  const eulReul = (w) => { const c = String(w).trim().slice(-1).charCodeAt(0); return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '을' : '를'; };
+  let offResolve = null;
+  function confirmStockOff(item, { allBranches = false } = {}) {
+    return new Promise((resolve) => {
+      offResolve = resolve;
+      const u = item.unit || '개';
+      $('#offTitle').textContent = `${item.name} · 사용 안 함`;
+      $('#offText').innerHTML = `${esc(state.branch.name)}에 <strong>${nf.format(item.stock)}${esc(u)}</strong>(재고 금액 ${won.format(item.stock * item.cost_price)})가 남아 있습니다.${allBranches ? ' 모든 지점에서 사용을 중지합니다. 다른 지점의 재고는 각 지점에서 정리해 주세요.' : ''}`;
+      $('#offDisposeLabel').textContent = `남은 ${nf.format(item.stock)}${u}${eulReul(u)} 폐기로 등록하고 끄기`;
+      $('#offForm').elements.offChoice.value = 'dispose';
+      $('#offMemo').value = '사용 중지로 폐기';
+      $('#offMemoField').hidden = false;
+      $('#offError').hidden = true;
+      offDialog.open();
+      $('#offSubmit').focus();
+    });
+  }
+  const offSettle = (v) => { const r = offResolve; offResolve = null; if (r) r(v); };
+  $('#offDialog').addEventListener('close', () => offSettle(null));
+  $('#offForm').addEventListener('change', (e) => { if (e.target.name === 'offChoice') $('#offMemoField').hidden = e.target.value !== 'dispose'; });
+  $('#offForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const choice = $('#offForm').elements.offChoice.value;
+    offSettle({ choice, memo: $('#offMemo').value.trim() });
+    $('#offDialog').close();
+  });
+  $('#offAdjust').addEventListener('click', () => {
+    const r = offResolve; offResolve = null;
+    $('#offDialog').close();
+    if (r) r({ choice: 'adjust' });
+  });
+  // Write off the rest of the stock (폐기) before switching off
+  async function disposeRest(item, memo) {
+    await api.recordMovement({ branchId: state.branch.id, productId: item.product_id, type: 'dispose', quantity: item.stock, memo: memo || '사용 중지로 폐기' });
+  }
+
   let pdTimer = 0;
   $('#pdQ').addEventListener('input', (e) => { clearTimeout(pdTimer); pdTimer = setTimeout(() => { state.pd.q = e.target.value; renderProducts(); }, 150); });
 
@@ -1668,9 +1727,26 @@
     const safety = intField('pSafety', '안전재고', true);
     if (errors.length) return showSummary(productForm, errors);
 
+    // Switching 사용 off while stock is left: ask what to do with it first
+    let offAns = null;
+    const cur = editingId ? itemById(editingId) : null;
+    const turningOff = cur && cur.stock > 0 && !$('#pActive').checked && !$('#pActive').disabled
+      && (activeScope === 'branch' ? cur.in_use !== false : cur.catalog_active !== false);
+    if (turningOff) {
+      offAns = await confirmStockOff(cur, { allBranches: activeScope !== 'branch' });
+      if (!offAns) return;
+      if (offAns.choice === 'adjust') {
+        $('#productDialog').close();
+        openMove({ productId: cur.product_id, type: 'adjust', qty: '' });
+        toast('실제 수량을 맞춘 뒤 다시 제품 설정에서 사용을 꺼 주세요.');
+        return;
+      }
+    }
+
     const btn = $('#productSubmit');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
+      if (offAns?.choice === 'dispose') await disposeRest(cur, offAns.memo);
       const newId = await api.saveProduct(state.branch.id, {
         productId: editingId, sku: editingId ? $('#pSku').value : '', name: $('#pName').value, brand: $('#pBrand').value,
         category: $('#pCategory').value, unit: unitValue(), costPrice: cost, retailPrice: retail,
