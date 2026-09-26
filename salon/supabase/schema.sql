@@ -1533,6 +1533,28 @@ create table if not exists public.sns_consents (
 );
 create index if not exists sns_consents_branch_idx on public.sns_consents (branch_id, signed_on desc);
 
+-- 홍보 영상 보관함: video/image files in the private 'sns-media' bucket, under
+-- '<branch_id>/…'. A file that shows a customer needs a 게시 동의 before a post
+-- using it can be approved.
+create table if not exists public.sns_media (
+  id             uuid primary key default gen_random_uuid(),
+  branch_id      uuid not null references public.branches(id) on delete cascade,
+  title          text not null,
+  path           text not null unique,
+  mime           text not null,
+  size_bytes     bigint not null default 0,
+  needs_consent  boolean not null default false,
+  consent_id     uuid references public.sns_consents(id) on delete set null,
+  memo           text,
+  created_by     uuid references auth.users(id) on delete set null,
+  created_at     timestamptz not null default now(),
+  constraint sns_media_chk check (
+    char_length(btrim(title)) between 1 and 60 and size_bytes between 0 and 104857600
+    and mime in ('video/mp4', 'video/quicktime', 'video/webm', 'image/jpeg', 'image/png', 'image/webp')
+    and char_length(coalesce(memo, '')) <= 200)
+);
+create index if not exists sns_media_branch_idx on public.sns_media (branch_id, created_at desc);
+
 create table if not exists public.sns_posts (
   id             uuid primary key default gen_random_uuid(),
   branch_id      uuid not null references public.branches(id) on delete cascade,
@@ -1573,6 +1595,7 @@ create index if not exists sns_posts_branch_day_idx on public.sns_posts (branch_
 alter table public.sns_posts add column if not exists audience text not null default 'domestic';
 alter table public.sns_posts add column if not exists origin text not null default 'data';
 alter table public.sns_settings add column if not exists hashtags_global text;
+alter table public.sns_posts add column if not exists media_id uuid references public.sns_media(id) on delete set null;
 -- Older installs: allow the 'trend' theme and the new columns' values
 do $$ begin
   alter table public.sns_posts drop constraint if exists sns_posts_chk;
@@ -1595,6 +1618,12 @@ end $$;
 alter table public.sns_settings enable row level security;
 alter table public.sns_consents enable row level security;
 alter table public.sns_posts    enable row level security;
+alter table public.sns_media    enable row level security;
+drop policy if exists "sns_media: members read" on public.sns_media;
+create policy "sns_media: members read" on public.sns_media
+  for select to authenticated using (public.is_branch_member(branch_id));
+revoke all on public.sns_media from anon, authenticated;
+grant select on public.sns_media to authenticated;
 drop policy if exists "sns_settings: members read" on public.sns_settings;
 create policy "sns_settings: members read" on public.sns_settings
   for select to authenticated using (public.is_branch_member(branch_id));
@@ -1759,6 +1788,14 @@ begin
      and (v.consent_id is null or not public.sns_consent_ok(v.consent_id, v.branch_id, v.day)) then
     raise exception 'CONSENT_REQUIRED' using errcode = '22023';
   end if;
+  -- A linked file that shows a customer needs a valid consent (on the file or the post)
+  if p_status = 'approved' and exists (
+       select 1 from public.sns_media m
+        where m.id = v.media_id and m.needs_consent
+          and not (coalesce(public.sns_consent_ok(m.consent_id, v.branch_id, v.day), false)
+                   or coalesce(public.sns_consent_ok(v.consent_id, v.branch_id, v.day), false))) then
+    raise exception 'CONSENT_REQUIRED' using errcode = '22023';
+  end if;
   update public.sns_posts
      set status = p_status,
          review_note = case when p_status = 'rejected' then left(nullif(btrim(p_note), ''), 200) when p_status = 'posted' then review_note end,
@@ -1852,10 +1889,136 @@ begin
    where consent_id = p_consent_id and status = 'approved';
   update public.sns_posts set consent_id = null, updated_at = now()
    where consent_id = p_consent_id and status in ('draft', 'rejected');
+  -- Files relying on it lose the consent; approved posts using those files go back to 초안
+  update public.sns_posts p
+     set status = 'draft', approved_by = null, approved_at = null, updated_at = now()
+    from public.sns_media m
+   where m.consent_id = p_consent_id and p.media_id = m.id and p.status = 'approved' and m.needs_consent
+     and not coalesce(public.sns_consent_ok(p.consent_id, p.branch_id, p.day), false);
+  update public.sns_media set consent_id = null where consent_id = p_consent_id;
   select count(*) into v_live from public.sns_posts where consent_id = p_consent_id and status = 'posted';
   return v_live;
 end;
 $$;
+
+-- add_sns_media: register an uploaded file (path must be under the branch folder).
+-- Errors: NOT_BRANCH_MEMBER, INVALID_SNS_MEDIA, INVALID_CONSENT
+create or replace function public.add_sns_media(
+  p_branch_id uuid, p_path text, p_title text, p_mime text, p_size bigint, p_needs_consent boolean, p_consent_id uuid
+)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
+begin
+  if p_branch_id is null or not public.is_branch_member(p_branch_id) then
+    raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501';
+  end if;
+  if p_path is null or public.photo_branch_id(p_path) is distinct from p_branch_id or p_path like '%..%' then
+    raise exception 'INVALID_SNS_MEDIA' using errcode = '22023';
+  end if;
+  if p_consent_id is not null and not public.sns_consent_ok(p_consent_id, p_branch_id, v_today) then
+    raise exception 'INVALID_CONSENT' using errcode = '22023';
+  end if;
+  begin
+    insert into public.sns_media (branch_id, title, path, mime, size_bytes, needs_consent, consent_id, created_by)
+    values (p_branch_id, btrim(p_title), p_path, p_mime, coalesce(p_size, 0), coalesce(p_needs_consent, false), p_consent_id, auth.uid())
+    returning id into v_id;
+  exception when check_violation or not_null_violation or unique_violation then
+    raise exception 'INVALID_SNS_MEDIA' using errcode = '22023';
+  end;
+  return v_id;
+end;
+$$;
+
+-- update_sns_media: title, 고객 등장 여부, 동의. Errors: SNS_MEDIA_NOT_FOUND, NOT_BRANCH_MEMBER, INVALID_SNS_MEDIA, INVALID_CONSENT
+create or replace function public.update_sns_media(p_media_id uuid, p_title text, p_needs_consent boolean, p_consent_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v public.sns_media;
+begin
+  select * into v from public.sns_media where id = p_media_id for update;
+  if not found then raise exception 'SNS_MEDIA_NOT_FOUND' using errcode = 'P0002'; end if;
+  if not public.is_branch_member(v.branch_id) then raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501'; end if;
+  if p_consent_id is not null and not public.sns_consent_ok(p_consent_id, v.branch_id, (now() at time zone 'Asia/Seoul')::date) then
+    raise exception 'INVALID_CONSENT' using errcode = '22023';
+  end if;
+  begin
+    update public.sns_media set title = btrim(p_title), needs_consent = coalesce(p_needs_consent, false), consent_id = p_consent_id
+     where id = p_media_id;
+  exception when check_violation or not_null_violation then
+    raise exception 'INVALID_SNS_MEDIA' using errcode = '22023';
+  end;
+end;
+$$;
+
+-- delete_sns_media: the uploader or a manager. Files used by approved or published
+-- posts stay. Returns the storage path so the app can delete the file.
+-- Errors: SNS_MEDIA_NOT_FOUND, NOT_BRANCH_MEMBER, FORBIDDEN, SNS_MEDIA_IN_USE
+create or replace function public.delete_sns_media(p_media_id uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v public.sns_media;
+begin
+  select * into v from public.sns_media where id = p_media_id for update;
+  if not found then raise exception 'SNS_MEDIA_NOT_FOUND' using errcode = 'P0002'; end if;
+  if not public.is_branch_member(v.branch_id) then raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501'; end if;
+  if v.created_by is distinct from auth.uid() and not public.is_branch_manager(v.branch_id) then
+    raise exception 'FORBIDDEN' using errcode = '42501';
+  end if;
+  if exists (select 1 from public.sns_posts where media_id = p_media_id and status in ('approved', 'posted')) then
+    raise exception 'SNS_MEDIA_IN_USE' using errcode = '22023';
+  end if;
+  delete from public.sns_media where id = p_media_id;
+  return v.path;
+end;
+$$;
+
+-- set_sns_post_media: link (or unlink with null) a file to a post of the same branch.
+-- Staff linking to an approved post sends it back to 초안, like any edit.
+-- Errors: SNS_POST_NOT_FOUND, NOT_BRANCH_MEMBER, SNS_POST_LOCKED, SNS_MEDIA_NOT_FOUND
+create or replace function public.set_sns_post_media(p_post_id uuid, p_media_id uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v public.sns_posts;
+  v_status text;
+begin
+  select * into v from public.sns_posts where id = p_post_id for update;
+  if not found then raise exception 'SNS_POST_NOT_FOUND' using errcode = 'P0002'; end if;
+  if not public.is_branch_member(v.branch_id) then raise exception 'NOT_BRANCH_MEMBER' using errcode = '42501'; end if;
+  if v.status = 'posted' then raise exception 'SNS_POST_LOCKED' using errcode = '22023'; end if;
+  if p_media_id is not null and not exists (select 1 from public.sns_media where id = p_media_id and branch_id = v.branch_id) then
+    raise exception 'SNS_MEDIA_NOT_FOUND' using errcode = 'P0002';
+  end if;
+  if v.media_id is not distinct from p_media_id then return v.status; end if;
+  v_status := case when v.status = 'approved' and not public.is_branch_manager(v.branch_id) then 'draft'
+                   when v.status = 'rejected' then 'draft' else v.status end;
+  update public.sns_posts
+     set media_id = p_media_id, status = v_status,
+         approved_by = case when v_status = 'approved' then approved_by end,
+         approved_at = case when v_status = 'approved' then approved_at end,
+         updated_at = now()
+   where id = p_post_id;
+  return v_status;
+end;
+$$;
+
+revoke all on function public.add_sns_media(uuid, text, text, text, bigint, boolean, uuid) from public, anon;
+revoke all on function public.update_sns_media(uuid, text, boolean, uuid) from public, anon;
+revoke all on function public.delete_sns_media(uuid) from public, anon;
+revoke all on function public.set_sns_post_media(uuid, uuid) from public, anon;
+grant execute on function public.add_sns_media(uuid, text, text, text, bigint, boolean, uuid) to authenticated;
+grant execute on function public.update_sns_media(uuid, text, boolean, uuid) to authenticated;
+grant execute on function public.delete_sns_media(uuid) to authenticated;
+grant execute on function public.set_sns_post_media(uuid, uuid) to authenticated;
 
 revoke all on function public.sns_consent_ok(uuid, uuid, date) from public, anon, authenticated;
 revoke all on function public.save_sns_settings(uuid, text, text, text, integer, text) from public, anon;
@@ -2027,6 +2190,40 @@ create policy "staff photos: managers delete" on storage.objects
   using (bucket_id = 'staff-photos'
          and public.photo_branch_id(name) is not null
          and public.is_branch_manager(public.photo_branch_id(name)));
+
+-- Private bucket for SNS 홍보 media (videos/images, up to 100 MB each). Members of
+-- the branch in the first folder read and upload; the uploader's row decides who
+-- may delete (delete_sns_media), and the app then removes the file.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('sns-media', 'sns-media', false, 104857600,
+        array['video/mp4', 'video/quicktime', 'video/webm', 'image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = excluded.public, file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "sns media: members read" on storage.objects;
+create policy "sns media: members read" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'sns-media'
+         and public.photo_branch_id(name) is not null
+         and public.is_branch_member(public.photo_branch_id(name)));
+
+drop policy if exists "sns media: members upload" on storage.objects;
+create policy "sns media: members upload" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'sns-media'
+              and public.photo_branch_id(name) is not null
+              and public.is_branch_member(public.photo_branch_id(name)));
+
+-- Delete: only files no longer registered in sns_media (after delete_sns_media) or
+-- never registered (a failed upload), by members of that branch.
+drop policy if exists "sns media: members delete" on storage.objects;
+create policy "sns media: members delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'sns-media'
+         and public.photo_branch_id(name) is not null
+         and public.is_branch_member(public.photo_branch_id(name))
+         and not exists (select 1 from public.sns_media m where m.path = storage.objects.name));
 
 -- Ask the Supabase API (PostgREST) to reload its schema cache right away, so
 -- new tables and functions are usable without waiting.

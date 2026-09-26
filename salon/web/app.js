@@ -3582,7 +3582,7 @@
   const josa = (w, withB, without) => { const c = String(w).trim().slice(-1).charCodeAt(0); return `${w}${c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? withB : without}`; };
   const dotDate = (k) => k.replace(/-/g, '.');
 
-  state.sn = { day: '', platform: '', status: '', audience: '', posts: [], consents: [], settings: null, people: [], sched: [], moves: [], loading: false, ticket: 0, loadedFor: '' };
+  state.sn = { day: '', platform: '', status: '', audience: '', posts: [], consents: [], media: [], settings: null, people: [], sched: [], moves: [], loading: false, ticket: 0, loadedFor: '' };
 
   async function loadSns() {
     if (!state.branch) return;
@@ -3593,16 +3593,17 @@
     f.loading = true;
     renderSns();
     try {
-      const [settings, posts, consents, people, sched, moves] = await Promise.all([
+      const [settings, posts, consents, people, sched, moves, media] = await Promise.all([
         api.getSnsSettings(bid),
         api.listSnsPosts(bid, day, day),
         api.listSnsConsents(bid),
         (isManager() ? api.listStaff(bid) : api.listStaffNames(bid)).catch(() => []),
         api.listSchedule(bid, day, addDays(day, 1)).catch(() => []),
         api.listMovementsBetween(bid, addDays(todayKey(), -27), todayKey()).catch(() => []),
+        api.listSnsMedia(bid).catch(() => []),  // 홍보 영상 보관함 (older databases: none)
       ]);
       if (ticket !== f.ticket) return;
-      Object.assign(f, { settings, posts, consents, people, sched, moves, loadedFor: `${bid}|${day}` });
+      Object.assign(f, { settings, posts, consents, people, sched, moves, media, loadedFor: `${bid}|${day}` });
       $('#snError').hidden = true;
       if (day === todayKey()) setSnsBadge(posts);
     } catch (ex) {
@@ -3982,7 +3983,8 @@
       && (!f.audience || (p.audience || 'domestic') === f.audience));
     $('#snCount').textContent = f.loading ? '' : `${nf.format(shown.length)}개${shown.length !== n ? ` / 전체 ${nf.format(n)}개` : ''}`;
     $('#snApproveAll')?.remove();
-    const waiting = posts.filter((p) => p.status === 'draft' && !(p.needs_consent && !p.consent_id));
+    const mediaBlocks = (p) => { const m = p.media_id && f.media.find((x) => x.id === p.media_id); return Boolean(m && m.needs_consent && !m.consent_id && !p.consent_id); };
+    const waiting = posts.filter((p) => p.status === 'draft' && !(p.needs_consent && !p.consent_id) && !mediaBlocks(p));
     if (isManager() && waiting.length > 1 && !f.loading) {
       $('#snCount').insertAdjacentHTML('afterend', `<button type="button" class="btn btn-secondary btn-sm" id="snApproveAll">${svgIcon('i-check-circle')}승인 대기 ${nf.format(waiting.length)}개 모두 승인</button>`);
     }
@@ -4000,9 +4002,11 @@
       const pf = SNS_PLATFORM[p.platform];
       const st = SNS_STATUS[p.status];
       const c = p.consent_id ? consent(p.consent_id) : null;
-      const needs = p.needs_consent && !p.consent_id && p.status !== 'posted';
+      const md = p.media_id ? f.media.find((m) => m.id === p.media_id) : null;
+      const needs = p.status !== 'posted' && ((p.needs_consent && !p.consent_id) || (md && md.needs_consent && !md.consent_id && !p.consent_id));
       const acts = [];
       acts.push(`<button type="button" class="btn btn-secondary btn-sm" data-sn-copy="${p.id}">${svgIcon('i-copy')}문구 복사</button>`);
+      if (md) acts.push(`<button type="button" class="btn btn-secondary btn-sm sm-play-btn" data-sm-play="${md.id}">${svgIcon('i-image')}영상 보기</button>`);
       if (p.status !== 'posted') acts.push(`<button type="button" class="btn btn-secondary btn-sm" data-sn-edit="${p.id}">${svgIcon('i-edit')}수정</button>`);
       if (isManager() && ['draft', 'rejected'].includes(p.status)) {
         acts.push(needs
@@ -4026,6 +4030,7 @@
             <span class="tag ${p.origin === 'trend' ? 'tag-sale' : 'tag-note'}">${p.origin === 'trend' ? '트렌드' : '매장 데이터'}</span>
             ${p.theme === 'trend' ? '' : `<span class="tag tag-note">${esc(SNS_THEME[p.theme] || p.theme)}</span>`}
             <span class="tag ${st.tag}">${st.label}</span>
+            ${md ? `<span class="tag tag-use">🎬 ${esc(md.title)}</span>` : ''}
             ${needs ? `<span class="tag tag-off">${svgIcon('i-shield')}동의 연결 필요</span>` : c ? `<span class="tag tag-note">${svgIcon('i-shield')}동의 · ${esc(c.customer)}</span>` : ''}
             ${when ? `<span class="muted small">${when}</span>` : ''}
           </div>
@@ -4045,7 +4050,164 @@
 
     renderSnsFacts();
     renderConsents();
+    renderMedia();
   }
+
+  // 홍보 영상 보관함
+  const fileSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+  const isVideo = (m) => String(m.mime || '').startsWith('video/');
+  function mediaConsentTag(m) {
+    if (!m.needs_consent) return '';
+    const c = m.consent_id && state.sn.consents.find((x) => x.id === m.consent_id);
+    return c ? `<span class="tag tag-receive">${svgIcon('i-shield')}동의 · ${esc(c.customer)}</span>` : `<span class="tag tag-off">${svgIcon('i-shield')}동의 필요</span>`;
+  }
+  function renderMedia() {
+    const f = state.sn;
+    const list = f.media || [];
+    $('#smEmpty').hidden = list.length > 0 || f.loading;
+    $('#smList').innerHTML = list.map((m) => {
+      const used = f.posts.filter((p) => p.media_id === m.id).length;
+      const thumb = !m.url ? `<span class="sm-missing">${svgIcon('i-alert')}<small>파일을 불러올 수 없어요</small></span>`
+        : isVideo(m) ? `<video src="${esc(m.url)}#t=0.8" muted playsinline preload="metadata" tabindex="-1"></video><span class="sm-play" aria-hidden="true">▶</span>`
+        : `<img src="${esc(m.url)}" alt="" loading="lazy" />`;
+      const mine = m.created_by === state.user?.id;
+      return `<li class="sm-item">
+        <button type="button" class="sm-thumb" data-sm-play="${m.id}" aria-label="${esc(m.title)} ${isVideo(m) ? '재생' : '크게 보기'}">${thumb}</button>
+        <div class="sm-info">
+          <strong class="sm-title">${esc(m.title)}</strong>
+          <span class="muted small">${fileSize(m.size_bytes)} · ${dayFmt.format(new Date(m.created_at))}${used ? ` · 오늘 게시물 ${nf.format(used)}개 연결` : ''}</span>
+          <span class="sm-tags">${mediaConsentTag(m)}</span>
+          <span class="sm-acts">
+            <button type="button" class="link-btn" data-sm-download="${m.id}"${m.url ? '' : ' disabled'}>다운로드</button>
+            <button type="button" class="link-btn" data-sm-edit="${m.id}">수정</button>
+            ${mine || isManager() ? `<button type="button" class="link-btn sc-revoke" data-sm-delete="${m.id}">삭제</button>` : ''}
+          </span>
+        </div>
+      </li>`;
+    }).join('');
+  }
+
+  // Player
+  const smPlayer = setupDialog($('#smPlayer'));
+  let smPlaying = null;
+  function playMedia(m) {
+    if (!m) return;
+    smPlaying = m;
+    $('#smPlayTitle').textContent = m.title;
+    $('#smStage').innerHTML = !m.url ? '<p class="muted">파일을 불러올 수 없어요. (데모 모드에서 올린 영상은 새로고침하면 사라집니다)</p>'
+      : isVideo(m) ? `<video src="${esc(m.url)}" controls autoplay playsinline></video>` : `<img src="${esc(m.url)}" alt="${esc(m.title)}" />`;
+    $('#smPlayMeta').innerHTML = `${fileSize(m.size_bytes)} · ${esc(m.mime)} ${mediaConsentTag(m)}`;
+    $('#smDownload').disabled = !m.url;
+    smPlayer.open();
+  }
+  $('#smPlayer').addEventListener('close', () => { $('#smStage').innerHTML = ''; });
+  async function downloadMedia(m) {
+    if (!m?.url) return;
+    const ext = (m.path.split('.').pop() || (isVideo(m) ? 'mp4' : 'jpg')).slice(0, 5);
+    // ASCII file name: some browsers drop non-ASCII download names
+    const slug = m.title.normalize('NFKD').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    const name = `hplace-${String(m.created_at).slice(0, 10)}${slug ? `-${slug}` : ''}.${ext.length <= 4 ? ext : 'mp4'}`;
+    try {
+      const blob = await (await fetch(m.url)).blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      toast(`"${m.title}" 파일을 내려받았습니다. 휴대폰에서는 파일 앱이나 갤러리에서 찾을 수 있어요.`);
+    } catch (e) {
+      window.open(m.url, '_blank', 'noopener');
+    }
+  }
+  $('#smDownload').addEventListener('click', () => downloadMedia(smPlaying));
+
+  // Upload / edit
+  const smDialog = setupDialog($('#smDialog'));
+  const smForm = $('#smForm');
+  let smEditing = null;
+  const MEDIA_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'image/jpeg', 'image/png', 'image/webp'];
+  function fillMediaConsents(cur) {
+    const today = todayKey();
+    const ok = state.sn.consents.filter((c) => consentState(c, today) === 'valid');
+    $('#smConsent').innerHTML = '<option value="">연결 안 함</option>'
+      + ok.map((c) => `<option value="${esc(c.id)}">${esc(c.customer)} · ${CONSENT_SCOPE[c.scope]}${c.show_face ? ' · 얼굴 O' : ''} · ~${dotDate(c.expires_on)}</option>`).join('');
+    $('#smConsent').value = ok.some((c) => c.id === cur) ? cur : '';
+  }
+  const syncSmConsent = () => { $('#smConsentField').hidden = !$('#smNeeds').checked; };
+  function openMediaDialog(m) {
+    smEditing = m || null;
+    smForm.reset();
+    clearErrors(smForm);
+    $('#smTitle').textContent = m ? '영상 정보 수정' : '영상 올리기';
+    $('#smSubmit').textContent = m ? '저장' : '올리기';
+    $('#smFileField').hidden = Boolean(m);
+    $('#smName').value = m?.title || '';
+    $('#smNeeds').checked = Boolean(m?.needs_consent);
+    fillMediaConsents(m?.consent_id || '');
+    syncSmConsent();
+    $('#smProgress').textContent = '';
+    smDialog.open();
+    (m ? $('#smName') : $('#smFile')).focus();
+  }
+  $('#smNeeds').addEventListener('change', syncSmConsent);
+  $('#smFile').addEventListener('change', () => {
+    const file = $('#smFile').files[0];
+    if (file && !$('#smName').value.trim()) $('#smName').value = file.name.replace(/\.[^.]+$/, '').slice(0, 60);
+  });
+  $('#smUploadBtn').addEventListener('click', () => openMediaDialog(null));
+  smForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(smForm);
+    const errors = [];
+    const file = smEditing ? null : $('#smFile').files[0];
+    const title = $('#smName').value.trim();
+    if (!smEditing) {
+      if (!file) { fieldError($('#smFile'), '올릴 파일을 골라 주세요.'); errors.push({ id: 'smFile', msg: '파일을 골라 주세요.' }); }
+      else if (!MEDIA_TYPES.includes(file.type)) { fieldError($('#smFile'), 'mp4·mov·webm 영상이나 jpg·png·webp 사진만 올릴 수 있어요.'); errors.push({ id: 'smFile', msg: '파일 형식을 확인해 주세요.' }); }
+      else if (file.size > 104857600) { fieldError($('#smFile'), '100MB 이하 파일만 올릴 수 있어요.'); errors.push({ id: 'smFile', msg: '파일이 너무 큽니다.' }); }
+    }
+    if (!title) { fieldError($('#smName'), '제목을 입력해 주세요.'); errors.push({ id: 'smName', msg: '제목을 입력해 주세요.' }); }
+    const needs = $('#smNeeds').checked, cid = needs ? $('#smConsent').value : '';
+    const c = cid && state.sn.consents.find((x) => x.id === cid);
+    const kindVideo = smEditing ? isVideo(smEditing) : file && file.type.startsWith('video/');
+    if (c && kindVideo && c.scope === 'photo') { fieldError($('#smConsent'), '이 동의는 사진만 허용합니다. 영상에는 영상 동의가 필요합니다.'); errors.push({ id: 'smConsent', msg: '동의 범위를 확인해 주세요.' }); }
+    if (errors.length) return showSummary(smForm, errors);
+    const btn = $('#smSubmit');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try {
+      if (smEditing) {
+        await api.updateSnsMedia(smEditing.id, { title, needs_consent: needs, consent_id: cid || null });
+        toast(`"${title}" 정보를 저장했습니다.`);
+      } else {
+        $('#smProgress').textContent = `올리는 중… (${fileSize(file.size)})`;
+        await api.uploadSnsMedia(state.branch.id, file, { title, needs_consent: needs, consent_id: cid || null });
+        toast(`"${title}"${eulReul(title)} 보관함에 올렸습니다. 게시물 [수정]에서 연결할 수 있어요.`);
+      }
+      $('#smDialog').close();
+      await loadSns();
+    } catch (ex) {
+      $('#smProgress').textContent = '';
+      showServerError(smForm, api.toAppError(ex).message);
+    } finally {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const pl = e.target.closest('[data-sm-play]');
+    if (pl) return playMedia(state.sn.media.find((m) => m.id === pl.dataset.smPlay));
+    const dl = e.target.closest('[data-sm-download]');
+    if (dl) return downloadMedia(state.sn.media.find((m) => m.id === dl.dataset.smDownload));
+    const ed = e.target.closest('[data-sm-edit]');
+    if (ed) return openMediaDialog(state.sn.media.find((m) => m.id === ed.dataset.smEdit));
+    const del = e.target.closest('[data-sm-delete]');
+    if (del) {
+      const m = state.sn.media.find((x) => x.id === del.dataset.smDelete);
+      return askConfirm({
+        title: '영상 삭제', text: `"${m.title}" 영상을 보관함에서 삭제할까요? 연결된 초안에서는 연결이 풀립니다. 이미 SNS에 올린 영상은 각 SNS에서 따로 관리해 주세요.`,
+        run: async () => { await api.deleteSnsMedia(m.id); toast(`"${m.title}" 영상을 삭제했습니다.`); await loadSns(); },
+      });
+    }
+  });
 
   function renderSnsFacts() {
     const f = state.sn;
@@ -4237,6 +4399,11 @@
     $('#snPvCaption').textContent = $('#snCaption').value;
     $('#snPvTags').textContent = $('#snTags').value;
     $('#snPvMedia').dataset.format = p.format;
+    const pm = state.sn.media.find((m) => m.id === $('#snMedia').value);
+    const holder = $('#snPvMedia');
+    holder.querySelector('.sn-pv-file')?.remove();
+    holder.classList.toggle('has-file', Boolean(pm?.url));
+    if (pm?.url) holder.insertAdjacentHTML('afterbegin', isVideo(pm) ? `<video class="sn-pv-file" src="${esc(pm.url)}" muted autoplay loop playsinline></video>` : `<img class="sn-pv-file" src="${esc(pm.url)}" alt="" />`);
     const len = $('#snCaption').value.length;
     $('#snCaptionHelp').textContent = `${nf.format(len)}자 / 2,200자`;
     const n = ($('#snTags').value.match(/#[^\s#]+/g) || []).length;
@@ -4261,6 +4428,9 @@
     $('#snConsent').innerHTML = `<option value="">${p.needs_consent ? '선택하세요' : '연결 안 함'}</option>`
       + [...valid, ...(cur && !valid.includes(cur) ? [cur] : [])].map((c) => `<option value="${esc(c.id)}">${esc(c.customer)} · ${CONSENT_SCOPE[c.scope]}${c.show_face ? ' · 얼굴 O' : ''} · ~${dotDate(c.expires_on)}</option>`).join('');
     $('#snConsent').value = p.consent_id || '';
+    $('#snMedia').innerHTML = '<option value="">연결 안 함</option>'
+      + state.sn.media.map((m) => `<option value="${esc(m.id)}">${esc(m.title)}${m.needs_consent ? (m.consent_id ? ' · 동의 O' : ' · 동의 필요') : ''}</option>`).join('');
+    $('#snMedia').value = p.media_id || '';
     $('#snConsentHelp').textContent = p.needs_consent
       ? `고객이 나오는 게시물이라 승인 전에 게시일(${mdText(p.day)})에 유효한 동의를 연결해야 합니다.${valid.length ? '' : ' 먼저 [고객 게시 동의]에서 동의를 기록하세요.'}`
       : '고객이 나오지 않으면 연결하지 않아도 됩니다.';
@@ -4269,6 +4439,8 @@
     (focus === 'consent' ? $('#snConsent') : $('#snCaption')).focus();
   }
   ['snCaption', 'snTags', 'snShoot'].forEach((id) => $('#' + id).addEventListener('input', snPreview));
+  $('#snMedia').addEventListener('change', snPreview);
+  $('#snDialog').addEventListener('close', () => { $('#snPvMedia .sn-pv-file')?.remove(); });
   snForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearErrors(snForm);
@@ -4290,9 +4462,11 @@
     const btn = $('#snSubmit');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
-      const status = await api.updateSnsPost(p.id, {
+      let status = await api.updateSnsPost(p.id, {
         slot: $('#snSlot').value || null, title, caption, hashtags: $('#snTags').value, shoot_note: $('#snShoot').value, consent_id: cid || null,
       });
+      const mid = $('#snMedia').value || null;
+      if ((p.media_id || null) !== mid) status = await api.setSnsPostMedia(p.id, mid);
       $('#snDialog').close();
       toast(`"${title}" 게시물을 저장했습니다.${status === 'draft' && p.status !== 'draft' ? ' 다시 승인 대기로 바뀌었습니다.' : ''}`);
       await loadSns();
