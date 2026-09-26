@@ -74,7 +74,7 @@
     route: 'dashboard',
     inv: { q: '', cat: '', status: '', sortKey: 'status', sortDir: 'asc' },
     mv: { q: '', type: '', days: 7 },
-    pd: { q: '' },
+    pd: { q: '', hideOff: (() => { try { return localStorage.getItem('hp-pd-hide-off') !== '0'; } catch (e) { return true; } })() },
     us: { q: '', branch: '' },
     users: [],
     categories: [],
@@ -1190,9 +1190,15 @@
       ? '제품 목록은 모든 지점이 함께 쓰고, 품목명·브랜드·카테고리·단위·매입가·판매가·고객 판매용은 지점마다 따로 정할 수 있습니다("지점 설정" 표시). 품목 코드는 전체 관리자가 바꿉니다. "이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서만 숨겨집니다.'
       : '"이 지점 사용"을 끄면 이 지점의 재고 목록과 입출고 등록에서 숨겨집니다. 다른 지점에는 영향이 없습니다. 제품 등록과 설정은 지점 관리자에게 요청해 주세요.';
     const q = state.pd.q.trim().toLowerCase();
-    const rows = state.inventory.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
+    const found = state.inventory.filter((i) => !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q));
+    // 사용 안 함 제품 숨기기: display only (this branch's switch or 본사 사용 중지)
+    const off = (i) => i.in_use === false || i.catalog_active === false;
+    const hidden = state.pd.hideOff ? found.filter(off).length : 0;
+    const rows = (state.pd.hideOff ? found.filter((i) => !off(i)) : found)
       .sort((a, b) => byCategory(a.category, b.category) || a.name.localeCompare(b.name, 'ko'));
-    $('#pdCount').textContent = `${nf.format(rows.length)}개 품목`;
+    $('#pdHideOff').checked = state.pd.hideOff;
+    $('#pdCount').innerHTML = `${nf.format(rows.length)}개 품목${hidden ? ` · 사용 안 함 ${nf.format(hidden)}개 숨김 <button type="button" class="link-btn pd-show-off" id="pdShowOff">모두 보기</button>` : ''}`
+      + (!rows.length && hidden && !q ? '<span class="pd-none"> — 사용 중인 제품이 없습니다. 제품을 등록하거나 [모두 보기]에서 쓸 제품을 "사용"으로 켜세요.</span>' : '');
     $('#pdBody').innerHTML = rows.map((i) => `<tr class="${i.active ? '' : 'inactive-row'}">
       <td class="cell-name"><div class="item-name">${esc(i.name)}${i.own_prices ? `<span class="own-price" title="공통 값: ${esc(baseText(i))}">지점 설정</span>` : ''}</div><div class="item-sku">${esc(i.sku)}${i.brand ? ` · ${esc(i.brand)}` : ''}</div></td>
       <td data-label="카테고리">${esc(i.category)}</td>
@@ -1289,6 +1295,13 @@
   }
 
   let pdTimer = 0;
+  const setHideOff = (on) => {
+    state.pd.hideOff = on;
+    try { localStorage.setItem('hp-pd-hide-off', on ? '1' : '0'); } catch (e) {}
+    renderProducts();
+  };
+  $('#pdHideOff').addEventListener('change', (e) => setHideOff(e.target.checked));
+  $('#pdCount').addEventListener('click', (e) => { if (e.target.closest('#pdShowOff')) { setHideOff(false); $('#pdHideOff').focus(); } });
   $('#pdQ').addEventListener('input', (e) => { clearTimeout(pdTimer); pdTimer = setTimeout(() => { state.pd.q = e.target.value; renderProducts(); }, 150); });
 
   // ------------------------------------------------------------------

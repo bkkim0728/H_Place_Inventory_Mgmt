@@ -979,3 +979,8 @@ body[data-route="hq"] #branchSelect { display: none; }
   .sn-notes > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .sn-meter > span { transition: none; } }
+
+/* 제품 관리: 사용 안 함 제품 숨기기 */
+.pd-hide-off { flex: none; white-space: nowrap; font-size: 14px; }
+.pd-show-off { min-height: 28px; margin-left: var(--space-2); font-size: 13px; }
+@media (max-width: 767px) { .pd-hide-off { order: 3; } }
