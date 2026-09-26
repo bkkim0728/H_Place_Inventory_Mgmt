@@ -1535,6 +1535,28 @@
   const productForm = $('#productForm');
   let editingId = null;
 
+  // 단위: common units, plus any already used in this branch, plus 직접 입력
+  const UNITS = ['개', '병', '통', '박스', '팩', '롤', '세트', '튜브', '봉', '장', '캔', '매'];
+  const UNIT_CUSTOM = '__custom';
+  function fillUnits(current) {
+    const used = [...new Set(state.inventory.map((i) => i.unit).filter(Boolean))].filter((u) => !UNITS.includes(u)).sort((a, b) => a.localeCompare(b, 'ko'));
+    const list = [...UNITS, ...used];
+    if (current && !list.includes(current)) list.push(current);
+    $('#pUnit').innerHTML = list.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join('') + `<option value="${UNIT_CUSTOM}">직접 입력…</option>`;
+  }
+  function setUnit(u) {
+    fillUnits(u);
+    $('#pUnit').value = u;
+    $('#pUnitCustom').value = '';
+    $('#pUnitCustom').hidden = true;
+  }
+  const unitValue = () => ($('#pUnit').value === UNIT_CUSTOM ? $('#pUnitCustom').value.trim() : $('#pUnit').value);
+  $('#pUnit').addEventListener('change', () => {
+    const custom = $('#pUnit').value === UNIT_CUSTOM;
+    $('#pUnitCustom').hidden = !custom;
+    if (custom) $('#pUnitCustom').focus();
+  });
+
   function openProduct(item) {
     productForm.reset();
     clearErrors(productForm);
@@ -1550,7 +1572,7 @@
     if (item && !state.categories.some((c) => c.name === item.category)) pc.add(new Option(item.category, item.category));
     pc.value = item?.category || '';
     if (!item) previewSku();
-    $('#pUnit').value = item?.unit || '개';
+    setUnit(item?.unit || '개');
     $('#pCost').value = item ? item.cost_price : '';
     $('#pRetail').value = item?.retail_price ?? '';
     $('#pSafety').value = item ? item.safety_stock : '';
@@ -1608,7 +1630,7 @@
     $('#pBrand').value = i.base_brand || '';
     $('#pCategory').value = i.base_category;
     $('#pRetailFlag').checked = Boolean(i.base_is_retail);
-    $('#pUnit').value = i.base_unit;
+    setUnit(i.base_unit);
     $('#pCost').value = i.base_cost_price;
     $('#pRetail').value = i.base_retail_price ?? '';
     $('#pPriceHelp').textContent = `공통 값을 채웠습니다. 저장하면 ${state.branch.name}도 공통 값(${baseText(i)})을 씁니다.`;
@@ -1648,7 +1670,12 @@
       errors.push({ id: 'pSku', msg: '품목 코드 형식을 확인해 주세요.' });
     }
     if (!$('#pCategory').value) { fieldError($('#pCategory'), '카테고리를 선택해 주세요.'); errors.push({ id: 'pCategory', msg: '카테고리를 선택해 주세요.' }); }
-    need('pUnit', '단위');
+    if (!unitValue()) {
+      const el = $('#pUnit').value === UNIT_CUSTOM ? $('#pUnitCustom') : $('#pUnit');
+      fieldError(el, '단위를 선택하거나 입력해 주세요.');
+      const err = $('#pUnitErr'); err.textContent = '단위를 선택하거나 입력해 주세요.'; err.hidden = false;
+      errors.push({ id: el.id, msg: '단위를 선택하거나 입력해 주세요.' });
+    }
     const cost = intField('pCost', '매입가', true);
     const retail = intField('pRetail', '판매가', false);
     const safety = intField('pSafety', '안전재고', true);
@@ -1659,7 +1686,7 @@
     try {
       const newId = await api.saveProduct(state.branch.id, {
         productId: editingId, sku: editingId ? $('#pSku').value : '', name: $('#pName').value, brand: $('#pBrand').value,
-        category: $('#pCategory').value, unit: $('#pUnit').value, costPrice: cost, retailPrice: retail,
+        category: $('#pCategory').value, unit: unitValue(), costPrice: cost, retailPrice: retail,
         isRetail: $('#pRetailFlag').checked, safetyStock: safety, location: $('#pLocation').value,
         active: activeScope === 'branch' ? itemById(editingId).catalog_active !== false : $('#pActive').checked,
         priceScope: priceScope(),
