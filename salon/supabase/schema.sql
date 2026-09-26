@@ -213,6 +213,7 @@ update public.staff set position = case position
  where position in ('director', 'chief', 'intern', 'desk');
 alter table public.staff add constraint staff_position_chk check (position in ('head_director', 'chief_deputy', 'deputy', 'senior_stylist', 'stylist', 'designer', 'staff'));
 alter table public.staff add column if not exists annual_leave_days numeric(4,1);  -- 연차 일수 override (null = 자동 계산)
+alter table public.staff add column if not exists birth_date date;  -- 생년월일 (managers only, like the rest of staff)
 
 -- Designer who did the 시술 / made the sale, and the 판매가 at the time of a sale
 alter table public.stock_movements add column if not exists staff_id uuid references public.staff(id) on delete set null;
@@ -1034,6 +1035,7 @@ grant select on public.staff to authenticated;
 -- Leaving (status 'left') without a date records today.
 -- Errors: FORBIDDEN, STAFF_NOT_FOUND, INVALID_STAFF_NAME / _POSITION / _RATE / _DATES / _LEAVE, INVALID_STAFF
 drop function if exists public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text);
+drop function if exists public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text, numeric);
 create or replace function public.save_staff(
   p_id                  uuid,
   p_branch_id           uuid,
@@ -1050,7 +1052,8 @@ create or replace function public.save_staff(
   p_license_no          text,
   p_health_cert_expires date,
   p_memo                text,
-  p_annual_leave_days   numeric default null   -- null = 입사일 기준 자동 계산
+  p_annual_leave_days   numeric default null,  -- null = 입사일 기준 자동 계산
+  p_birth_date          date default null
 )
 returns uuid
 language plpgsql security definer set search_path = public
@@ -1088,6 +1091,9 @@ begin
   if coalesce(p_annual_leave_days, 0) not between 0 and 60 then
     raise exception 'INVALID_STAFF_LEAVE' using errcode = '22023';
   end if;
+  if p_birth_date is not null and (p_birth_date < date '1920-01-01' or p_birth_date > (now() at time zone 'Asia/Seoul')::date) then
+    raise exception 'INVALID_STAFF_BIRTH' using errcode = '22023';
+  end if;
   if v_status not in ('active', 'leave', 'left')
      or not coalesce(p_services, '{}') <@ array['cut', 'perm', 'color', 'clinic', 'scalp', 'styling', 'updo']::text[]
      or not coalesce(p_days_off, '{}') <@ array[0, 1, 2, 3, 4, 5, 6] then
@@ -1118,6 +1124,7 @@ begin
          health_cert_expires = p_health_cert_expires,
          memo = nullif(btrim(p_memo), ''),
          annual_leave_days = p_annual_leave_days,
+         birth_date = p_birth_date,
          updated_at = now()
    where id = v_id;
   return v_id;
@@ -1175,9 +1182,9 @@ begin
 end;
 $$;
 
-revoke all on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text, numeric) from public, anon;
+revoke all on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text, numeric, date) from public, anon;
 revoke all on function public.delete_staff(uuid) from public, anon;
-grant execute on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text, numeric) to authenticated;
+grant execute on function public.save_staff(uuid, uuid, text, text, text, date, text, date, text[], integer[], numeric, numeric, text, date, text, numeric, date) to authenticated;
 grant execute on function public.delete_staff(uuid) to authenticated;
 revoke all on function public.set_staff_photo(uuid, text) from public, anon;
 grant execute on function public.set_staff_photo(uuid, text) to authenticated;
