@@ -3663,7 +3663,7 @@
     const seed = Math.round(Date.parse(`${day}T00:00:00Z`) / DAY);
     const spotlight = working.length ? working[seed % working.length] : null;
     const svcDesigner = working.find((x) => (x.services || []).includes(svc)) || spotlight;
-    return { working, tomorrow, best, rec, svc, top, spotlight, svcDesigner, seed };
+    return { working, tomorrow, best, rec, roomy, svc, top, spotlight, svcDesigner, seed };
   }
 
   // Branch hashtags: from SNS 설정, otherwise from the branch name and address
@@ -3717,22 +3717,24 @@
         }),
         hashtags: tags('#미용실예약', 2), shoot_note: '매장 내부 사진 1장 + "내일 예약 가능" 텍스트', source_note: `근무표: ${md} 근무 디자이너 없음` });
     }
-    // 2 디자이너 소개 (feed) + 3 페이스북 같은 내용
-    if (S) {
-      const years = S.hired_on ? Math.floor(dayDiff(S.hired_on, day) / 365) : 0;
-      const quote = SVC_QUOTE[(S.services || [])[0]] || '고객님께 꼭 맞는 스타일을 찾아 드릴게요.';
-      const body = [svcs(S).length ? `전문 시술: ${svcs(S).join(' · ')}` : '', years >= 1 ? `${josa(place, '과', '와')} 함께한 지 ${years}년째` : ''].filter(Boolean).join('\n');
+    // 디자이너 소개 (feed), optionally the same on 페이스북
+    const designerPost = (x, slot, fbSlot) => {
+      const years = x.hired_on ? Math.floor(dayDiff(x.hired_on, day) / 365) : 0;
+      const quote = SVC_QUOTE[(x.services || [])[0]] || '고객님께 꼭 맞는 스타일을 찾아 드릴게요.';
+      const body = [svcs(x).length ? `전문 시술: ${svcs(x).join(' · ')}` : '', years >= 1 ? `${josa(place, '과', '와')} 함께한 지 ${years}년째` : ''].filter(Boolean).join('\n');
       const cap = t({
-        friendly: `${place}의 ${josa(`${S.name} ${pos(S)}`, '을', '를')} 소개합니다 😊\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n${S.name} ${pos(S)} 상담·예약은 DM이나 전화로 편하게 문의하세요.\n${contact}`,
-        premium: `${place} ${josa(`${S.name} ${pos(S)}`, '을', '를')} 소개합니다.\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n상담과 예약은 DM 또는 전화로 문의해 주세요.\n${contact}`,
-        trendy: `오늘의 디자이너 👉 ${S.name} ${pos(S)}\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n지금 DM으로 예약 문의 💬\n${contact}`,
+        friendly: `${place}의 ${josa(`${x.name} ${pos(x)}`, '을', '를')} 소개합니다 😊\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n${x.name} ${pos(x)} 상담·예약은 DM이나 전화로 편하게 문의하세요.\n${contact}`,
+        premium: `${place} ${josa(`${x.name} ${pos(x)}`, '을', '를')} 소개합니다.\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n상담과 예약은 DM 또는 전화로 문의해 주세요.\n${contact}`,
+        trendy: `오늘의 디자이너 👉 ${x.name} ${pos(x)}\n\n${body}${body ? '\n\n' : ''}"${quote}"\n\n지금 DM으로 예약 문의 💬\n${contact}`,
       });
-      const tg = tags(`#헤어디자이너 #디자이너추천 ${SVC_TAGS[(S.services || [])[0]] || ''}`);
-      const shoot = `${S.name} ${pos(S)} 상반신 사진 1장(자연광) + 대표 시술 결과 2장을 여러 장으로 올리기`;
-      const src = `근무표: ${md} 근무 · 직원 관리: ${pos(S)}${svcs(S).length ? ', 담당 시술' : ''}`;
-      add({ platform: 'instagram', format: 'feed', theme: 'designer', slot: '11:00', title: `디자이너 소개 · ${S.name} ${pos(S)}`, caption: cap, hashtags: tg, shoot_note: shoot, source_note: src });
-      out.push({ ...out[out.length - 1], platform: 'facebook', format: 'post', slot: '11:10', hashtags: tags('#헤어디자이너', 3) });
-    }
+      const tg = tags(`#헤어디자이너 #디자이너추천 ${SVC_TAGS[(x.services || [])[0]] || ''}`);
+      const shoot = `${x.name} ${pos(x)} 상반신 사진 1장(자연광) + 대표 시술 결과 2장을 여러 장으로 올리기`;
+      const src = `근무표: ${md} 근무 · 직원 관리: ${pos(x)}${svcs(x).length ? ', 담당 시술' : ''}`;
+      add({ platform: 'instagram', format: 'feed', theme: 'designer', slot, title: `디자이너 소개 · ${x.name} ${pos(x)}`, caption: cap, hashtags: tg, shoot_note: shoot, source_note: src });
+      if (fbSlot) out.push({ ...out[out.length - 1], platform: 'facebook', format: 'post', slot: fbSlot, hashtags: tags('#헤어디자이너', 3) });
+    };
+    // 2 디자이너 소개 (feed) + 3 페이스북 같은 내용
+    if (S) designerPost(S, '11:00', '11:10');
     // 4 네이버 플레이스 소식
     add({ platform: 'naver', format: 'news', theme: 'booking', slot: '09:30', title: `${md} ${place} 예약 안내`,
       caption: t({
@@ -3740,17 +3742,19 @@
         premium: `안녕하세요, ${place}입니다.\n\n오늘(${md}) 근무 디자이너: ${W.length ? names(W) : '없음 (휴무)'}\n최근 ${svcName} 시술 문의가 많아 예약을 권해 드립니다.\n\n${contact}\n네이버 예약으로 편하게 예약하실 수 있습니다.`,
       }),
       shoot_note: '매장 외관 또는 카운터 사진 1장', source_note: `근무표 · ${useSrc}` });
-    // 5 추천 제품 (story)
-    if (rec) {
-      add({ platform: 'instagram', format: 'story', theme: 'product', slot: '13:00', title: `추천 홈케어 · ${rec.name}`,
+    // 추천 제품 (story)
+    const productStory = (it, slot, src) => {
+      add({ platform: 'instagram', format: 'story', theme: 'product', slot, title: `추천 홈케어 · ${it.name}`,
         caption: t({
-          friendly: `시술 후 집에서도 그대로 ✨\n${rec.name}${rec.retail_price ? `\n${won.format(rec.retail_price)}` : ''}\n\n${D ? `${josa(`${D.name} ${pos(D)}`, '이', '가')} 추천하는` : '디자이너가 추천하는'} 홈케어 아이템이에요. 매장에서 바로 구매할 수 있어요.`,
-          premium: `시술 후의 컨디션을 집에서도.\n${rec.name}${rec.retail_price ? `\n${won.format(rec.retail_price)}` : ''}\n\n디자이너가 추천하는 홈케어 제품입니다. 매장에서 구매하실 수 있습니다.`,
-          trendy: `요즘 디자이너 픽 💛\n${rec.name}${rec.retail_price ? ` · ${won.format(rec.retail_price)}` : ''}\n\n매장에서 바로 GET!`,
+          friendly: `시술 후 집에서도 그대로 ✨\n${it.name}${it.retail_price ? `\n${won.format(it.retail_price)}` : ''}\n\n${D ? `${josa(`${D.name} ${pos(D)}`, '이', '가')} 추천하는` : '디자이너가 추천하는'} 홈케어 아이템이에요. 매장에서 바로 구매할 수 있어요.`,
+          premium: `시술 후의 컨디션을 집에서도.\n${it.name}${it.retail_price ? `\n${won.format(it.retail_price)}` : ''}\n\n디자이너가 추천하는 홈케어 제품입니다. 매장에서 구매하실 수 있습니다.`,
+          trendy: `요즘 디자이너 픽 💛\n${it.name}${it.retail_price ? ` · ${won.format(it.retail_price)}` : ''}\n\n매장에서 바로 GET!`,
         }),
         hashtags: tags('#홈케어추천', 2), shoot_note: '카운터 조명 아래에서 제품을 손에 든 사진 또는 10초 영상',
-        source_note: `재고: ${rec.name} ${nf.format(rec.stock)}${rec.unit} (안전재고 ${nf.format(rec.safety_stock)}) — 재고가 넉넉한 판매 제품` });
-    }
+        source_note: src || `재고: ${it.name} ${nf.format(it.stock)}${it.unit} (안전재고 ${nf.format(it.safety_stock)}) — 재고가 넉넉한 판매 제품` });
+    };
+    // 5 추천 제품 (story)
+    if (rec) productStory(rec, '13:00');
     // 6 홈케어 팁 (tiktok)
     const [tipTitle, tipSteps] = SVC_TIPS[facts.svc] || SVC_TIPS.color;
     const tipBy = D || S;
@@ -3828,10 +3832,18 @@
         caption: `${place}에서 추천하는 홈케어 제품을 소개합니다.\n\n${rec.name}${rec.retail_price ? ` · ${won.format(rec.retail_price)}` : ''}\n시술 후 컨디션을 집에서도 유지할 수 있도록 디자이너가 사용법을 안내해 드립니다.\n\n${contact}`,
         shoot_note: '제품 사진 1장', source_note: `재고: ${rec.name} ${nf.format(rec.stock)}${rec.unit}` });
     }
+    // More topics for [초안 더 만들기]: the other designers working that day, other in-stock retail items
+    W.filter((x) => x !== S).slice(0, 3).forEach((x, i) => designerPost(x, ['14:00', '17:30', '21:30'][i]));
+    const soldQty = new Map(best.map((b) => [b.item.product_id, b.qty]));
+    [...best.map((b) => b.item), ...facts.roomy]
+      .filter((it, i, a) => it !== rec && a.findIndex((y) => y.product_id === it.product_id) === i).slice(0, 3)
+      .forEach((it, i) => productStory(it, ['14:30', '16:30', '19:30'][i],
+        soldQty.has(it.product_id) ? `판매 내역 최근 4주: ${it.name} ${nf.format(soldQty.get(it.product_id))}${it.unit} 판매` : ''));
     return out;
   }
 
-  const snsKey = (p) => `${p.platform}|${p.format}|${p.theme}`;
+  // One post per topic; designer and product posts are per person / per item
+  const snsKey = (p) => `${p.platform}|${p.format}|${p.theme}${['designer', 'product'].includes(p.theme) ? `|${p.title}` : ''}`;
   const snsTarget = () => state.sn.settings?.daily_target || 12;
 
   function renderSns() {
@@ -3865,9 +3877,14 @@
     // Generate button
     const past = f.day < today, far = f.day > addDays(today, 60);
     const gen = $('#snGenerate');
-    gen.disabled = f.loading || past || far || n >= target;
+    gen.disabled = f.loading || past || far;
     gen.lastChild.textContent = n ? '초안 더 만들기' : '초안 자동 만들기';
-    gen.title = past ? '지난 날짜에는 초안을 만들 수 없습니다.' : n >= target ? '하루 목표만큼 게시물이 있습니다.' : '';
+    // Say why instead of a silent disabled button
+    const hint = past ? '지난 날짜에는 초안을 만들 수 없어요. [오늘]을 누르거나 오늘 이후 날짜를 고르세요.'
+      : far ? '60일 뒤까지만 초안을 만들 수 있어요.'
+      : n >= target ? `하루 목표 ${nf.format(target)}개를 채웠어요. [초안 더 만들기]를 누르면 아직 쓰지 않은 주제(다른 디자이너 소개, 다른 추천 제품 등)로 더 만듭니다.` : '';
+    $('#snGenHint').textContent = hint;
+    $('#snGenHint').hidden = !hint || f.loading;
 
     // List
     const shown = posts.filter((p) => (!f.platform || p.platform === f.platform) && (!f.status || p.status === f.status));
@@ -3986,8 +4003,9 @@
     const f = state.sn, btn = e.currentTarget;
     const have = new Set(f.posts.map(snsKey));
     const need = snsTarget() - f.posts.length;
-    const fresh = snsPlan().filter((p) => !have.has(snsKey(p))).slice(0, Math.max(0, need));
-    if (!fresh.length) { toast(need > 0 ? '더 만들 수 있는 새 주제가 없습니다. 직접 수정해서 채워 주세요.' : '이미 하루 목표만큼 게시물이 있습니다.'); return; }
+    // Below the target: fill up to it. At or above: add every topic not used yet (max 40 at once).
+    const fresh = snsPlan().filter((p) => !have.has(snsKey(p))).slice(0, need > 0 ? need : 40);
+    if (!fresh.length) { toast('이 날짜에 만들 수 있는 새 주제를 모두 썼습니다. 기존 초안을 수정하거나 다른 날짜를 골라 주세요.'); return; }
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     try {
       const count = await api.addSnsPosts(state.branch.id, fresh);
