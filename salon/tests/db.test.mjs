@@ -526,6 +526,36 @@ console.log('SNS 홍보');
   ok((await err(staff, () => q(`select add_sns_posts($1,$2::jsonb)`, [b1, JSON.stringify([post({ audience: 'global', platform: 'naver', format: 'news' })])])))?.includes('INVALID_SNS_POST'), 'naver is domestic only');
   ok((await err(staff, () => q(`select add_sns_posts($1,$2::jsonb)`, [b1, JSON.stringify([post({ audience: 'mars' })])])))?.includes('INVALID_SNS_POST'), 'unknown audience rejected');
   await as(mgr, () => q(`select save_sns_settings($1,'@hplace','#서초미용실','premium',14,'#seoulhairsalon #kbeauty')`, [b1]));
+
+  // 홍보 영상 보관함
+  const addM = (uid, b, path, o = {}) => as(uid, () => one(`select add_sns_media($1,$2,$3,'video/mp4',3000000,$4,$5) id`, [b, path, o.title ?? '쇼츠', o.needs ?? false, o.consent ?? null]));
+  const m1 = (await addM(staff, b1, `${b1}/shorts-1.mp4`)).id;
+  ok(Boolean(m1), 'staff registers an uploaded video');
+  ok((await err(staff, () => addM(staff, b1, `${b2}/x.mp4`)))?.includes('INVALID_SNS_MEDIA'), 'path must be in own branch folder');
+  ok((await err(staff, () => addM(staff, b2, `${b2}/x.mp4`)))?.includes('NOT_BRANCH_MEMBER'), 'cannot register in another branch');
+  ok((await err(staff, () => as(staff, () => one(`select add_sns_media($1,$2,'x','application/pdf',1,false,null)`, [b1, `${b1}/x.pdf`]))))?.includes('INVALID_SNS_MEDIA'), 'only video/image types');
+  ok((await as(oth, () => q(`select * from sns_media`))).length === 0, 'other branch cannot see the videos');
+  await q(`insert into storage.objects(bucket_id,name) values('sns-media',$1)`, [`${b1}/shorts-1.mp4`]);
+  ok((await as(oth, () => q(`select * from storage.objects where bucket_id='sns-media'`))).length === 0, 'other branch cannot read the file');
+  ok((await as(staff, () => q(`select * from storage.objects where bucket_id='sns-media'`))).length === 1, 'branch member reads the file');
+  ok((await as(staff, () => q(`delete from storage.objects where name=$1 returning id`, [`${b1}/shorts-1.mp4`]))).length === 0, 'registered file cannot be deleted directly');
+  // link to a post; a customer video blocks approval until a consent is attached
+  const pid = (await one(`select id from sns_posts where branch_id=$1 and status='draft' limit 1`, [b1])).id;
+  const m2 = (await addM(staff, b1, `${b1}/people.mp4`, { needs: true, title: '고객 등장 영상' })).id;
+  ok((await as(staff, () => one(`select set_sns_post_media($1,$2) s`, [pid, m2]))).s === 'draft', 'staff links a video to a draft');
+  ok((await err(mgr, () => q(`select set_sns_post_status($1,'approved',null)`, [pid])))?.includes('CONSENT_REQUIRED'), 'customer video needs a consent before approval');
+  const cm = (await as(staff, () => one(`select save_sns_consent(null,$1,'정○○','video',true,$2::date,($2::date + 365),null) id`, [b1, today]))).id;
+  await as(staff, () => q(`select update_sns_media($1,'고객 등장 영상',true,$2)`, [m2, cm]));
+  await as(mgr, () => q(`select set_sns_post_status($1,'approved',null)`, [pid]));
+  ok((await one(`select status from sns_posts where id=$1`, [pid])).status === 'approved', 'approved once the video has a consent');
+  ok((await err(staff, () => q(`select delete_sns_media($1)`, [m2])))?.includes('SNS_MEDIA_IN_USE'), 'video of an approved post cannot be deleted');
+  await as(mgr, () => q(`select revoke_sns_consent($1)`, [cm]));
+  ok((await one(`select status from sns_posts where id=$1`, [pid])).status === 'draft', 'withdrawing the video consent sends the post back to 초안');
+  ok((await err(oth, () => q(`select set_sns_post_media($1,$2)`, [pid, m1])))?.includes('NOT_BRANCH_MEMBER'), 'other branch cannot link');
+  const m3 = (await addM(mgr, b1, `${b1}/mgr.mp4`)).id;
+  ok((await err(staff, () => q(`select delete_sns_media($1)`, [m3])))?.includes('FORBIDDEN'), "staff cannot delete a manager's upload");
+  ok((await as(staff, () => one(`select delete_sns_media($1) p`, [m1]))).p === `${b1}/shorts-1.mp4`, 'uploader deletes and gets the path back');
+  ok((await as(staff, () => q(`delete from storage.objects where name=$1 returning id`, [`${b1}/shorts-1.mp4`]))).length === 1, 'then the file can be removed');
   ok((await one(`select hashtags_global from sns_settings where branch_id=$1`, [b1])).hashtags_global === '#seoulhairsalon #kbeauty', 'global hashtags saved');
 }
 

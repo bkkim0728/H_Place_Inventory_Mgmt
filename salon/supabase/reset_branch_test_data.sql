@@ -6,7 +6,8 @@
 --   · 현재고 → 0 (안전재고·보관 위치·지점 가격·사용 여부는 그대로)  inventory.stock
 --   · 시술 매출 입력                                             daily_sales
 --   · 월 실적 입력·정산 확정                                      staff_monthly, payroll_months
---   · SNS 홍보 게시물·고객 게시 동의 기록                          sns_posts, sns_consents
+--   · SNS 홍보 게시물·홍보 영상 목록·고객 게시 동의 기록           sns_posts, sns_media, sns_consents
+--     (영상 파일 자체는 Storage → sns-media 버킷의 지점 폴더에서 지워 주세요)
 --   · (선택) 근무표 기록: 연차·반차·휴무 등                        staff_schedule
 -- 그대로 두는 것:
 --   지점 정보·사진, 로그인 계정, 카테고리, 제품 목록, 직원 정보·사진, SNS 설정, 다른 지점의 모든 데이터
@@ -79,6 +80,7 @@ begin
 
   delete from public.sns_posts where branch_id = v_id;
   get diagnostics v_sns = row_count;
+  delete from public.sns_media where branch_id = v_id;  -- 파일은 Storage의 sns-media 버킷에서 따로 지워 주세요
   delete from public.sns_consents where branch_id = v_id;
 
   if v_schedule then

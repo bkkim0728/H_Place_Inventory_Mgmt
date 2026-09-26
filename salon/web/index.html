@@ -534,6 +534,18 @@
           </div>
           <ul class="sn-mix" id="snMix" aria-label="플랫폼별 게시물 수"></ul>
 
+          <section class="card panel sm-panel" aria-labelledby="smHeading">
+            <div class="panel-head">
+              <div>
+                <h2 id="smHeading" class="rp-title">홍보 영상 보관함</h2>
+                <p class="muted small" id="smSub">이 지점 직원만 볼 수 있어요 · 게시물에 연결하면 카드에 [영상 보기]가 생겨요</p>
+              </div>
+              <button class="btn btn-primary btn-sm" type="button" id="smUploadBtn"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>영상 올리기</button>
+            </div>
+            <ul class="sm-list" id="smList" aria-label="홍보 영상"></ul>
+            <p class="muted small sm-empty" id="smEmpty" hidden>아직 올린 영상이 없습니다. [영상 올리기]로 쇼츠·릴스 영상을 올려 두면 게시물에 연결하고 바로 재생할 수 있어요.</p>
+          </section>
+
           <div class="sn-grid">
             <section class="card panel" aria-labelledby="snListHeading">
               <div class="panel-head sn-list-head">
@@ -1701,6 +1713,13 @@
                 <a href="#/sns" class="btn btn-secondary btn-sm man-go">SNS 홍보로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>
+            <details class="man-item" id="man-sns-media" data-short="영상 보관함">
+              <summary><span class="man-no" aria-hidden="true"></span><span class="man-q">홍보 영상 올리고 게시물에 연결하기</span></summary>
+              <div class="man-body">
+                <ol class="man-steps"><li><b>SNS 홍보</b> → <b>홍보 영상 보관함</b>의 <b>영상 올리기</b>로 쇼츠·릴스 영상(mp4·mov·webm, 100MB 이하)이나 사진을 올립니다. 이 지점 직원만 볼 수 있습니다.</li><li>고객이 나오는 영상이면 <b>고객이 나오는 영상이에요</b>에 체크하고 게시 동의(영상 범위)를 연결합니다. 동의가 없으면 그 영상을 연결한 게시물은 승인되지 않습니다.</li><li>게시물 <b>수정</b> → <b>연결할 영상</b>에서 영상을 고르면 미리보기에서 재생되고, 카드에 <b>영상 보기</b> 버튼이 생깁니다.</li><li>썸네일을 누르면 재생, <b>다운로드</b>로 휴대폰·PC에 저장한 뒤 각 SNS에 올립니다.</li></ol><p class="man-tip"><strong>참고</strong> 승인되었거나 게시 완료된 게시물에 연결된 영상은 삭제할 수 없습니다. 올린 사람과 지점 관리자만 삭제할 수 있습니다.</p>
+                <a href="#/sns" class="btn btn-secondary btn-sm man-go">SNS 홍보로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
+              </div>
+            </details>
             <details class="man-item" id="man-sns-revoke" data-short="동의 철회" data-manager-only>
               <summary><span class="man-no" aria-hidden="true"></span><span class="man-q">고객이 동의를 철회했을 때</span><span class="tag man-role">지점 관리자</span></summary>
               <div class="man-body">
@@ -2427,6 +2446,11 @@
               <label for="snShoot">촬영 가이드</label>
               <textarea id="snShoot" rows="2" maxlength="300"></textarea>
             </div>
+            <div class="form-field span-2">
+              <label for="snMedia">연결할 영상</label>
+              <select id="snMedia" aria-describedby="snMediaHelp"></select>
+              <p class="help" id="snMediaHelp">홍보 영상 보관함에 올린 영상을 이 게시물에 연결합니다.</p>
+            </div>
             <div class="form-field span-2" id="snConsentField">
               <label for="snConsent">고객 게시 동의</label>
               <select id="snConsent" aria-describedby="snConsentHelp snConsentErr"></select>
@@ -2567,6 +2591,60 @@
         <button type="submit" class="btn btn-primary" id="snSetSubmit">저장</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog class="modal" id="smDialog" aria-labelledby="smTitle">
+    <form id="smForm" novalidate>
+      <div class="modal-head">
+        <h2 id="smTitle">영상 올리기</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="error-summary" id="smErrors" tabindex="-1" hidden><p><strong>입력 내용을 확인해 주세요.</strong></p><ul></ul></div>
+        <div class="form-grid">
+          <div class="form-field span-2" id="smFileField">
+            <label for="smFile">영상 파일 <span class="req" aria-hidden="true">*</span></label>
+            <input id="smFile" type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" aria-describedby="smFileHelp smFileErr" />
+            <p class="help" id="smFileHelp">mp4·mov·webm 영상 또는 jpg·png·webp 사진, 100MB 이하. 쇼츠·릴스는 세로(9:16)를 추천해요.</p>
+            <p class="err" id="smFileErr" hidden></p>
+          </div>
+          <div class="form-field span-2">
+            <label for="smName">제목 <span class="req" aria-hidden="true">*</span></label>
+            <input id="smName" type="text" maxlength="60" placeholder="예: 해외용 쇼츠 · NO TIP 15초" aria-describedby="smNameErr" />
+            <p class="err" id="smNameErr" hidden></p>
+          </div>
+          <div class="form-field span-2">
+            <label class="check"><input type="checkbox" id="smNeeds" /> 고객이 나오는 영상이에요 <span class="muted small">(게시 동의를 연결해야 승인됩니다)</span></label>
+          </div>
+          <div class="form-field span-2" id="smConsentField">
+            <label for="smConsent">고객 게시 동의</label>
+            <select id="smConsent" aria-describedby="smConsentHelp smConsentErr"></select>
+            <p class="help" id="smConsentHelp">영상 범위(영상 또는 사진·영상)가 포함된 유효한 동의만 고를 수 있어요.</p>
+            <p class="err" id="smConsentErr" hidden></p>
+          </div>
+        </div>
+        <p class="help" id="smProgress" aria-live="polite"></p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" data-close>취소</button>
+        <button type="submit" class="btn btn-primary" id="smSubmit">올리기</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal sm-player" id="smPlayer" aria-labelledby="smPlayTitle">
+    <div class="modal-head">
+      <h2 id="smPlayTitle">영상</h2>
+      <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="sm-stage" id="smStage"></div>
+      <p class="muted small" id="smPlayMeta"></p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-secondary" data-close>닫기</button>
+      <button type="button" class="btn btn-primary" id="smDownload"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>다운로드</button>
+    </div>
   </dialog>
 
   <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>

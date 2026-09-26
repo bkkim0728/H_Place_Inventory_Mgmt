@@ -65,6 +65,9 @@
     INVALID_SNS_STATUS: '지금 상태에서는 할 수 없는 작업입니다. 새로고침 후 다시 확인해 주세요.',
     CONSENT_REQUIRED: '고객이 나오는 게시물입니다. 유효한 고객 게시 동의를 연결해야 승인할 수 있습니다.',
     INVALID_CONSENT: '게시 동의 정보를 확인해 주세요. 동의일은 오늘 이전이어야 하고, 게시일에 유효한 동의만 연결할 수 있습니다.',
+    INVALID_SNS_MEDIA: '영상 정보를 확인해 주세요. mp4·mov·webm 영상이나 jpg·png·webp 사진, 100MB 이하만 올릴 수 있습니다.',
+    SNS_MEDIA_NOT_FOUND: '영상을 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.',
+    SNS_MEDIA_IN_USE: '승인되었거나 게시 완료된 게시물에 연결된 영상은 삭제할 수 없습니다.',
     CONSENT_NOT_FOUND: '게시 동의 기록을 찾을 수 없거나 이미 철회되었습니다.',
   };
 
@@ -135,6 +138,7 @@
     });
     const photos = sb.storage.from('branch-photos');
     const staffPhotos = sb.storage.from('staff-photos');
+    const snsMedia = sb.storage.from('sns-media');
     const photoUrl = (path) => (path ? photos.getPublicUrl(path).data.publicUrl : null);
     // Branches are read with select('*') so sign-in still works on a database
     // set up before photo_path existed (the photo feature then asks for setup).
@@ -296,6 +300,37 @@
           p_signed_on: c.signed_on, p_expires_on: c.expires_on, p_memo: c.memo || null,
         })),
       revokeSnsConsent: (id) => run(sb.rpc('revoke_sns_consent', { p_consent_id: id })),
+      // 홍보 영상 보관함: private bucket; rows get a signed link valid for an hour
+      async listSnsMedia(branchId) {
+        const rows = await run(sb.from('sns_media').select('*').eq('branch_id', branchId).order('created_at', { ascending: false }));
+        if (rows.length) {
+          const { data } = await snsMedia.createSignedUrls(rows.map((r) => r.path), 3600);
+          const urls = new Map((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
+          rows.forEach((r) => { r.url = urls.get(r.path) || null; });
+        }
+        return rows;
+      },
+      async uploadSnsMedia(branchId, file, meta) {
+        const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4';
+        const path = `${branchId}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        await run(snsMedia.upload(path, file, { contentType: file.type, upsert: false }));
+        try {
+          return await run(sb.rpc('add_sns_media', {
+            p_branch_id: branchId, p_path: path, p_title: meta.title, p_mime: file.type, p_size: file.size,
+            p_needs_consent: Boolean(meta.needs_consent), p_consent_id: meta.consent_id || null,
+          }));
+        } catch (e) {
+          await snsMedia.remove([path]).catch(() => {});
+          throw e;
+        }
+      },
+      updateSnsMedia: (id, v) =>
+        run(sb.rpc('update_sns_media', { p_media_id: id, p_title: v.title, p_needs_consent: Boolean(v.needs_consent), p_consent_id: v.consent_id || null })),
+      async deleteSnsMedia(id) {
+        const path = await run(sb.rpc('delete_sns_media', { p_media_id: id }));
+        if (path) await snsMedia.remove([path]).catch(() => {});
+      },
+      setSnsPostMedia: (postId, mediaId) => run(sb.rpc('set_sns_post_media', { p_post_id: postId, p_media_id: mediaId || null })),
       listDailySales: (branchId, from, to) =>
         run(sb.from('daily_sales').select('day, service_sales, service_count, memo').eq('branch_id', branchId).gte('day', from).lte('day', to)),
       saveDailySales: (branchId, day, v) =>
@@ -578,6 +613,11 @@
     }
     if (!Array.isArray(state.snsConsents)) state.snsConsents = buildDemoConsents();
     if (!state.snsSettings || typeof state.snsSettings !== 'object') state.snsSettings = {};
+    // 홍보 영상 보관함: one sample (a static file); files uploaded in the demo live in memory only
+    if (!Array.isArray(state.snsMedia)) {
+      state.snsMedia = [{ id: 'sm1', branch_id: 'br01', title: '해외용 쇼츠 샘플 (10초)', path: 'demo-media/hplace-shorts-global-10s.mp4', mime: 'video/mp4',
+        size_bytes: 3032458, needs_consent: false, consent_id: null, memo: null, created_by: 'u-mgr1', created_at: new Date().toISOString() }];
+    }
     // Sample 지점 설정 prices so 지점별 가격 비교 has something to show (once per saved demo)
     if (!state.branchPricesSeeded) {
       [['br02', 'CL-OX6', { cost_price: 8200 }], ['br02', 'RT-OIL', { retail_price: 24000 }], ['br02', 'RT-ESS', { cost_price: 9200, retail_price: 25000 }],
@@ -617,6 +657,8 @@
       && ['domestic', 'global'].includes(x.audience || 'domestic') && ['data', 'trend'].includes(x.origin || 'data')
       && !(x.audience === 'global' && x.platform === 'naver')
       && (x.hashtags || '').length <= 500 && (x.shoot_note || '').length <= 300 && (x.source_note || '').length <= 200 && Boolean(x.day);
+    const MEDIA_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'image/jpeg', 'image/png', 'image/webp'];
+    const mediaUrls = new Map();  // demo uploads: object URLs, gone after a reload
     const consentOk = (cid, branchId, day) => state.snsConsents.some((c) => c.id === cid && c.branch_id === branchId && !c.revoked_at && c.signed_on <= day && c.expires_on >= day);
 
     function insertMovement(row) {
@@ -805,6 +847,9 @@
         must((status === 'approved' && ['draft', 'rejected'].includes(x.status)) || (status === 'rejected' && ['draft', 'approved'].includes(x.status))
           || (status === 'draft' && ['approved', 'rejected'].includes(x.status)) || (status === 'posted' && x.status === 'approved'), 'INVALID_SNS_STATUS');
         must(!(status === 'approved' && x.needs_consent && !(x.consent_id && consentOk(x.consent_id, x.branch_id, x.day))), 'CONSENT_REQUIRED');
+        const media = x.media_id && state.snsMedia.find((m) => m.id === x.media_id);
+        must(!(status === 'approved' && media && media.needs_consent && !(media.consent_id && consentOk(media.consent_id, x.branch_id, x.day))
+          && !(x.consent_id && consentOk(x.consent_id, x.branch_id, x.day))), 'CONSENT_REQUIRED');
         const now = new Date().toISOString();
         Object.assign(x, {
           status,
@@ -857,6 +902,15 @@
         must(isManager(c.branch_id), 'FORBIDDEN');
         const now = new Date().toISOString();
         c.revoked_at = now;
+        state.snsMedia.forEach((m) => {
+          if (m.consent_id !== id) return;
+          state.snsPosts.forEach((x) => {
+            if (x.media_id === m.id && x.status === 'approved' && m.needs_consent && !(x.consent_id && x.consent_id !== id && consentOk(x.consent_id, x.branch_id, x.day))) {
+              Object.assign(x, { status: 'draft', approved_by: null, approved_at: null, updated_at: now });
+            }
+          });
+          m.consent_id = null;
+        });
         state.snsPosts.forEach((x) => {
           if (x.consent_id !== id) return;
           if (x.status === 'approved') Object.assign(x, { status: 'draft', approved_by: null, approved_at: null, consent_id: null, updated_at: now });
@@ -864,6 +918,62 @@
         });
         save();
         return delay(state.snsPosts.filter((x) => x.consent_id === id && x.status === 'posted').length);
+      },
+      async listSnsMedia(branchId) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        return delay(clone(state.snsMedia.filter((m) => m.branch_id === branchId).sort((a, b) => b.created_at.localeCompare(a.created_at)))
+          .map((m) => ({ ...m, url: mediaUrls.get(m.id) || (m.path.startsWith('demo-media/') ? m.path : null) })));
+      },
+      async uploadSnsMedia(branchId, file, meta) {
+        must(isMember(branchId), 'NOT_BRANCH_MEMBER');
+        const title = trimOrNull(meta.title);
+        must(title && title.length <= 60 && MEDIA_TYPES.includes(file.type) && file.size <= 104857600, 'INVALID_SNS_MEDIA');
+        const today = new Date(Date.now() + KST).toISOString().slice(0, 10);
+        must(!meta.consent_id || consentOk(meta.consent_id, branchId, today), 'INVALID_CONSENT');
+        const id = `sm${Date.now()}`;
+        mediaUrls.set(id, URL.createObjectURL(file));
+        state.snsMedia.push({ id, branch_id: branchId, title, path: `${branchId}/${id}`, mime: file.type, size_bytes: file.size,
+          needs_consent: Boolean(meta.needs_consent), consent_id: meta.consent_id || null, memo: null, created_by: me().user_id, created_at: new Date().toISOString() });
+        save();
+        return delay(id);
+      },
+      async updateSnsMedia(id, v) {
+        const m = state.snsMedia.find((x) => x.id === id);
+        must(m, 'SNS_MEDIA_NOT_FOUND');
+        must(isMember(m.branch_id), 'NOT_BRANCH_MEMBER');
+        const today = new Date(Date.now() + KST).toISOString().slice(0, 10);
+        must(!v.consent_id || consentOk(v.consent_id, m.branch_id, today), 'INVALID_CONSENT');
+        const title = trimOrNull(v.title);
+        must(title && title.length <= 60, 'INVALID_SNS_MEDIA');
+        Object.assign(m, { title, needs_consent: Boolean(v.needs_consent), consent_id: v.consent_id || null });
+        save();
+        return delay();
+      },
+      async deleteSnsMedia(id) {
+        const m = state.snsMedia.find((x) => x.id === id);
+        must(m, 'SNS_MEDIA_NOT_FOUND');
+        must(isMember(m.branch_id), 'NOT_BRANCH_MEMBER');
+        must(m.created_by === me().user_id || isManager(m.branch_id), 'FORBIDDEN');
+        must(!state.snsPosts.some((p) => p.media_id === id && ['approved', 'posted'].includes(p.status)), 'SNS_MEDIA_IN_USE');
+        state.snsMedia = state.snsMedia.filter((x) => x.id !== id);
+        state.snsPosts.forEach((p) => { if (p.media_id === id) p.media_id = null; });
+        const u = mediaUrls.get(id);
+        if (u) { URL.revokeObjectURL(u); mediaUrls.delete(id); }
+        save();
+        return delay();
+      },
+      async setSnsPostMedia(postId, mediaId) {
+        const x = state.snsPosts.find((r) => r.id === postId);
+        must(x, 'SNS_POST_NOT_FOUND');
+        must(isMember(x.branch_id), 'NOT_BRANCH_MEMBER');
+        must(x.status !== 'posted', 'SNS_POST_LOCKED');
+        must(!mediaId || state.snsMedia.some((m) => m.id === mediaId && m.branch_id === x.branch_id), 'SNS_MEDIA_NOT_FOUND');
+        if ((x.media_id || null) === (mediaId || null)) return delay(x.status);
+        const status = x.status === 'rejected' || (x.status === 'approved' && !isManager(x.branch_id)) ? 'draft' : x.status;
+        Object.assign(x, { media_id: mediaId || null, status, approved_by: status === 'approved' ? x.approved_by : null,
+          approved_at: status === 'approved' ? x.approved_at : null, updated_at: new Date().toISOString() });
+        save();
+        return delay(status);
       },
       async listStaffNames(branchId) {
         must(isMember(branchId), 'NOT_BRANCH_MEMBER');
