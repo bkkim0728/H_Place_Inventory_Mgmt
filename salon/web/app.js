@@ -378,7 +378,14 @@
   const ROLE_NAMES = { admin: '전체 관리자', manager: '지점 관리자', staff: '직원' };
   function renderManual() {
     const role = state.profile?.role || 'staff';
-    $('#manRoleNote').textContent = `${ROLE_NAMES[role] || '직원'}${state.branch && role !== 'admin' ? ` · ${state.branch.name}` : ''} 권한에서 쓸 수 있는 기능만 안내합니다. 궁금한 항목을 눌러 펼쳐 보세요.`;
+    $('#manRoleNote').textContent = `${ROLE_NAMES[role] || '직원'}${state.branch && role !== 'admin' ? ` · ${state.branch.name}` : ''} 권한에서 쓸 수 있는 단계만 보여 줍니다. 1 제품관리 → 2 근무관리 → 3 매장 레포트 순서로 따라 해 보세요.`;
+    // Number the steps this role can see and draw each process as a flow
+    $$('.man-process').forEach((g) => {
+      const steps = $$('.man-item', g).filter((d) => getComputedStyle(d).display !== 'none');
+      steps.forEach((d, i) => { const n = d.querySelector('.man-no'); if (n) n.textContent = String(i + 1); });
+      const flow = steps.map((d, i) => `<li><button type="button" class="man-flow-step" data-man-open="${d.id}"><span class="man-flow-no">${i + 1}</span>${esc(d.dataset.short)}</button></li>`).join('');
+      $$(`[data-flow-for="${g.dataset.process}"]`).forEach((ol) => { ol.innerHTML = flow; });
+    });
   }
   function filterManual() {
     const words = $('#manQ').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -391,20 +398,32 @@
     });
     $$('.man-group').forEach((g) => { g.classList.toggle('man-group-empty', words.length > 0 && !g.querySelector('.man-item:not([hidden])') && g.id !== 'man-terms'); });
     $('#man-terms').hidden = words.length > 0 && !words.every((w) => $('#man-terms').textContent.toLowerCase().includes(w));
-    $('.man-start').hidden = words.length > 0;
+    $('.man-overview').hidden = words.length > 0;
+    $$('.man-flow', $('[data-view="manual"]')).forEach((f) => { f.hidden = words.length > 0; });
     $('#manEmpty').hidden = shown > 0 || !$('#man-terms').hidden;
   }
   let manTimer = 0;
   $('#manQ').addEventListener('input', () => { clearTimeout(manTimer); manTimer = setTimeout(filterManual, 120); });
   // Table of contents: scroll without touching the route hash
-  $('.man-toc').addEventListener('click', (e) => {
+  $('[data-view="manual"]').addEventListener('click', (e) => {
+    const go = (el, focusEl) => {
+      el.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'start' });
+      focusEl.setAttribute('tabindex', '-1');
+      focusEl.focus({ preventScroll: true });
+    };
+    // A step in a flow: open that step's guide
+    const s = e.target.closest('[data-man-open]');
+    if (s) {
+      const d = $(`#${s.dataset.manOpen}`);
+      d.open = true;
+      go(d, d.querySelector('summary'));
+      return;
+    }
     const a = e.target.closest('[data-man-jump]');
     if (!a) return;
     e.preventDefault();
     const target = $(`#man-${a.dataset.manJump}`);
-    target.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'start' });
-    target.querySelector('h2')?.setAttribute('tabindex', '-1');
-    target.querySelector('h2')?.focus({ preventScroll: true });
+    go(target, target.querySelector('h2'));
   });
   $('#manPrint').addEventListener('click', () => {
     const closed = $$('.man-item:not([open])');
