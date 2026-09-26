@@ -520,6 +520,13 @@ console.log('SNS 홍보');
   ok((await err(staff, () => q(`select save_sns_settings($1,null,null,'friendly',12)`, [b1])))?.includes('FORBIDDEN'), 'staff cannot change SNS settings');
   ok((await err(mgr, () => q(`select save_sns_settings($1,null,null,'loud',12)`, [b1])))?.includes('INVALID_SNS_SETTINGS'), 'unknown tone rejected');
   ok((await err(null, () => q(`select * from sns_posts`)))?.includes('permission denied'), 'anon cannot read posts');
+  ok((await add(staff, b1, [post({ audience: 'global', origin: 'trend', theme: 'trend', title: 'Korean layered cut', caption: 'Hello Seoul' })])).n === 1, 'global trend post added');
+  ok((await one(`select audience, origin from sns_posts where title='Korean layered cut'`)).origin === 'trend', 'audience and origin stored');
+  ok((await one(`select audience from sns_posts where theme='designer' and branch_id=$1 limit 1`, [b1])).audience === 'domestic', 'audience defaults to domestic');
+  ok((await err(staff, () => q(`select add_sns_posts($1,$2::jsonb)`, [b1, JSON.stringify([post({ audience: 'global', platform: 'naver', format: 'news' })])])))?.includes('INVALID_SNS_POST'), 'naver is domestic only');
+  ok((await err(staff, () => q(`select add_sns_posts($1,$2::jsonb)`, [b1, JSON.stringify([post({ audience: 'mars' })])])))?.includes('INVALID_SNS_POST'), 'unknown audience rejected');
+  await as(mgr, () => q(`select save_sns_settings($1,'@hplace','#서초미용실','premium',14,'#seoulhairsalon #kbeauty')`, [b1]));
+  ok((await one(`select hashtags_global from sns_settings where branch_id=$1`, [b1])).hashtags_global === '#seoulhairsalon #kbeauty', 'global hashtags saved');
 }
 
 console.log('reset_branch_test_data.sql (본사 정리 스크립트)');

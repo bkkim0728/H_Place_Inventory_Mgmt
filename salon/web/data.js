@@ -274,9 +274,9 @@
         })),
       listStaffNames: (branchId) => run(sb.rpc('list_staff_names', { p_branch_id: branchId })),
       // SNS 홍보
-      getSnsSettings: (branchId) => run(sb.from('sns_settings').select('handle, hashtags, tone, daily_target').eq('branch_id', branchId).maybeSingle()),
+      getSnsSettings: (branchId) => run(sb.from('sns_settings').select('handle, hashtags, tone, daily_target, hashtags_global').eq('branch_id', branchId).maybeSingle()),
       saveSnsSettings: (branchId, v) =>
-        run(sb.rpc('save_sns_settings', { p_branch_id: branchId, p_handle: v.handle || null, p_hashtags: v.hashtags || null, p_tone: v.tone, p_daily_target: v.daily_target })),
+        run(sb.rpc('save_sns_settings', { p_branch_id: branchId, p_handle: v.handle || null, p_hashtags: v.hashtags || null, p_tone: v.tone, p_daily_target: v.daily_target, p_hashtags_global: v.hashtags_global || null })),
       listSnsPosts: (branchId, from, to) =>
         run(sb.from('sns_posts').select('*').eq('branch_id', branchId).gte('day', from).lte('day', to)
           .order('day').order('slot').order('created_at')),
@@ -612,8 +612,10 @@
     const must = (cond, code) => { if (!cond) throw new AppError(code); };
     const addDaysKey = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
     const SNS_FORMATS = { instagram: ['feed', 'carousel', 'reels', 'story'], facebook: ['post', 'video'], tiktok: ['video'], naver: ['news'] };
-    const SNS_THEMES = ['designer', 'lineup', 'best', 'product', 'service', 'before_after', 'store', 'tip', 'booking'];
+    const SNS_THEMES = ['designer', 'lineup', 'best', 'product', 'service', 'before_after', 'store', 'tip', 'booking', 'trend'];
     const snsPostOk = (x) => (SNS_FORMATS[x.platform] || []).includes(x.format) && SNS_THEMES.includes(x.theme)
+      && ['domestic', 'global'].includes(x.audience || 'domestic') && ['data', 'trend'].includes(x.origin || 'data')
+      && !(x.audience === 'global' && x.platform === 'naver')
       && (x.hashtags || '').length <= 500 && (x.shoot_note || '').length <= 300 && (x.source_note || '').length <= 200 && Boolean(x.day);
     const consentOk = (cid, branchId, day) => state.snsConsents.some((c) => c.id === cid && c.branch_id === branchId && !c.revoked_at && c.signed_on <= day && c.expires_on >= day);
 
@@ -741,10 +743,10 @@
       },
       async saveSnsSettings(branchId, v) {
         must(isManager(branchId), 'FORBIDDEN');
-        const handle = trimOrNull(v.handle), hashtags = trimOrNull(v.hashtags);
+        const handle = trimOrNull(v.handle), hashtags = trimOrNull(v.hashtags), hashtagsGlobal = trimOrNull(v.hashtags_global);
         must(['friendly', 'premium', 'trendy'].includes(v.tone) && Number.isInteger(v.daily_target) && v.daily_target >= 1 && v.daily_target <= 30
-          && (handle || '').length <= 40 && (hashtags || '').length <= 500, 'INVALID_SNS_SETTINGS');
-        state.snsSettings[branchId] = { handle, hashtags, tone: v.tone, daily_target: v.daily_target };
+          && (handle || '').length <= 40 && (hashtags || '').length <= 500 && (hashtagsGlobal || '').length <= 500, 'INVALID_SNS_SETTINGS');
+        state.snsSettings[branchId] = { handle, hashtags, tone: v.tone, daily_target: v.daily_target, hashtags_global: hashtagsGlobal };
         save();
         return delay();
       },
@@ -766,7 +768,8 @@
             id: `sp${Date.now()}${i}${Math.floor(Math.random() * 1e4)}`, branch_id: branchId, day: x.day, slot: x.slot,
             platform: x.platform, format: x.format, theme: x.theme, title, caption,
             hashtags: trimOrNull(x.hashtags), shoot_note: trimOrNull(x.shoot_note), source_note: trimOrNull(x.source_note),
-            needs_consent: Boolean(x.needs_consent), consent_id: null, status: 'draft', review_note: null,
+            needs_consent: Boolean(x.needs_consent), audience: x.audience || 'domestic', origin: x.origin || 'data',
+            consent_id: null, status: 'draft', review_note: null,
             created_by: me().user_id, created_at: at, updated_at: at, approved_by: null, approved_at: null, posted_by: null, posted_at: null,
           };
         });
