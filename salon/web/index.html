@@ -1325,6 +1325,10 @@
                 <button type="button" class="icon-btn" id="payNext" aria-label="다음 달"><svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></button>
                 <span id="payStatus"></span>
               </div>
+              <div class="segmented pay-scope" role="group" aria-label="보기 범위" data-admin-only>
+                <button type="button" data-pay-scope="all" aria-pressed="true">전체 지점</button>
+                <button type="button" data-pay-scope="one" aria-pressed="false" id="payScopeOne">선택 지점</button>
+              </div>
               <div class="row-gap">
                 <button type="button" class="btn btn-secondary" id="payCsv"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>CSV 내보내기</button>
                 <button type="button" class="btn btn-secondary" id="payReopen" data-admin-only hidden>확정 취소</button>
@@ -1333,6 +1337,49 @@
             </div>
             <p class="note">시술 매출·건수는 POS 기준으로 직접 입력하고, 제품 판매와 재료 사용액은 입출고 등록 때 고른 <strong>담당 디자이너</strong> 기준으로 자동 집계합니다. 인센티브 = 시술 매출 × 시술율 + 제품 판매 × 판매율 + 조정액.</p>
             <p class="err-box" id="payError" hidden></p>
+            <div id="payAll" class="pay-all" hidden>
+              <p class="muted small pay-all-sub" id="payAllSub" aria-live="polite"></p>
+              <div class="kpi-grid pay-kpis">
+                <article class="card kpi rp-kpi-main"><div class="kpi-head"><span class="kpi-label">총매출 (시술 + 제품)</span><span class="delta" id="paAllTotalDelta"></span></div><p class="kpi-value" id="paAllTotal">0원</p><p class="kpi-sub muted" id="paAllTotalSub">—</p></article>
+                <article class="card kpi"><div class="kpi-head"><span class="kpi-label">시술 매출</span><span class="delta" id="paAllServiceDelta"></span></div><p class="kpi-value" id="paAllService">0원</p><p class="kpi-sub muted" id="paAllServiceSub">—</p></article>
+                <article class="card kpi"><div class="kpi-head"><span class="kpi-label">인센티브 합계</span><span class="delta" id="paAllIncDelta"></span></div><p class="kpi-value" id="paAllInc">0원</p><p class="kpi-sub muted" id="paAllIncSub">—</p></article>
+                <article class="card kpi"><div class="kpi-head"><span class="kpi-label">재료비율</span><span class="delta" id="paAllMatDelta"></span></div><p class="kpi-value" id="paAllMat">0%</p><p class="kpi-sub muted" id="paAllMatSub">—</p></article>
+              </div>
+              <div class="table-wrap">
+                <table class="inv-table rp-table hq-table pay-branch-table">
+                  <caption class="sr-only">지점별 실적·정산</caption>
+                  <thead><tr>
+                    <th scope="col" class="th-plain">지점</th>
+                    <th scope="col" class="th-plain">정산</th>
+                    <th scope="col" class="th-plain num">인원</th>
+                    <th scope="col" class="th-plain num">총매출</th>
+                    <th scope="col" class="th-plain num">전월 대비</th>
+                    <th scope="col" class="th-plain num">매출 비중</th>
+                    <th scope="col" class="th-plain num">시술 매출</th>
+                    <th scope="col" class="th-plain num">제품 판매</th>
+                    <th scope="col" class="th-plain num">1인당 매출</th>
+                    <th scope="col" class="th-plain num">인센티브</th>
+                    <th scope="col" class="th-plain num">인센티브율</th>
+                    <th scope="col" class="th-plain num">재료 사용액</th>
+                    <th scope="col" class="th-plain num">재료비율</th>
+                  </tr></thead>
+                  <tbody id="paAllBody"></tbody>
+                  <tfoot id="paAllFoot"></tfoot>
+                </table>
+              </div>
+              <div class="rp-grid pay-all-grid">
+                <section class="card panel" aria-labelledby="paMixHeading">
+                  <h2 id="paMixHeading" class="rp-title">지점별 매출 구성</h2>
+                  <ul class="pa-mix-legend"><li><i class="pa-svc"></i>시술 매출</li><li><i class="pa-ret"></i>제품 판매</li></ul>
+                  <ol class="pa-mix" id="paMix"></ol>
+                </section>
+                <section class="card panel" aria-labelledby="paTopHeading">
+                  <h2 id="paTopHeading" class="rp-title">전 지점 TOP 10 <span class="muted small">총매출 기준</span></h2>
+                  <ol class="sl-bars" id="paTop"></ol>
+                </section>
+              </div>
+            </div>
+            <div id="payOne">
             <div class="kpi-grid pay-kpis">
               <article class="card kpi"><div class="kpi-head"><span class="kpi-label">시술 매출</span></div><p class="kpi-value" id="payKpiService">0원</p><p class="kpi-sub muted" id="payKpiServiceSub">—</p></article>
               <article class="card kpi"><div class="kpi-head"><span class="kpi-label">제품 판매</span></div><p class="kpi-value" id="payKpiRetail">0원</p><p class="kpi-sub muted" id="payKpiRetailSub">—</p></article>
@@ -1362,6 +1409,7 @@
                 <svg class="icon icon-lg" aria-hidden="true"><use href="#i-won"/></svg>
                 <p><strong>이 달에 정산할 직원이 없습니다.</strong></p>
               </div>
+            </div>
             </div>
           </div>
         </section>
@@ -1606,7 +1654,7 @@
             <details class="man-item" id="man-payroll" data-short="실적·정산" data-manager-only>
               <summary><span class="man-no" aria-hidden="true"></span><span class="man-q">월 실적 입력 · 인센티브 정산</span><span class="tag man-role">지점 관리자</span></summary>
               <div class="man-body">
-                <ol class="man-steps"><li><b>실적·정산</b>에서 월을 고릅니다. 제품 판매·재료 사용은 입출고 기록에서 자동 집계됩니다.</li><li>직원 줄의 <b>입력</b>을 눌러 그달 시술 매출, 시술 건수, 조정액을 넣습니다.</li><li>인센티브 합계를 확인하고 <b>정산 확정</b>을 누르면 그달 실적이 잠깁니다.</li><li><b>CSV 내보내기</b>로 급여 담당자에게 보낼 파일을 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 확정한 달을 고쳐야 하면 전체 관리자에게 <b>확정 취소</b>를 요청하세요.</p>
+                <ol class="man-steps"><li><b>실적·정산</b>에서 월을 고릅니다. 제품 판매·재료 사용은 입출고 기록에서 자동 집계됩니다.</li><li>직원 줄의 <b>입력</b>을 눌러 그달 시술 매출, 시술 건수, 조정액을 넣습니다.</li><li>인센티브 합계를 확인하고 <b>정산 확정</b>을 누르면 그달 실적이 잠깁니다.</li><li><b>CSV 내보내기</b>로 급여 담당자에게 보낼 파일을 받을 수 있습니다.</li><li><b>전체 관리자</b>는 위쪽의 <b>전체 지점</b>으로 모든 지점의 매출·인센티브·재료비율과 전월 대비, 지점별 정산 상태, 전 지점 TOP 10 직원을 한 번에 봅니다. 지점명을 누르면 그 지점 정산 화면으로 이동합니다.</li></ol><p class="man-tip"><strong>참고</strong> 확정한 달을 고쳐야 하면 전체 관리자에게 <b>확정 취소</b>를 요청하세요.</p>
                 <a href="#/payroll" class="btn btn-secondary btn-sm man-go">실적·정산(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>

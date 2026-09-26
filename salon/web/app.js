@@ -5003,8 +5003,29 @@
   const pctText = (v) => (v == null ? '—' : `${Number(v)}%`);
   const parseWon = (raw) => { const t = String(raw).replace(/[,\s원]/g, ''); return t === '' || t === '-' ? 0 : /^-?\d+$/.test(t) ? Number(t) : NaN; };
 
+  // 전체 지점 (admin): every operating branch's month next to the month before
+  const payAll = () => isAdmin() && state.pay.scope !== 'one';
+  async function loadPayrollAll() {
+    const ym = state.pay.month, prev = shiftMonth(ym, -1);
+    const ticket = (state.pay.ticket = (state.pay.ticket || 0) + 1);
+    $('#payAllSub').textContent = '불러오는 중…';
+    const list = await Promise.all(state.branches.filter((b) => b.active !== false).map(async (b) => {
+      const [cur, pre] = await Promise.all([
+        api.staffMonthReport(b.id, `${ym}-01`).catch(() => null),
+        api.staffMonthReport(b.id, `${prev}-01`).catch(() => []),
+      ]);
+      return { b, rows: cur || [], prev: pre || [], failed: !cur };
+    }));
+    if (ticket !== state.pay.ticket) return;
+    state.pay.all = list;
+    renderPayroll();
+  }
+
   async function loadPayroll() {
     if (!isManager() || !state.branch) return;
+    if (!isAdmin()) state.pay.scope = 'one';
+    syncPayScope();
+    if (payAll()) { $('#payError').hidden = true; renderPayroll(); await loadPayrollAll(); return; }
     const box = $('#payError');
     try {
       state.pay.rows = await api.staffMonthReport(state.branch.id, `${state.pay.month}-01`);
@@ -5017,7 +5038,132 @@
     renderPayroll();
   }
 
+  function syncPayScope() {
+    const all = payAll();
+    $$('[data-pay-scope]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.payScope === 'all') === all)));
+    $('#payScopeOne').textContent = `선택 지점 · ${state.branch?.name || ''}`;
+    $('#payAll').hidden = !all;
+    $('#payOne').hidden = all;
+  }
+  $$('[data-pay-scope]').forEach((b) => b.addEventListener('click', () => {
+    state.pay.scope = b.dataset.payScope;
+    loadPayroll();
+  }));
+
+  // 전체 지점 view
+  const paySum = (rows, k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
+  function payBranchStats(rows) {
+    const service = paySum(rows, 'service_sales'), retail = paySum(rows, 'retail_sales');
+    const total = service + retail, inc = paySum(rows, 'incentive_total'), mat = paySum(rows, 'material_cost');
+    return { n: rows.length, service, retail, total, inc, mat, count: paySum(rows, 'service_count'),
+      incRate: total ? (inc / total) * 100 : null, matRate: service ? (mat / service) * 100 : null };
+  }
+  const pctCell = (v) => (v == null ? '—' : `${pct1.format(v)}%`);
+  function renderPayrollAll() {
+    const ym = state.pay.month;
+    const list = state.pay.all || [];
+    const vs = `${monthLabel(shiftMonth(ym, -1))} 대비`;
+    const all = list.flatMap((x) => x.rows), allPrev = list.flatMap((x) => x.prev);
+    const cur = payBranchStats(all), pre = payBranchStats(allPrev);
+    const done = list.filter((x) => x.rows.length && x.rows[0].confirmed).length;
+    const staffed = list.filter((x) => x.rows.length).length;
+    $('#payStatus').innerHTML = staffed ? `<span class="tag ${done === staffed ? 'tag-ok-strong' : 'tag-note'}">정산 확정 ${nf.format(done)} / ${nf.format(staffed)}개 지점</span>` : '';
+    $('#payAllSub').textContent = list.length
+      ? `운영 중인 ${nf.format(list.length)}개 지점 · ${nf.format(cur.n)}명 · 비교 기준: ${monthLabel(shiftMonth(ym, -1))}${list.some((x) => x.failed) ? ' · 일부 지점을 불러오지 못했습니다' : ''}`
+      : '운영 중인 지점이 없습니다.';
+    $('#paAllTotal').textContent = krw(cur.total);
+    $('#paAllTotalSub').textContent = `시술 ${krw(cur.service)} · 제품 ${krw(cur.retail)}`;
+    setDelta('paAllTotalDelta', deltaHtml(cur.total, pre.total), vs);
+    $('#paAllService').textContent = krw(cur.service);
+    $('#paAllServiceSub').textContent = `${nf.format(cur.count)}건 · 건당 ${krw(cur.count ? cur.service / cur.count : 0)}`;
+    setDelta('paAllServiceDelta', deltaHtml(cur.service, pre.service), vs);
+    $('#paAllInc').textContent = krw(cur.inc);
+    $('#paAllIncSub').textContent = `총매출의 ${pctCell(cur.incRate)} · ${nf.format(cur.n)}명`;
+    setDelta('paAllIncDelta', deltaHtml(cur.inc, pre.inc, { costly: true }), vs);
+    $('#paAllMat').textContent = pctCell(cur.matRate);
+    $('#paAllMatSub').textContent = `재료 사용액 ${krw(cur.mat)} · 시술 매출 대비`;
+    setDelta('paAllMatDelta', deltaHtml(cur.matRate, pre.matRate, { pp: true, costly: true }), vs);
+
+    // Branch table
+    const color = (i) => `var(--br-${(i % 8) + 1})`;
+    const stats = list.map((x, i) => ({ ...x, s: payBranchStats(x.rows), p: payBranchStats(x.prev), color: color(i) }));
+    const maxShare = Math.max(1, ...stats.map((x) => x.s.total));
+    $('#paAllBody').innerHTML = stats.map((x) => {
+      const confirmed = x.rows.length && x.rows[0].confirmed;
+      const st = x.failed ? '<span class="tag tag-off">불러오기 실패</span>' : !x.rows.length ? '<span class="tag tag-note">직원 없음</span>'
+        : confirmed ? '<span class="tag tag-ok-strong">확정</span>' : '<span class="tag tag-warn">집계 중</span>';
+      const share = cur.total ? (x.s.total / cur.total) * 100 : 0;
+      return `<tr>
+        <th scope="row" class="cell-name"><button type="button" class="link-btn hq-branch" data-pay-branch="${x.b.id}"><i class="hq-dot" style="background:${x.color}" aria-hidden="true"></i>${esc(x.b.name)}</button></th>
+        <td data-label="정산">${st}</td>
+        <td class="num" data-label="인원">${nf.format(x.s.n)}명</td>
+        <td class="num" data-label="총매출"><strong>${krw(x.s.total)}</strong></td>
+        <td class="num" data-label="전월 대비">${deltaHtml(x.s.total, x.p.total).html}</td>
+        <td class="num" data-label="매출 비중"><span class="hq-share"><span class="hq-share-bar"><span style="width:${((x.s.total / maxShare) * 100).toFixed(1)}%;background:${x.color}"></span></span>${pct1.format(share)}%</span></td>
+        <td class="num" data-label="시술 매출">${krw(x.s.service)}<small class="sub-num">${nf.format(x.s.count)}건</small></td>
+        <td class="num" data-label="제품 판매">${krw(x.s.retail)}</td>
+        <td class="num" data-label="1인당 매출">${x.s.n ? krw(x.s.total / x.s.n) : '—'}</td>
+        <td class="num" data-label="인센티브">${krw(x.s.inc)}</td>
+        <td class="num" data-label="인센티브율">${pctCell(x.s.incRate)}</td>
+        <td class="num" data-label="재료 사용액">${krw(x.s.mat)}</td>
+        <td class="num" data-label="재료비율">${pctCell(x.s.matRate)}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="13" class="muted rp-empty">운영 중인 지점이 없습니다.</td></tr>';
+    $('#paAllFoot').innerHTML = stats.length > 1 ? `<tr class="hq-total-row">
+      <th scope="row">전체</th><td></td>
+      <td class="num" data-label="인원">${nf.format(cur.n)}명</td>
+      <td class="num" data-label="총매출"><strong>${krw(cur.total)}</strong></td>
+      <td class="num" data-label="전월 대비">${deltaHtml(cur.total, pre.total).html}</td>
+      <td class="num" data-label="매출 비중">100%</td>
+      <td class="num" data-label="시술 매출">${krw(cur.service)}</td>
+      <td class="num" data-label="제품 판매">${krw(cur.retail)}</td>
+      <td class="num" data-label="1인당 매출">${cur.n ? krw(cur.total / cur.n) : '—'}</td>
+      <td class="num" data-label="인센티브">${krw(cur.inc)}</td>
+      <td class="num" data-label="인센티브율">${pctCell(cur.incRate)}</td>
+      <td class="num" data-label="재료 사용액">${krw(cur.mat)}</td>
+      <td class="num" data-label="재료비율">${pctCell(cur.matRate)}</td></tr>` : '';
+
+    // 지점별 매출 구성 (시술 + 제품, bar length = share of the top branch)
+    const byTotal = [...stats].sort((a, b) => b.s.total - a.s.total);
+    const top = Math.max(1, ...byTotal.map((x) => x.s.total));
+    $('#paMix').innerHTML = byTotal.length ? byTotal.map((x) => `<li>
+      <div class="pa-mix-head"><span class="rp-name"><i class="hq-dot" style="background:${x.color}" aria-hidden="true"></i>${esc(x.b.name)}</span><span class="rp-val"><strong>${krw(x.s.total)}</strong></span></div>
+      <span class="pa-mix-bar" role="img" aria-label="${esc(x.b.name)} 시술 ${krw(x.s.service)}, 제품 ${krw(x.s.retail)}">
+        <span class="pa-svc" style="width:${((x.s.service / top) * 100).toFixed(2)}%"></span><span class="pa-ret" style="width:${((x.s.retail / top) * 100).toFixed(2)}%"></span>
+      </span>
+      <small class="muted">시술 ${krw(x.s.service)} · 제품 ${krw(x.s.retail)}${x.s.total ? ` (제품 ${pct1.format((x.s.retail / x.s.total) * 100)}%)` : ''}</small>
+    </li>`).join('') : '<li class="muted rp-empty">자료가 없습니다.</li>';
+
+    // 전 지점 TOP 10 직원
+    const people = list.flatMap((x) => x.rows.map((r) => ({ r, b: x.b, total: Number(r.service_sales || 0) + Number(r.retail_sales || 0) })))
+      .filter((x) => x.total > 0).sort((a, b) => b.total - a.total).slice(0, 10);
+    const maxP = Math.max(1, ...people.map((x) => x.total));
+    $('#paTop').innerHTML = people.length ? people.map((x, i) => `<li><div class="sl-bar-top"><span class="sl-rank">${i + 1}</span>
+      <span class="rp-name">${esc(x.r.name)} <span class="tag pos-tag pos-${x.r.position}">${POSITIONS[x.r.position] || ''}</span> <span class="tag st-branch-tag">${esc(x.b.name)}</span></span>
+      <span class="rp-val"><strong>${krw(x.total)}</strong></span></div>
+      <span class="sl-bar" aria-hidden="true"><span style="width:${Math.max(2, (x.total / maxP) * 100).toFixed(1)}%"></span></span></li>`).join('')
+      : '<li class="muted rp-empty">이 달에 입력된 실적이 없습니다.</li>';
+  }
+  $('#payAll').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pay-branch]');
+    if (!b) return;
+    state.pay.scope = 'one';
+    const sel = $('#branchSelect');
+    if (state.branch?.id === b.dataset.payBranch) { loadPayroll(); return; }
+    sel.value = b.dataset.payBranch;
+    sel.dispatchEvent(new Event('change'));
+  });
+
   function renderPayroll() {
+    syncPayScope();
+    $('#payMonth').textContent = monthLabel(state.pay.month);
+    $('#payNext').disabled = state.pay.month >= todayKey().slice(0, 7);
+    if (payAll()) {
+      $('#payConfirm').hidden = true;
+      $('#payReopen').hidden = true;
+      renderPayrollAll();
+      return;
+    }
     const rows = state.pay.rows;
     const ym = state.pay.month;
     const confirmed = rows.length > 0 && rows[0].confirmed;
@@ -5092,17 +5238,18 @@
 
   // CSV for the payroll team (UTF-8 with BOM so Excel reads Korean)
   $('#payCsv').addEventListener('click', () => {
-    const rows = state.pay.rows;
+    const everyBranch = payAll();
+    const rows = everyBranch ? (state.pay.all || []).flatMap((x) => x.rows.map((r) => ({ ...r, branch_name: x.b.name }))) : state.pay.rows;
     if (!rows.length) { toast('내보낼 실적이 없습니다.', { error: true }); return; }
     const head = ['정산월', '지점', '직원', '직급', '시술 매출', '시술 건수', '시술 인센티브율(%)', '시술 인센티브', '제품 판매', '판매 수량', '판매 인센티브율(%)', '판매 인센티브', '조정액', '인센티브 합계', '재료 사용액', '메모', '확정'];
     const cell = (v) => { const t = v == null ? '' : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
-    const lines = [head, ...rows.map((r) => [state.pay.month, state.branch.name, r.name, POSITIONS[r.position] || r.position,
+    const lines = [head, ...rows.map((r) => [state.pay.month, r.branch_name || state.branch.name, r.name, POSITIONS[r.position] || r.position,
       r.service_sales, r.service_count, r.rate_service ?? '', r.incentive_service, r.retail_sales, r.retail_qty, r.rate_retail ?? '',
       r.incentive_retail, r.adjustment, r.incentive_total, r.material_cost, r.memo || '', r.confirmed ? '확정' : '집계 중'])];
     const blob = new Blob(['﻿' + lines.map((l) => l.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `실적정산_${state.branch.name}_${state.pay.month}.csv`;
+    a.download = `실적정산_${everyBranch ? '전체지점' : state.branch.name}_${state.pay.month}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
