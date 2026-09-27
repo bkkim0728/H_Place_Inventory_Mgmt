@@ -5202,6 +5202,17 @@
   });
   if (!GU) $('#hqView').hidden = true;
 
+  const HM_VIEW = { yaw: -16, pitch: 36 };
+  // Convex hull (monotone chain) of 2D points — column shadows
+  function hull(p) {
+    const q = [...p].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], up = [];
+    q.forEach((v) => { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], v) <= 0) lo.pop(); lo.push(v); });
+    [...q].reverse().forEach((v) => { while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], v) <= 0) up.pop(); up.push(v); });
+    return [...lo.slice(0, -1), ...up.slice(0, -1)];
+  }
+
   function stopHqMap() {
     const m = state.hq.map;
     if (m.timer) { clearInterval(m.timer); m.timer = 0; }
@@ -5210,7 +5221,7 @@
     btn.querySelector('span').textContent = '하루씩 집계 재생';
   }
 
-  function drawHqMap() {
+  function drawHqMap(fast) {
     const h = state.hq, c = h.chart, stage = $('#hmStage');
     if (!GU || !c || !stage) return;
     const keys = hqBuckets(c.from, c.days);
@@ -5236,17 +5247,6 @@
     const ranked = [...all].sort((a, b) => b.v - a.v || a.x.b.name.localeCompare(b.x.b.name, 'ko'));
     ranked.forEach((o, i) => { o.rank = o.v > 0 ? i + 1 : null; });
 
-    // Geometry: oblique view from the south-east, map units → px
-    const W = Math.max(300, Math.round(stage.clientWidth || 800));
-    const SK = 0.26, TY = 0.56;
-    const pad = 14, S = (W - pad * 2) / (GU.w + GU.h * SK);
-    const BH = Math.round(Math.min(240, Math.max(120, W * 0.24)));   // tallest column
-    const T = Math.max(5, Math.round(10 * S));                         // land thickness
-    const top = BH + 44;                                                // room for columns + labels
-    const H = Math.round(top + GU.h * TY * S + T + pad);
-    const P = (mx, my, z = 0) => [pad + (mx + my * SK) * S, top + my * TY * S - z];
-    const pts = (arr) => arr.map((q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(' ');
-
     // 구 totals and leaders (like a county won by a candidate)
     const guInfo = new Map();
     byGu.forEach((list, n) => {
@@ -5255,61 +5255,115 @@
     });
     const maxGu = Math.max(1, ...[...guInfo.values()].map((g) => g.sum));
 
-    let walls = '', tops = '', names = '';
-    GU.gu.forEach((g) => {
+    // ── A small 3D camera: yaw turns the map, pitch is the eye height; mild perspective, painter's order ──
+    const W = Math.max(300, Math.round(stage.clientWidth || 800));
+    if (m.yaw == null) { m.yaw = HM_VIEW.yaw; m.pitch = HM_VIEW.pitch; }
+    const yr0 = (m.yaw * Math.PI) / 180, el = (m.pitch * Math.PI) / 180;
+    const cosY = Math.cos(yr0), sinY = Math.sin(yr0), sinE = Math.sin(el), cosE = Math.cos(el);
+    const cx = GU.w / 2, cy = GU.h / 2, FOC = 2600;
+    const T = 14, RELIEF = 46, BHm = 330, d = 13;  // map units: land thickness, extra height for strong 구, tallest column, column half-width
+    const rot = (x, y) => { const dx = x - cx, dy = y - cy; return [dx * cosY - dy * sinY, dx * sinY + dy * cosY]; };
+    const unrot = (xr, yr) => [xr * cosY + yr * sinY, -xr * sinY + yr * cosY];
+    const raw = (x, y, z) => { const r = rot(x, y); const k = FOC / (FOC - r[1] * cosE - z * sinE); return [r[0] * k, (r[1] * sinE - z * cosE) * k]; };
+    const LX = -0.55, LY = 0.83;  // light from the front-left, in turned-map coordinates
+    const shade = (nx, ny) => {   // outward normal in map coords → null (faces away) or brightness 0.42–0.95
+      const r = [nx * cosY - ny * sinY, nx * sinY + ny * cosY];
+      const len = Math.hypot(r[0], r[1]) || 1;
+      if (r[1] / len <= 0.02) return null;
+      return 0.42 + 0.53 * Math.max(0, (r[0] * LX + r[1] * LY) / len);
+    };
+
+    // Districts: rings, height, colour
+    const maxV = Math.max(1, ...placed.map((o) => o.full));
+    const lands = GU.gu.map((g) => {
       const info = guInfo.get(g.n);
-      g.p.forEach((ring) => {
-        const q = [];
-        for (let i = 0; i < ring.length; i += 2) q.push([ring[i], ring[i + 1]]);
-        let wall = '';
-        q.forEach((a, i) => {
-          const b = q[(i + 1) % q.length];
-          // every edge gets a wall; the tops drawn afterwards hide the inner ones
-          const a0 = P(a[0], a[1], 0), b0 = P(b[0], b[1], 0), b1 = P(b[0], b[1], T), a1 = P(a[0], a[1], T);
-          wall += `M${a0[0].toFixed(1)},${a0[1].toFixed(1)}L${b0[0].toFixed(1)},${b0[1].toFixed(1)}L${b1[0].toFixed(1)},${b1[1].toFixed(1)}L${a1[0].toFixed(1)},${a1[1].toFixed(1)}Z`;
-        });
-        walls += `<path class="hm-wall" d="${wall}"/>`;
-        const fill = info && info.lead
-          ? `color-mix(in srgb, ${info.lead.x.color} ${Math.round(38 + 52 * (info.sum / maxGu))}%, var(--hm-land))`
-          : (g.city ? 'var(--hm-land-gg)' : 'var(--hm-land)');
-        tops += `<polygon class="hm-gu${info ? ' has-br' : ''}${g.city ? ' is-gg' : ''}" data-hm-gu="${esc(g.n)}" points="${pts(q.map((v) => P(v[0], v[1], T)))}" style="fill:${fill}"/>`;
-      });
-      const c0 = P(g.c[0], g.c[1] + 16, T);
-      if (W >= 520) names += `<text class="hm-gu-name" x="${c0[0].toFixed(1)}" y="${c0[1].toFixed(1)}" text-anchor="middle">${esc(g.n)}</text>`;
+      const z = T + (info && info.sum > 0 ? RELIEF * (info.sum / maxGu) : 0);
+      const fill = info && info.lead
+        ? `color-mix(in srgb, ${info.lead.x.color} ${Math.round(40 + 50 * (info.sum / maxGu))}%, var(--hm-land))`
+        : (g.city ? 'var(--hm-land-gg)' : 'var(--hm-land)');
+      const rings = g.p.map((ring) => { const q = []; for (let i = 0; i < ring.length; i += 2) q.push([ring[i], ring[i + 1]]); return q; });
+      return { g, info, z, fill, rings, depth: rot(g.c[0], g.c[1])[1] };
     });
-    // City names for the 경기 areas (성남시, 용인시), placed just below their 구
+    placed.forEach((o) => { o.z0 = lands.find((l) => l.g.n === o.loc.gu).z; o.hm = o.v > 0 ? Math.max(4, (o.v / maxV) * BHm) : 0; });
+
+    // Fit to the width (kept while dragging so the map doesn't breathe)
+    if (!m.drag || !m.fit) {
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      const see = (q) => { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); };
+      lands.forEach((l) => l.rings.forEach((r) => r.forEach((v) => { see(raw(v[0], v[1], 0)); see(raw(v[0], v[1], l.z)); })));
+      placed.forEach((o) => see(raw(o.mx, o.my, o.z0 + o.hm)));
+      const pad = 14, sc = (W - pad * 2) / Math.max(1, x1 - x0), room = 58;
+      m.fit = { sc, ox: pad - x0 * sc, oy: room - y0 * sc, H: Math.round((y1 - y0) * sc + room + pad), W };
+    }
+    const { sc, ox, oy, H } = m.fit;
+    const P = (x, y, z = 0) => { const q = raw(x, y, z); return [ox + q[0] * sc, oy + q[1] * sc]; };
+    const pts = (arr) => arr.map((q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(' ');
+    const quad = (a, b, c2, e) => `M${a[0].toFixed(1)},${a[1].toFixed(1)}L${b[0].toFixed(1)},${b[1].toFixed(1)}L${c2[0].toFixed(1)},${c2[1].toFixed(1)}L${e[0].toFixed(1)},${e[1].toFixed(1)}Z`;
+    const dark = (col, k) => `color-mix(in srgb, ${col} ${Math.round(k * 100)}%, black)`;
+
+    // Soft ground shadow under the whole map
+    const ground = lands.map((l) => l.rings.map((r) => `<polygon points="${pts(r.map((v) => P(v[0], v[1], 0)))}"/>`).join('')).join('');
+
+    // Columns (drawn right after the 구 they stand on)
+    const labels = [];
+    const colSvg = (o) => {
+      const col = o.x.color, z0 = o.z0, z1 = o.z0 + o.hm;
+      const cs = [[o.mx - d, o.my - d], [o.mx + d, o.my - d], [o.mx + d, o.my + d], [o.mx - d, o.my + d]];
+      let out = '';
+      if (o.hm > 0) {
+        // shadow falls back-right, away from the light
+        const off = unrot(0.55 * o.hm, -0.45 * o.hm);
+        const sh = [...cs.map((c) => P(c[0], c[1], z0)), ...cs.map((c) => P(c[0] + off[0], c[1] + off[1], z0))];
+        out += `<polygon class="hm-shadow" points="${pts(hull(sh))}"/>`;
+        [[0, 1, 0, -1], [1, 2, 1, 0], [2, 3, 0, 1], [3, 0, -1, 0]].forEach(([i, j, nx, ny]) => {
+          const k = shade(nx, ny);
+          if (k == null) return;
+          out += `<path d="${quad(P(cs[i][0], cs[i][1], z0), P(cs[j][0], cs[j][1], z0), P(cs[j][0], cs[j][1], z1), P(cs[i][0], cs[i][1], z1))}" style="fill:${dark(col, Math.min(1, k + 0.08))}"/>`;
+        });
+        out += `<polygon points="${pts(cs.map((c) => P(c[0], c[1], z1)))}" style="fill:color-mix(in srgb, ${col} 72%, white)"/>`;
+      }
+      const tp = P(o.mx, o.my, z1);
+      const share = total ? (o.v / total) * 100 : 0;
+      labels.push({ o, ax: tp[0], ay: tp[1] - 6, x: tp[0], y: tp[1] - 8, w: Math.max(o.x.b.name.length * 12.5, manWon(o.v).length * 7.5) + 10, h: o.rank === 1 ? 44 : 30 });
+      const label = `${o.x.b.name} ${guLabel(o.loc.gu)} · ${won.format(o.v)} · 비중 ${pct1.format(share)}%${o.rank ? ` · ${o.rank}위` : ''}`;
+      return `<g class="hm-col" data-hm-branch="${o.x.b.id}" tabindex="0" role="img" aria-label="${esc(label)}">${out}</g>`;
+    };
+
+    // Painter's order: far 구 first; each 구 = lit walls, top, name, then its columns
+    let land = '', names = '';
+    [...lands].sort((a, b2) => a.depth - b2.depth).forEach((l) => {
+      let walls = '';
+      l.rings.forEach((q) => {
+        let A = 0;
+        q.forEach((a, i) => { const b2 = q[(i + 1) % q.length]; A += a[0] * b2[1] - b2[0] * a[1]; });
+        const sgn = A > 0 ? 1 : -1;
+        const buckets = new Map();
+        q.forEach((a, i) => {
+          const b2 = q[(i + 1) % q.length];
+          const k = shade(sgn * (b2[1] - a[1]), -sgn * (b2[0] - a[0]));
+          if (k == null) return;
+          const key = Math.round(k * 12) / 12;
+          buckets.set(key, (buckets.get(key) || '') + quad(P(a[0], a[1], 0), P(b2[0], b2[1], 0), P(b2[0], b2[1], l.z), P(a[0], a[1], l.z)));
+        });
+        buckets.forEach((dd, k) => { walls += `<path class="hm-wall" d="${dd}" style="fill:${dark(l.fill, k * 0.78)}"/>`; });
+      });
+      const tops = l.rings.map((q) => `<polygon class="hm-gu${l.info ? ' has-br' : ''}${l.g.city ? ' is-gg' : ''}" data-hm-gu="${esc(l.g.n)}" points="${pts(q.map((v) => P(v[0], v[1], l.z)))}" style="fill:${l.fill}"/>`).join('');
+      const c0 = P(l.g.c[0], l.g.c[1] + 16, l.z);
+      const nm = W >= 520 ? `<text class="hm-gu-name" x="${c0[0].toFixed(1)}" y="${c0[1].toFixed(1)}" text-anchor="middle">${esc(l.g.n)}</text>` : '';
+      const cols = placed.filter((o) => o.loc.gu === l.g.n).sort((a, b2) => rot(a.mx, a.my)[1] - rot(b2.mx, b2.my)[1]).map(colSvg).join('');
+      land += `<g>${walls}${tops}<g aria-hidden="true">${nm}</g>${cols}</g>`;
+    });
+    // City names for the 경기 areas (성남시, 용인시), just below their 구
     const cities = new Map();
-    GU.gu.filter((g) => g.city).forEach((g) => { const c = cities.get(g.city) || { x: 0, y: 0, n: 0, maxY: 0 }; c.x += g.c[0]; c.y += g.c[1]; c.n += 1; c.maxY = Math.max(c.maxY, g.c[1]); cities.set(g.city, c); });
-    cities.forEach((c, name) => {
-      const pt = P(c.x / c.n, c.maxY + 48, T);
+    lands.filter((l) => l.g.city).forEach((l) => { const c2 = cities.get(l.g.city) || { x: 0, n: 0, maxY: 0, z: 0 }; c2.x += l.g.c[0]; c2.n += 1; c2.maxY = Math.max(c2.maxY, l.g.c[1]); c2.z = Math.max(c2.z, l.z); cities.set(l.g.city, c2); });
+    cities.forEach((c2, name) => {
+      const pt = P(c2.x / c2.n, c2.maxY + 48, T);
       names += `<text class="hm-city-name" x="${pt[0].toFixed(1)}" y="${pt[1].toFixed(1)}" text-anchor="middle">${esc(name)}</text>`;
     });
 
-    // Columns, back to front
-    const maxV = Math.max(1, ...placed.map((o) => o.full));
-    const d = Math.max(9, 14 * (0.6 + 0.4 * S));
-    const order = [...placed].sort((a, b) => a.my - b.my);
-    const labels = [];
-    const cols = order.map((o) => {
-      const hgt = o.v > 0 ? Math.max(3, (o.v / maxV) * BH) : 0;
-      const z0 = T, z1 = T + hgt;
-      const A0 = P(o.mx - d, o.my + d, z0), B0 = P(o.mx + d, o.my + d, z0), D0 = P(o.mx - d, o.my - d, z0);
-      const A1 = P(o.mx - d, o.my + d, z1), B1 = P(o.mx + d, o.my + d, z1), C1 = P(o.mx + d, o.my - d, z1), D1 = P(o.mx - d, o.my - d, z1);
-      const col = o.x.color;
-      const tp = P(o.mx, o.my, z1);
-      const share = total ? (o.v / total) * 100 : 0;
-      const wLab = Math.max(o.x.b.name.length * 12.5, manWon(o.v).length * 7.5) + 10;
-      labels.push({ o, ax: tp[0], ay: tp[1] - 6, x: tp[0], y: tp[1] - 8, w: wLab, h: o.rank === 1 ? 44 : 30 });
-      const label = `${o.x.b.name} ${guLabel(o.loc.gu)} · ${won.format(o.v)} · 비중 ${pct1.format(share)}%${o.rank ? ` · ${o.rank}위` : ''}`;
-      return `<g class="hm-col" data-hm-branch="${o.x.b.id}" tabindex="0" role="img" aria-label="${esc(label)}">
-        <polygon points="${pts([D0, A0, A1, D1])}" style="fill:color-mix(in srgb, ${col} 62%, black)"/>
-        <polygon points="${pts([A0, B0, B1, A1])}" style="fill:${col}"/>
-        <polygon points="${pts([A1, B1, C1, D1])}" style="fill:color-mix(in srgb, ${col} 70%, white)"/>
-      </g>`;
-    }).join('');
     // Labels: highest first; push a label up until it clears the ones already placed
     const placedBoxes = [];
-    labels.sort((a, b) => a.y - b.y).forEach((L) => {
+    labels.sort((a, b2) => a.y - b2.y).forEach((L) => {
       const hits = (y) => placedBoxes.some((q) => Math.abs(q.x - L.x) < (q.w + L.w) / 2 && y - L.h < q.y && y > q.y - q.h);
       let y = L.y, guard = 0;
       while (hits(y) && guard++ < 12) y -= 16;
@@ -5325,16 +5379,18 @@
           <text class="hm-val" y="0" text-anchor="middle">${manWon(L.o.v)}</text>
         </g></g>`;
     }).join('');
-    // Crop unused sky above the map
-    const landTop = top + Math.min(...GU.gu.map((g) => Math.min(...g.p.flatMap((r) => r.filter((_, i) => i % 2 === 1))))) * TY * S - T;
-    const minY = Math.max(0, Math.floor(Math.min(landTop, ...labels.map((L) => L.y - L.h)) - 8));
+    const minY = Math.min(0, Math.floor(Math.min(...labels.map((L) => L.y - L.h), 0) - 8));
     const lead = ranked[0] && ranked[0].v > 0 ? ranked[0] : null;
     const aria = `지도. ${keys[m.idx - 1] ? keys[m.idx - 1].long : ''}까지 누적 총매출 ${won.format(total)}.${lead ? ` 1위 ${lead.x.b.name} ${won.format(lead.v)}.` : ''} 지점별 수치는 아래 표에 있습니다.`;
     $('#hqTip').hidden = true;
-    stage.innerHTML = `<svg viewBox="0 ${minY} ${W} ${H - minY}" width="${W}" height="${H - minY}" role="img" aria-label="${esc(aria)}"><g class="hm-land">${walls}${tops}</g><g class="hm-names" aria-hidden="true">${names}</g>${cols}${labelSvg}</svg>`;
+    stage.innerHTML = `<svg viewBox="0 ${minY} ${W} ${H - minY}" width="${W}" height="${H - minY}" role="img" aria-label="${esc(aria)}">
+      <defs><filter id="hmBlur" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur stdDeviation="9"/></filter></defs>
+      <g class="hm-ground" filter="url(#hmBlur)" transform="translate(0,14)">${ground}</g>
+      <g class="hm-land">${land}</g><g class="hm-names" aria-hidden="true">${names}</g>${labelSvg}</svg>`;
     stage.dataset.w = String(W);
     $('#hqTrendHeading').textContent = '기간 누적 총매출';
     m.all = all; m.total = total; m.guInfo = guInfo; m.keys = keys;
+    if (fast) return;  // dragging the camera: the board and controls haven't changed
 
     // Scoreboard: share bar + one card per branch (the election-night strip)
     const done = m.idx >= m.n;
@@ -5367,6 +5423,7 @@
 
   // Hover / focus: column → branch, land → 구
   function hmTip(target, clientX, clientY) {
+    if (state.hq.map.drag?.moved) return;
     const m = state.hq.map, tip = $('#hqTip');
     const col = target && target.closest('[data-hm-branch]');
     const gu = !col && target && target.closest('[data-hm-gu]');
@@ -5396,6 +5453,51 @@
   $('#hmStage').addEventListener('mouseleave', () => { $('#hqTip').hidden = true; });
   $('#hmStage').addEventListener('focusin', (e) => { const r = e.target.getBoundingClientRect(); hmTip(e.target, r.left + r.width / 2, r.top); });
   $('#hmStage').addEventListener('focusout', () => { $('#hqTip').hidden = true; });
+  // Camera: drag to turn (and tilt with a mouse), or use the buttons
+  let hmFrame = 0;
+  const hmRedraw = () => { if (!hmFrame) hmFrame = requestAnimationFrame(() => { hmFrame = 0; drawHqMap(true); }); };
+  const hmStage = $('#hmStage');
+  hmStage.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !state.hq.chart) return;
+    const m = state.hq.map;
+    m.drag = { x: e.clientX, y: e.clientY, yaw: m.yaw ?? HM_VIEW.yaw, pitch: m.pitch ?? HM_VIEW.pitch, moved: false, id: e.pointerId, touch: e.pointerType === 'touch' };
+  });
+  hmStage.addEventListener('pointermove', (e) => {
+    const m = state.hq.map, g = m.drag;
+    if (!g || g.id !== e.pointerId) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!g.moved) {
+      if (Math.hypot(dx, dy) < 6) return;
+      if (g.touch && Math.abs(dy) > Math.abs(dx)) { m.drag = null; return; }  // vertical swipe on a phone = scroll the page
+      g.moved = true;
+      hmStage.setPointerCapture(e.pointerId);
+      hmStage.classList.add('is-dragging');
+      $('#hqTip').hidden = true;
+    }
+    m.yaw = g.yaw + dx * 0.35;
+    if (!g.touch) m.pitch = Math.min(72, Math.max(18, g.pitch - dy * 0.2));
+    hmRedraw();
+  });
+  const hmEnd = () => {
+    const m = state.hq.map;
+    if (!m.drag) return;
+    const moved = m.drag.moved;
+    m.drag = null;
+    hmStage.classList.remove('is-dragging');
+    if (moved) drawHqMap(true);  // refit to the new angle
+  };
+  hmStage.addEventListener('pointerup', hmEnd);
+  hmStage.addEventListener('pointercancel', hmEnd);
+  $('#hmCam').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-hm-turn]');
+    if (!b || !state.hq.chart) return;
+    const m = state.hq.map;
+    if (b.dataset.hmTurn === 'reset') { m.yaw = HM_VIEW.yaw; m.pitch = HM_VIEW.pitch; }
+    else if (b.dataset.hmTurn === 'up') m.pitch = Math.min(72, (m.pitch ?? HM_VIEW.pitch) + 10);
+    else if (b.dataset.hmTurn === 'down') m.pitch = Math.max(18, (m.pitch ?? HM_VIEW.pitch) - 10);
+    else m.yaw = (m.yaw ?? HM_VIEW.yaw) + Number(b.dataset.hmTurn);
+    drawHqMap(true);
+  });
   $('#hmRange').addEventListener('input', (e) => { stopHqMap(); state.hq.map.idx = Number(e.target.value); drawHqMap(); });
   $('#hmPlay').addEventListener('click', () => {
     const m = state.hq.map, btn = $('#hmPlay');
