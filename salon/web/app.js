@@ -55,13 +55,13 @@
     branches: '지점 관리',
     manual: '사용 매뉴얼',
     hq: '전체현황',
-    revenue: '매출현황',
+    revenue: '매출 현황',
     sns: 'SNS 홍보',
     trends: 'SNS 트렌드',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users', 'hq'];  // branch managers use 직원 관리 and 지점 관리 instead
-  const BRANCH_MANAGER_ROUTES = ['revenue'];  // 매출현황: the 전체현황 page for one branch
+  const BRANCH_MANAGER_ROUTES = ['revenue'];  // 매출 현황: the 전체현황 page for one branch
   const VIEW_OF = { revenue: 'hq' };           // routes that reuse another route's view
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
@@ -228,7 +228,7 @@
     $('#demoBanner').hidden = api.mode !== 'demo';
 
     $('#brandHome').href = `#/${homeRoute()}`;
-    // A fresh sign-in starts on the role's home page (지점 관리자: 매출현황)
+    // A fresh sign-in starts on the role's home page (지점 관리자: 매출 현황)
     if (opts.fresh) history.replaceState(null, '', `#/${homeRoute()}`);
     show('screenApp');
     applyRoute(false);
@@ -4820,13 +4820,13 @@
   }
 
   async function loadHq() {
-    const own = !isAdmin();  // 매출현황: a branch manager sees every branch's totals, their own in full
+    const own = !isAdmin();  // 매출 현황: a branch manager sees every branch's totals, their own in full
     if (own && state.profile?.role !== 'manager') return;
     const h = state.hq, r = hqRange(), today = todayKey();
     const ticket = (h.ticket += 1);
     h.loading = true;
     $('#hqSub').textContent = '전체 지점 자료를 불러오는 중…';
-    $('.hq-title').textContent = own ? '전 지점 매출현황' : '전체 지점 현황';
+    $('.hq-title').textContent = own ? '전 지점 매출 현황' : '전체 지점 현황';
     const colorAt = (i) => (i < BRANCH_COLORS ? `var(--br-${i + 1})` : 'var(--fg-muted)');
     const full = async (b, color) => {
       const [inv, mv, sales, staff, sched] = await Promise.all([
