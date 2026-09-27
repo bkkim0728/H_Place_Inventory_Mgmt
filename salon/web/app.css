@@ -1328,3 +1328,4 @@ body[data-route="hq"] #branchSelect { display: none; }
 @media print { .hm-controls { display: none; } }
 .segmented[hidden] { display: none; }
 .hq-legend[hidden] { display: none; }
+.hq-mine { font-size: 11px; padding: 0 6px; line-height: 18px; background: var(--accent-soft); color: var(--fg); font-weight: 600; }

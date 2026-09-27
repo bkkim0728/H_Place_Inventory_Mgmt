@@ -462,6 +462,31 @@ ok((await err(mgr, () => q(`select save_daily_sales($1,($2::date + 1),1,1,null)`
 await as(mgr, () => q(`select save_daily_sales($1,$2,0,0,' ')`, [b1, today]));
 ok((await one(`select count(*)::int n from daily_sales where branch_id=$1 and day=$2`, [b1, today])).n === 0, 'all zero clears the day');
 
+console.log('전 지점 매출 비교 (sales_overview)');
+{
+  const ob = await mk('ov-b2@x.kr');  // manager of the other branch
+  await db.query(`update profiles set branch_id=$1, role='manager' where user_id=$2`, [b2, ob]);
+  await as(ob, () => q(`select save_daily_sales($1,$2,700000,9,null)`, [b2, today]));
+  const ov = async (uid) => (await as(uid, () => one(`select sales_overview(($1::date - 6), $1::date, ($1::date - 6)) v`, [today]))).v;
+  const m = await ov(mgr);
+  const mine = m.find((x) => x.id === b1), theirs = m.find((x) => x.id === b2);
+  const activeN = (await one(`select count(*)::int n from branches where active`)).n;
+  ok(m.length === activeN && activeN >= 2 && mine && theirs, 'branch manager sees every active branch');
+  ok(theirs.days.some((d) => d.day === today && Number(d.svc) === 700000 && d.entered === true), 'other branch daily 시술 매출 is included');
+  ok(Object.keys(theirs).sort().join(',') === 'address,code,days,id,item_n,low_n,name,out_n,products,staff_n,stock', 'only totals are returned (no staff or item lists)');
+  const byMv = Number((await one(`select coalesce(sum(-m.quantity * coalesce(m.unit_price, iv.retail_price, 0)),0) v from stock_movements m join inventory_view iv on iv.branch_id=m.branch_id and iv.product_id=m.product_id
+    where m.branch_id=$1 and m.type='sale' and (m.created_at at time zone 'Asia/Seoul')::date between ($2::date - 6) and $2::date`, [b1, today])).v);
+  ok(Math.abs(mine.days.reduce((a, d) => a + Number(d.prod), 0) - byMv) < 1, 'product sales match the movement records');
+  ok(Number(mine.stock) === Number((await one(`select sum(stock*cost_price) v from inventory_view where branch_id=$1 and active and in_use`, [b1])).v), 'stock value matches the inventory view');
+  ok((await ov(admin)).length === activeN, 'admin sees every branch too');
+  ok((await err(staff, () => q(`select sales_overview(current_date - 1, current_date)`)))?.includes('FORBIDDEN'), 'staff role cannot compare branches');
+  ok((await err(mgr, () => q(`select sales_overview(current_date, current_date - 1)`)))?.includes('INVALID_RANGE'), 'reversed range rejected');
+  await db.query(`update branches set active=false where id=$1`, [b2]);
+  ok((await ov(mgr)).length === activeN - 1 && !(await ov(mgr)).some((x) => x.id === b2), 'closed branches are left out');
+  await db.query(`update branches set active=true where id=$1`, [b2]);
+  await as(ob, () => q(`select save_daily_sales($1,$2,0,0,null)`, [b2, today]));
+}
+
 console.log('SNS 홍보');
 {
   const oth = await mk('sns-b2@x.kr');  // manager of the other branch
