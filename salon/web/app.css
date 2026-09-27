@@ -1330,3 +1330,6 @@ body[data-route="hq"] #branchSelect { display: none; }
 .segmented[hidden] { display: none; }
 .hq-legend[hidden] { display: none; }
 .hq-mine { font-size: 11px; padding: 0 6px; line-height: 18px; background: var(--accent-soft); color: var(--fg); font-weight: 600; }
+.brand-link { color: inherit; text-decoration: none; border-radius: var(--radius-sm); }
+.brand-link:hover .brand-name { color: var(--accent); }
+.brand-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

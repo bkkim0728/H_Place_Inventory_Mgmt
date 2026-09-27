@@ -88,6 +88,7 @@
   };
   const isManager = () => ['manager', 'admin'].includes(state.profile?.role);
   const isAdmin = () => state.profile?.role === 'admin';
+  const homeRoute = () => (state.profile?.role === 'manager' ? 'revenue' : 'dashboard');  // first page after sign-in, and the H Place logo
   // Category display order (from 카테고리 관리); unknown names sort last.
   const catRank = (name) => { const i = state.categories.findIndex((c) => c.name === name); return i === -1 ? 1e6 : i; };
   const byCategory = (a, b) => catRank(a) - catRank(b) || a.localeCompare(b, 'ko');
@@ -160,7 +161,7 @@
       await api.signIn(email, password);
       const user = await api.getUser();
       $('#loginPassword').value = '';
-      await enter(user);
+      await enter(user, { fresh: true });
     } catch (ex) {
       err.textContent = api.toAppError(ex).message;
       err.hidden = false;
@@ -185,7 +186,7 @@
   $$('[data-signout]').forEach((b) => b.addEventListener('click', signOut));
   $('#pendingRetry').addEventListener('click', () => enter(state.user));
 
-  async function enter(user) {
+  async function enter(user, opts = {}) {
     if (!user) return showLogin();
     state.user = user;
     show('screenLoading');
@@ -226,6 +227,9 @@
     fillBranchSelect();
     $('#demoBanner').hidden = api.mode !== 'demo';
 
+    $('#brandHome').href = `#/${homeRoute()}`;
+    // A fresh sign-in starts on the role's home page (지점 관리자: 매출현황)
+    if (opts.fresh) history.replaceState(null, '', `#/${homeRoute()}`);
     show('screenApp');
     applyRoute(false);
     await loadData();
@@ -254,7 +258,7 @@
   $('#demoRole').addEventListener('change', async (e) => {
     api.setDemoRole(e.target.value);
     state.us.branch = '';
-    await enter(await api.getUser());
+    await enter(await api.getUser(), { fresh: true });
     toast(`${ROLE_LABEL[state.profile.role]} 화면으로 전환했습니다.`);
   });
 
@@ -352,9 +356,9 @@
   // Routing
   // ------------------------------------------------------------------
   function applyRoute(moveFocus = true) {
-    let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'dashboard';
+    let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || homeRoute();
     if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager()) || (ADMIN_ROUTES.includes(route) && !isAdmin())
-      || (BRANCH_MANAGER_ROUTES.includes(route) && state.profile?.role !== 'manager')) route = isAdmin() && route === 'revenue' ? 'hq' : 'dashboard';
+      || (BRANCH_MANAGER_ROUTES.includes(route) && state.profile?.role !== 'manager')) route = isAdmin() && route === 'revenue' ? 'hq' : homeRoute();
     state.route = route;
     document.body.dataset.route = route;
     $$('.view').forEach((v) => { v.hidden = v.dataset.view !== (VIEW_OF[route] || route); });
