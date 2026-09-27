@@ -55,11 +55,14 @@
     branches: '지점 관리',
     manual: '사용 매뉴얼',
     hq: '전체현황',
+    revenue: '매출현황',
     sns: 'SNS 홍보',
     trends: 'SNS 트렌드',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users', 'hq'];  // branch managers use 직원 관리 and 지점 관리 instead
+  const BRANCH_MANAGER_ROUTES = ['revenue'];  // 매출현황: the 전체현황 page for one branch
+  const VIEW_OF = { revenue: 'hq' };           // routes that reuse another route's view
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
   const typeTag = (t) => `<span class="tag tag-${TYPES[t]?.tag || 'adjust'}">${TYPES[t]?.label || t}</span>`;
@@ -308,7 +311,7 @@
       else if (r === 'staff') await loadStaff();
       else if (r === 'payroll') await loadPayroll();
       else if (r === 'users') await loadUsers();
-      else if (r === 'hq') await loadHq();
+      else if (r === 'hq' || r === 'revenue') await loadHq();
       else if (r === 'sns') await loadSns();
       else if (r === 'branches') {
         state.branches = await api.listBranches();
@@ -350,10 +353,11 @@
   // ------------------------------------------------------------------
   function applyRoute(moveFocus = true) {
     let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'dashboard';
-    if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager()) || (ADMIN_ROUTES.includes(route) && !isAdmin())) route = 'dashboard';
+    if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager()) || (ADMIN_ROUTES.includes(route) && !isAdmin())
+      || (BRANCH_MANAGER_ROUTES.includes(route) && state.profile?.role !== 'manager')) route = isAdmin() && route === 'revenue' ? 'hq' : 'dashboard';
     state.route = route;
     document.body.dataset.route = route;
-    $$('.view').forEach((v) => { v.hidden = v.dataset.view !== route; });
+    $$('.view').forEach((v) => { v.hidden = v.dataset.view !== (VIEW_OF[route] || route); });
     $$('.nav-link').forEach((a) => {
       if (a.dataset.route === route) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
@@ -371,7 +375,7 @@
     if (route === 'categories') renderCategories();
     if (route === 'manual') renderManual();
     if (route === 'sales') loadSales();
-    if (route === 'hq') loadHq();
+    if (route === 'hq' || route === 'revenue') loadHq();
     if (route === 'sns') loadSns();
     if (route === 'trends') loadTrends();
     closeSidebar();
@@ -4812,12 +4816,19 @@
   }
 
   async function loadHq() {
-    if (!isAdmin()) return;
+    const own = !isAdmin();  // 매출현황: a branch manager sees only their own branch
+    if (own && state.profile?.role !== 'manager') return;
     const h = state.hq, r = hqRange(), today = todayKey();
     const ticket = (h.ticket += 1);
     h.loading = true;
-    $('#hqSub').textContent = '전체 지점 자료를 불러오는 중…';
-    const branches = state.branches.filter((b) => b.active !== false);
+    $('#hqSub').textContent = own ? '지점 자료를 불러오는 중…' : '전체 지점 자료를 불러오는 중…';
+    const branches = own
+      ? state.branches.filter((b) => b.id === (state.profile.branch_id || state.branch?.id)).slice(0, 1)
+      : state.branches.filter((b) => b.active !== false);
+    $('.hq-title').textContent = own ? `${branches[0]?.name || '우리 지점'} 매출현황` : '전체 지점 현황';
+    $('#hqBranchHeading').textContent = own ? '매장 성과' : '지점별 성과';
+    $('#hqBranchHeading').nextElementSibling.textContent = own ? '지점명을 누르면 매장 레포트로 이동합니다.' : '지점명을 누르면 그 지점의 매장 레포트로 이동합니다.';
+    $('#hqTopHeading').textContent = own ? '인기 제품 (판매 금액)' : '전 지점 인기 제품 (판매 금액)';
     try {
       const data = await Promise.all(branches.map(async (b, i) => {
         const [inv, mv, sales, staff, sched] = await Promise.all([
@@ -4874,7 +4885,7 @@
     const h = state.hq, r = hqRange(), today = todayKey();
     const dot = (k) => k.replace(/-/g, '.');
     const days = dayDiff(r.from, r.to) + 1;
-    $('#hqSub').textContent = `${r.label} ${dot(r.from)} ~ ${dot(r.to)} · 비교 기준: ${r.prevLabel} ${dot(r.pFrom)} ~ ${dot(r.pTo)} · 운영 중 지점 ${nf.format(h.data.length)}곳`;
+    $('#hqSub').textContent = `${r.label} ${dot(r.from)} ~ ${dot(r.to)} · 비교 기준: ${r.prevLabel} ${dot(r.pFrom)} ~ ${dot(r.pTo)}${isAdmin() ? ` · 운영 중 지점 ${nf.format(h.data.length)}곳` : ''}`;
     const rows = h.data.map((d) => {
       const cur = hqCalc(d, r.from, r.to), prev = hqCalc(d, r.pFrom, r.pTo);
       const items = d.inv.filter((i) => i.active);
@@ -4930,7 +4941,7 @@
     const perBranch = rows.length ? Math.min(rows[0].due, days) : 0;
     const missingN = rows.filter((x) => Math.min(x.due, days) > x.cur.entered).length;
     $('#hqEntrySub').textContent = T.due
-      ? `입력 ${nf.format(entered)}건 / ${nf.format(T.due)}건 (${nf.format(rows.length)}개 지점 × ${nf.format(perBranch)}일)${r.to >= today ? ' · 오늘 제외' : ''}${missingN ? ` · 빠진 날이 있는 지점 ${nf.format(missingN)}곳` : ' · 모두 입력'}`
+      ? `입력 ${nf.format(entered)}건 / ${nf.format(T.due)}건 (${rows.length > 1 ? `${nf.format(rows.length)}개 지점 × ` : ''}${nf.format(perBranch)}일)${r.to >= today ? ' · 오늘 제외' : ''}${missingN ? ` · 빠진 날이 있는 지점 ${nf.format(missingN)}곳` : ' · 모두 입력'}`
       : '입력할 날이 아직 없습니다 (오늘은 제외)';
 
     // Legend (a single branch needs none)
