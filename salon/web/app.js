@@ -55,13 +55,13 @@
     branches: '지점 관리',
     manual: '사용 매뉴얼',
     hq: '전체현황',
-    revenue: '매출현황',
+    revenue: '매출 현황',
     sns: 'SNS 홍보',
     trends: 'SNS 트렌드',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users', 'hq'];  // branch managers use 직원 관리 and 지점 관리 instead
-  const BRANCH_MANAGER_ROUTES = ['revenue'];  // 매출현황: the 전체현황 page for one branch
+  const BRANCH_MANAGER_ROUTES = ['revenue'];  // 매출 현황: the 전체현황 page for one branch
   const VIEW_OF = { revenue: 'hq' };           // routes that reuse another route's view
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
@@ -88,6 +88,7 @@
   };
   const isManager = () => ['manager', 'admin'].includes(state.profile?.role);
   const isAdmin = () => state.profile?.role === 'admin';
+  const homeRoute = () => (state.profile?.role === 'manager' ? 'revenue' : 'dashboard');  // first page after sign-in, and the H Place logo
   // Category display order (from 카테고리 관리); unknown names sort last.
   const catRank = (name) => { const i = state.categories.findIndex((c) => c.name === name); return i === -1 ? 1e6 : i; };
   const byCategory = (a, b) => catRank(a) - catRank(b) || a.localeCompare(b, 'ko');
@@ -160,7 +161,7 @@
       await api.signIn(email, password);
       const user = await api.getUser();
       $('#loginPassword').value = '';
-      await enter(user);
+      await enter(user, { fresh: true });
     } catch (ex) {
       err.textContent = api.toAppError(ex).message;
       err.hidden = false;
@@ -185,7 +186,7 @@
   $$('[data-signout]').forEach((b) => b.addEventListener('click', signOut));
   $('#pendingRetry').addEventListener('click', () => enter(state.user));
 
-  async function enter(user) {
+  async function enter(user, opts = {}) {
     if (!user) return showLogin();
     state.user = user;
     show('screenLoading');
@@ -226,6 +227,9 @@
     fillBranchSelect();
     $('#demoBanner').hidden = api.mode !== 'demo';
 
+    $('#brandHome').href = `#/${homeRoute()}`;
+    // A fresh sign-in starts on the role's home page (지점 관리자: 매출 현황)
+    if (opts.fresh) history.replaceState(null, '', `#/${homeRoute()}`);
     show('screenApp');
     applyRoute(false);
     await loadData();
@@ -254,7 +258,7 @@
   $('#demoRole').addEventListener('change', async (e) => {
     api.setDemoRole(e.target.value);
     state.us.branch = '';
-    await enter(await api.getUser());
+    await enter(await api.getUser(), { fresh: true });
     toast(`${ROLE_LABEL[state.profile.role]} 화면으로 전환했습니다.`);
   });
 
@@ -352,9 +356,9 @@
   // Routing
   // ------------------------------------------------------------------
   function applyRoute(moveFocus = true) {
-    let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'dashboard';
+    let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || homeRoute();
     if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager()) || (ADMIN_ROUTES.includes(route) && !isAdmin())
-      || (BRANCH_MANAGER_ROUTES.includes(route) && state.profile?.role !== 'manager')) route = isAdmin() && route === 'revenue' ? 'hq' : 'dashboard';
+      || (BRANCH_MANAGER_ROUTES.includes(route) && state.profile?.role !== 'manager')) route = isAdmin() && route === 'revenue' ? 'hq' : homeRoute();
     state.route = route;
     document.body.dataset.route = route;
     $$('.view').forEach((v) => { v.hidden = v.dataset.view !== (VIEW_OF[route] || route); });
@@ -4816,13 +4820,13 @@
   }
 
   async function loadHq() {
-    const own = !isAdmin();  // 매출현황: a branch manager sees every branch's totals, their own in full
+    const own = !isAdmin();  // 매출 현황: a branch manager sees every branch's totals, their own in full
     if (own && state.profile?.role !== 'manager') return;
     const h = state.hq, r = hqRange(), today = todayKey();
     const ticket = (h.ticket += 1);
     h.loading = true;
     $('#hqSub').textContent = '전체 지점 자료를 불러오는 중…';
-    $('.hq-title').textContent = own ? '전 지점 매출현황' : '전체 지점 현황';
+    $('.hq-title').textContent = own ? '전 지점 매출 현황' : '전체 지점 현황';
     const colorAt = (i) => (i < BRANCH_COLORS ? `var(--br-${i + 1})` : 'var(--fg-muted)');
     const full = async (b, color) => {
       const [inv, mv, sales, staff, sched] = await Promise.all([
