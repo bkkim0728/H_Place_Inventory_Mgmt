@@ -1,0 +1,952 @@
+<title>Ambergate Exchange</title>
+<meta name="description" content="Ambergate — a non-custodial exchange concept: swap, provide liquidity, and govern the protocol." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Exo+2:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* Single committed dark look (Web3 night). Colors are set explicitly so the page
+     renders the same on any host background. */
+  :root {
+    color-scheme: dark;
+    --bg: #0b1020;
+    --bg-2: #10162e;
+    --text: #f3f4fb;
+    --muted: #a3aac7;
+    --faint: #6f7699;
+    --glass: rgba(255, 255, 255, 0.055);
+    --glass-strong: rgba(255, 255, 255, 0.09);
+    --glass-border: rgba(255, 255, 255, 0.13);
+    --glass-border-strong: rgba(255, 255, 255, 0.22);
+    --gold: #f5b53d;
+    --gold-hover: #ffc75e;
+    --on-gold: #1a1203;
+    --violet: #9b7bff;
+    --violet-soft: rgba(155, 123, 255, 0.16);
+    --teal: #34d6b7;
+    --teal-soft: rgba(52, 214, 183, 0.14);
+    --rose: #ff7a8c;
+    --rose-soft: rgba(255, 122, 140, 0.14);
+    --ring: #ffd27a;
+
+    --font-display: "Unbounded", "Exo 2", system-ui, sans-serif;
+    --font-body: "Exo 2", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+    --r-lg: 24px;
+    --r-md: 16px;
+    --r-sm: 10px;
+    --blur: 18px;
+    --dur: 200ms;
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  h1, h2, h3, p { margin: 0; }
+  h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; text-wrap: balance; letter-spacing: -0.01em; }
+  a { color: inherit; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 8px; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* Ambient backdrop: soft light sources the glass panels refract */
+  .ambient { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: radial-gradient(1200px 600px at 50% -10%, #17204a 0%, var(--bg) 60%); }
+  .ambient span { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.55; }
+  .ambient .a1 { width: 520px; height: 520px; background: #7a55ff; top: -120px; right: -80px; animation: drift 22s ease-in-out infinite alternate; }
+  .ambient .a2 { width: 420px; height: 420px; background: #f59e0b; top: 280px; left: -160px; opacity: 0.32; animation: drift 26s ease-in-out infinite alternate-reverse; }
+  .ambient .a3 { width: 380px; height: 380px; background: #14b8a6; bottom: -120px; right: 20%; opacity: 0.28; animation: drift 30s ease-in-out infinite alternate; }
+  .ambient::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px); background-size: 56px 56px; mask-image: radial-gradient(ellipse at 50% 20%, #000 20%, transparent 70%); }
+  @keyframes drift { to { transform: translate(60px, 40px) scale(1.1); } }
+
+  .glass {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-lg);
+    backdrop-filter: blur(var(--blur)) saturate(1.3);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(1.3);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 20px 50px rgba(3, 6, 20, 0.45);
+  }
+
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding-inline: 24px; }
+  section { padding-block: 88px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--violet); }
+  .section-head { display: grid; gap: 14px; max-width: 640px; margin-bottom: 40px; }
+  .section-head h2 { font-size: clamp(28px, 4vw, 40px); }
+  .section-head p { color: var(--muted); font-size: 17.5px; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 999px; border: 1px solid transparent; font-weight: 600; font-size: 15.5px; text-decoration: none; transition: background-color var(--dur) ease, border-color var(--dur) ease, transform var(--dur) var(--ease); touch-action: manipulation; }
+  .btn:active { transform: scale(0.97); }
+  .btn-gold { background: var(--gold); color: var(--on-gold); box-shadow: 0 8px 28px rgba(245, 181, 61, 0.28); }
+  .btn-gold:hover { background: var(--gold-hover); }
+  .btn-glass { background: var(--glass-strong); border-color: var(--glass-border-strong); color: var(--text); }
+  .btn-glass:hover { background: rgba(255, 255, 255, 0.14); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-sm { min-height: 40px; padding: 0 16px; font-size: 14px; }
+
+  /* Nav */
+  .nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; padding-block: 14px; }
+  .nav-inner { display: flex; align-items: center; gap: 24px; padding: 10px 12px 10px 18px; border-radius: 999px; }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+  .logo-mark { width: 30px; height: 30px; }
+  .nav-links { display: flex; gap: 4px; margin-left: 8px; }
+  .nav-links a { text-decoration: none; color: var(--muted); font-weight: 500; font-size: 15px; padding: 8px 14px; border-radius: 999px; transition: color var(--dur) ease, background-color var(--dur) ease; }
+  .nav-links a:hover { color: var(--text); background: var(--glass-strong); }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .chain-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); padding: 8px 12px; border-radius: 999px; border: 1px solid var(--glass-border); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 3px var(--teal-soft); }
+  .wallet-btn[data-connected="true"] { background: var(--glass-strong); color: var(--text); border-color: var(--glass-border-strong); box-shadow: none; }
+  .menu { display: none; position: relative; }
+  .menu summary { list-style: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; border: 1px solid var(--glass-border); cursor: pointer; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu-panel { position: absolute; right: 0; top: 54px; display: grid; min-width: 200px; padding: 8px; border-radius: var(--r-md); background: rgba(16, 22, 46, 0.92); }
+  .menu-panel a { padding: 12px 14px; border-radius: var(--r-sm); text-decoration: none; }
+  .menu-panel a:hover { background: var(--glass-strong); }
+
+  /* Hero */
+  .hero { padding-block: 56px 72px; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 56px; align-items: center; }
+  .hero h1 { font-size: clamp(36px, 5.6vw, 62px); font-weight: 700; }
+  .hero h1 em { font-style: normal; color: var(--gold); }
+  .hero-lede { margin-top: 20px; font-size: 19px; color: var(--muted); max-width: 520px; }
+  .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 44px; }
+  .stat { padding: 14px 16px; border-radius: var(--r-md); border: 1px solid var(--glass-border); background: rgba(255,255,255,0.03); }
+  .stat dt { font-size: 12.5px; color: var(--muted); letter-spacing: 0.04em; }
+  .stat dd { margin: 4px 0 0; font-family: var(--font-mono); font-size: 20px; font-weight: 600; }
+  .fine { margin-top: 12px; font-size: 13px; color: var(--faint); }
+
+  /* Swap card */
+  .swap { padding: 20px; position: relative; min-width: 0; animation: rise 700ms var(--ease) both; }
+  @keyframes rise { from { transform: translateY(18px); } to { transform: none; } }
+  .swap::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: linear-gradient(140deg, rgba(245,181,61,0.6), rgba(155,123,255,0.15) 40%, rgba(52,214,183,0.45)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+  .swap-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .swap-head h2 { font-size: 18px; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs span { font-size: 14px; padding: 6px 12px; border-radius: 999px; color: var(--muted); }
+  .tabs span[aria-current] { background: var(--glass-strong); color: var(--text); }
+  .slip { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .slip-group { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(0,0,0,0.25); border: 1px solid var(--glass-border); }
+  .slip-group label { position: relative; }
+  .slip-group input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .slip-group span { display: block; padding: 4px 10px; border-radius: 999px; font-family: var(--font-mono); font-size: 12.5px; }
+  .slip-group input:checked + span { background: var(--violet-soft); color: var(--text); box-shadow: inset 0 0 0 1px rgba(155,123,255,0.5); }
+  .slip-group input:focus-visible + span { outline: 2px solid var(--ring); outline-offset: 1px; }
+
+  .leg { padding: 16px; border-radius: var(--r-md); background: rgba(5, 8, 22, 0.45); border: 1px solid var(--glass-border); display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+  .leg-top, .leg-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13.5px; color: var(--muted); }
+  .leg-main { display: flex; align-items: center; gap: 12px; }
+  .amount { flex: 1; min-width: 0; width: 100%; background: none; border: 0; font-family: var(--font-mono); font-size: 30px; font-weight: 500; padding: 0; color: var(--text); }
+  .amount::placeholder { color: var(--faint); }
+  .amount:focus-visible { outline: none; }
+  .leg:focus-within { border-color: var(--glass-border-strong); }
+  .amount[readonly] { cursor: default; }
+  .token-select { position: relative; display: inline-flex; align-items: center; flex: none; }
+  .token-select select { appearance: none; -webkit-appearance: none; min-height: 44px; padding: 0 36px 0 46px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--glass-border-strong); font-weight: 600; font-size: 16px; cursor: pointer; }
+  .token-select select option { background: #10162e; color: var(--text); }
+  .token-select .tok { position: absolute; left: 7px; pointer-events: none; width: 30px; height: 30px; font-size: 11px; }
+  .token-select .chev { position: absolute; right: 12px; width: 16px; height: 16px; pointer-events: none; color: var(--muted); }
+  .max-btn { background: none; border: 0; color: var(--gold); font-weight: 600; font-size: 13px; padding: 4px 6px; min-height: 28px; }
+  .flip-row { display: flex; justify-content: center; margin: -10px 0; position: relative; z-index: 1; }
+  .flip { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: #161d3b; border: 4px solid #0e1430; color: var(--text); transition: transform 300ms var(--ease), background-color var(--dur) ease; }
+  .flip:hover { background: #1f2850; }
+  .flip.spin { transform: rotate(180deg); }
+  .details { margin-top: 14px; display: grid; gap: 6px; font-size: 13.5px; }
+  .details div { display: flex; justify-content: space-between; gap: 12px; }
+  .details dt { color: var(--muted); }
+  .details dd { margin: 0; text-align: right; }
+  .impact-high { color: var(--rose); }
+  .swap-cta { width: 100%; margin-top: 16px; min-height: 54px; font-size: 16.5px; border-radius: var(--r-md); }
+  .swap-note { margin-top: 10px; text-align: center; font-size: 12.5px; color: var(--faint); }
+
+  /* Token monograms (neutral glyphs — no official logos) */
+  .tok { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; font-family: var(--font-mono); font-weight: 600; font-size: 12px; color: #0b1020; background: var(--hue); flex: none; box-shadow: inset 0 -3px 6px rgba(0,0,0,0.18); }
+
+  /* Tokens section */
+  .token-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 18px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--glass-border); background: transparent; color: var(--muted); font-weight: 500; font-size: 14.5px; transition: all var(--dur) ease; }
+  .chip:hover { color: var(--text); border-color: var(--glass-border-strong); }
+  .chip[aria-pressed="true"] { background: var(--violet-soft); color: var(--text); border-color: rgba(155,123,255,0.55); }
+  .search { position: relative; margin-left: auto; flex: 0 1 280px; }
+  .search .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); width: 18px; height: 18px; }
+  .search input { width: 100%; min-height: 44px; padding: 0 16px 0 42px; border-radius: 999px; background: rgba(0,0,0,0.25); border: 1px solid var(--glass-border); font-size: 16px; }
+  .search input::placeholder { color: var(--faint); }
+  .token-table-wrap { overflow-x: auto; padding: 6px; }
+  .token-table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  .token-table th { text-align: left; font-family: var(--font-mono); font-weight: 500; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 14px 16px; border-bottom: 1px solid var(--glass-border); }
+  .token-table td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .token-table tr:last-child td { border-bottom: 0; }
+  .token-table tbody tr { transition: background-color var(--dur) ease; }
+  .token-table tbody tr:hover { background: rgba(255,255,255,0.04); }
+  .token-table .num { text-align: right; }
+  .tok-cell { display: flex; align-items: center; gap: 12px; }
+  .tok-cell strong { display: block; font-weight: 600; }
+  .tok-cell small { color: var(--muted); font-size: 13px; }
+  .chg { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 13px; }
+  .chg.up { color: var(--teal); background: var(--teal-soft); }
+  .chg.down { color: var(--rose); background: var(--rose-soft); }
+  .chg.flat { color: var(--muted); background: var(--glass-strong); }
+  .chains { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chains span { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--glass-strong); color: var(--muted); }
+  .empty-row td { text-align: center; color: var(--muted); padding: 32px; }
+
+  /* LP */
+  .lp-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+  .benefits { display: grid; gap: 14px; }
+  .benefit { display: grid; grid-template-columns: auto 1fr; gap: 16px; padding: 20px; border-radius: var(--r-md); border: 1px solid var(--glass-border); background: rgba(255,255,255,0.025); }
+  .benefit .badge-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--violet-soft); color: var(--violet); }
+  .benefit h3 { font-size: 16.5px; margin-bottom: 4px; }
+  .benefit p { color: var(--muted); font-size: 15px; }
+  .calc { padding: 24px; display: grid; gap: 18px; }
+  .calc h3 { font-size: 19px; }
+  .field { display: grid; gap: 8px; }
+  .field > label, .field > span { font-size: 14px; font-weight: 600; }
+  .input-wrap { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 16px; border-radius: var(--r-sm); background: rgba(0,0,0,0.28); border: 1px solid var(--glass-border); }
+  .input-wrap:focus-within { border-color: var(--gold); }
+  .input-wrap input { flex: 1; min-width: 0; background: none; border: 0; font-family: var(--font-mono); font-size: 18px; }
+  .input-wrap input:focus-visible { outline: none; }
+  .pool-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pool { position: relative; }
+  .pool input { position: absolute; opacity: 0; }
+  .pool span { display: grid; gap: 2px; padding: 12px 14px; border-radius: var(--r-sm); border: 1px solid var(--glass-border); cursor: pointer; transition: border-color var(--dur) ease, background-color var(--dur) ease; }
+  .pool span b { font-weight: 600; }
+  .pool span small { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+  .pool input:checked + span { border-color: var(--gold); background: rgba(245,181,61,0.08); }
+  .pool input:focus-visible + span { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .range-row { display: flex; align-items: center; gap: 14px; }
+  .range-row input[type="range"] { flex: 1; accent-color: var(--gold); min-height: 32px; }
+  .range-row output { font-family: var(--font-mono); min-width: 72px; text-align: right; }
+  .result { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; border-radius: var(--r-md); background: rgba(5, 8, 22, 0.5); border: 1px solid var(--glass-border); }
+  .result dt { font-size: 13px; color: var(--muted); }
+  .result dd { margin: 4px 0 0; font-family: var(--font-mono); font-size: 24px; font-weight: 600; color: var(--gold); }
+  .result dd.apr { color: var(--teal); }
+  .caveat { font-size: 13px; color: var(--muted); display: flex; gap: 8px; }
+  .caveat .icon { width: 16px; height: 16px; margin-top: 3px; color: var(--gold); }
+
+  /* Governance */
+  .gov-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr); gap: 28px; align-items: start; }
+  .proposals { display: grid; gap: 14px; }
+  .proposal { padding: 20px; border-radius: var(--r-md); display: grid; gap: 12px; }
+  .proposal-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pid { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+  .state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+  .state.active { background: var(--violet-soft); color: #c4b2ff; }
+  .state.passed { background: var(--teal-soft); color: var(--teal); }
+  .state.executed { background: var(--glass-strong); color: var(--muted); }
+  .state .dot { width: 6px; height: 6px; box-shadow: none; background: currentColor; }
+  .proposal h3 { font-family: var(--font-body); font-size: 17.5px; font-weight: 600; letter-spacing: 0; }
+  .votes { display: grid; gap: 8px; }
+  .vote-row { display: grid; grid-template-columns: 64px 1fr 60px; align-items: center; gap: 12px; font-size: 13.5px; }
+  .bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: inherit; }
+  .bar .for { background: var(--teal); }
+  .bar .against { background: repeating-linear-gradient(45deg, var(--rose) 0 4px, rgba(255,122,140,0.55) 4px 8px); }
+  .proposal-meta { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--muted); }
+  .vote-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .vote-actions .btn[aria-pressed="true"] { background: var(--teal-soft); border-color: var(--teal); color: var(--teal); }
+  .vote-actions .btn.against[aria-pressed="true"] { background: var(--rose-soft); border-color: var(--rose); color: var(--rose); }
+  .process { padding: 24px; display: grid; gap: 18px; }
+  .process h3 { font-size: 18px; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: step; }
+  .steps li { position: relative; padding: 0 0 20px 44px; counter-increment: step; }
+  .steps li:last-child { padding-bottom: 0; }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-family: var(--font-mono); font-size: 13px; font-weight: 600; background: var(--glass-strong); border: 1px solid var(--glass-border-strong); }
+  .steps li::after { content: ""; position: absolute; left: 13.5px; top: 32px; bottom: 4px; width: 1px; background: var(--glass-border); }
+  .steps li:last-child::after { display: none; }
+  .steps b { display: block; font-weight: 600; }
+  .steps span { font-size: 14px; color: var(--muted); }
+  .power { padding: 16px; border-radius: var(--r-md); background: rgba(5, 8, 22, 0.5); border: 1px solid var(--glass-border); display: grid; gap: 4px; }
+  .power dd { margin: 0; font-family: var(--font-mono); font-size: 22px; font-weight: 600; }
+
+  /* Wallets */
+  .wallet-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .wallet-card { display: flex; align-items: center; gap: 14px; padding: 18px; border-radius: var(--r-md); border: 1px solid var(--glass-border); background: rgba(255,255,255,0.03); text-align: left; transition: border-color var(--dur) ease, background-color var(--dur) ease; width: 100%; color: var(--text); }
+  .wallet-card:hover { border-color: var(--glass-border-strong); background: rgba(255,255,255,0.06); }
+  .wallet-card .w-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--glass-strong); flex: none; }
+  .wallet-card b { display: block; font-weight: 600; }
+  .wallet-card small { color: var(--muted); font-size: 13px; }
+  .wallet-card .arrow { margin-left: auto; color: var(--muted); }
+  .assurances { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 28px; }
+  .assure { display: flex; gap: 12px; font-size: 15px; }
+  .assure .icon { color: var(--teal); margin-top: 3px; }
+  .assure b { display: block; }
+  .assure span { color: var(--muted); font-size: 14px; }
+  .network-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; align-items: center; }
+  .network-row .label { font-size: 13.5px; color: var(--muted); margin-right: 6px; }
+  .network-row .net { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--glass-border); font-size: 14px; }
+  .network-row .net i { width: 10px; height: 10px; border-radius: 50%; background: var(--hue); }
+
+  /* CTA + footer */
+  .cta-band { padding: 48px; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
+  .cta-band h2 { font-size: clamp(24px, 3.4vw, 34px); }
+  .cta-band p { color: var(--muted); margin-top: 8px; }
+  footer { padding-block: 40px 56px; border-top: 1px solid rgba(255,255,255,0.07); color: var(--faint); font-size: 13.5px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+
+  /* Dialog */
+  dialog.modal { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--glass-border-strong); border-radius: var(--r-lg); background: rgba(16, 22, 46, 0.88); color: var(--text); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
+  dialog.modal::backdrop { background: rgba(5, 7, 18, 0.65); backdrop-filter: blur(4px); }
+  dialog.modal[open] { animation: pop 220ms var(--ease); }
+  @keyframes pop { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 8px; }
+  .modal-head h2 { font-size: 19px; }
+  .close { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; background: transparent; border: 1px solid var(--glass-border); }
+  .modal-body { padding: 8px 20px 20px; display: grid; gap: 10px; }
+  .demo-note { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--r-sm); background: rgba(245,181,61,0.1); border: 1px solid rgba(245,181,61,0.35); font-size: 13.5px; }
+  .demo-note .icon { color: var(--gold); width: 18px; height: 18px; margin-top: 2px; }
+  .wallet-card[aria-busy="true"] .arrow { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .connected-box { display: grid; gap: 12px; padding: 16px; border-radius: var(--r-md); background: rgba(5,8,22,0.5); border: 1px solid var(--glass-border); }
+  .connected-box .addr { font-family: var(--font-mono); font-size: 18px; }
+  .balances { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px; font-size: 13.5px; }
+
+  /* Toast */
+  .toast-region { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 100; width: min(460px, calc(100vw - 32px)); }
+  .toast { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--r-md); background: rgba(22, 29, 59, 0.95); border: 1px solid var(--glass-border-strong); box-shadow: 0 16px 40px rgba(0,0,0,0.5); font-size: 14.5px; animation: pop 220ms var(--ease); }
+  .toast .icon { color: var(--teal); }
+
+  /* Responsive */
+  @media (max-width: 1023px) {
+    .hero-grid, .lp-grid, .gov-grid { grid-template-columns: minmax(0, 1fr); }
+    .hero-grid { gap: 40px; }
+    .swap { max-width: 520px; width: 100%; justify-self: center; }
+    .wallet-grid, .assurances { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 767px) {
+    .wrap { padding-inline: 16px; }
+    section { padding-block: 64px; }
+    .nav-links, .chain-pill { display: none; }
+    .menu { display: block; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .search { flex: 1 1 100%; margin-left: 0; }
+    .wallet-grid, .assurances, .pool-options { grid-template-columns: minmax(0, 1fr); }
+    .cta-band { grid-template-columns: 1fr; padding: 28px; }
+    .amount { font-size: 26px; }
+    .token-table { min-width: 0; }
+    .token-table .hide-sm { display: none; }
+  }
+  @media (max-width: 400px) {
+    .nav-inner { gap: 10px; padding-left: 14px; }
+    .logo span { display: none; }
+    .result { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4v16M7 20l-4-4M7 20l4-4M17 20V4M17 4l-4 4M17 4l4 4"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-coins" viewBox="0 0 24 24"><circle cx="9" cy="9" r="6"/><path d="M15.5 9.3a6 6 0 1 1-6.2 6.2"/><path d="M8 7h2v4"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+    <symbol id="i-exit" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/></symbol>
+    <symbol id="i-vote" viewBox="0 0 24 24"><path d="m9 12 2 2 4-4"/><path d="M5 7h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7Z"/><path d="M3 7h18"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.2-8.2M16 7l3 3M14 9l2 2"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2Z"/><circle cx="16" cy="14.5" r="1.2"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-7M17.5 17.5h.01"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+  </defs>
+</svg>
+
+<div class="ambient" aria-hidden="true"><span class="a1"></span><span class="a2"></span><span class="a3"></span></div>
+
+<header class="nav">
+  <div class="wrap">
+    <div class="nav-inner glass">
+      <a class="logo" href="#top" aria-label="Ambergate home">
+        <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5b53d"/><stop offset="1" stop-color="#9b7bff"/></linearGradient></defs>
+          <path d="M16 2 29 9.5v13L16 30 3 22.5v-13Z" fill="url(#lg)"/>
+          <path d="M11 22V13a5 5 0 0 1 10 0v9M11 17h10" fill="none" stroke="#0b1020" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        <span>Ambergate</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#swap">Swap</a>
+        <a href="#tokens">Tokens</a>
+        <a href="#liquidity">Liquidity</a>
+        <a href="#governance">Governance</a>
+        <a href="#wallets">Wallets</a>
+      </nav>
+      <div class="nav-right">
+        <span class="chain-pill"><span class="dot" aria-hidden="true"></span>Arbitrum</span>
+        <button class="btn btn-gold btn-sm wallet-btn" id="navWallet" type="button">Connect wallet</button>
+        <details class="menu">
+          <summary aria-label="Open section menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></summary>
+          <nav class="menu-panel glass" aria-label="Sections">
+            <a href="#swap">Swap</a>
+            <a href="#tokens">Tokens</a>
+            <a href="#liquidity">Liquidity</a>
+            <a href="#governance">Governance</a>
+            <a href="#wallets">Wallets</a>
+          </nav>
+        </details>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" id="swap" aria-labelledby="hero-title">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">Non-custodial · On-chain settlement</p>
+        <h1 id="hero-title" style="margin-top:16px">Swap at the price you see, <em>keep the keys</em> you hold.</h1>
+        <p class="hero-lede">Ambergate routes each trade across concentrated-liquidity pools on five networks. Every quote shows the fee, the price impact, and the minimum you'll receive before you sign.</p>
+        <div class="hero-cta">
+          <a class="btn btn-gold" href="#swapAmount" id="heroStart">Start a swap</a>
+          <a class="btn btn-glass" href="#liquidity">Earn as a liquidity provider</a>
+        </div>
+        <dl class="stats">
+          <div class="stat"><dt>Total value locked</dt><dd>$412.6M</dd></div>
+          <div class="stat"><dt>24h volume</dt><dd>$188.3M</dd></div>
+          <div class="stat"><dt>Max swap fee</dt><dd>0.3%</dd></div>
+          <div class="stat"><dt>Networks</dt><dd>5</dd></div>
+        </dl>
+        <p class="fine">Concept preview. All figures and prices on this page are illustrative sample data.</p>
+      </div>
+
+      <form class="swap glass" id="swapForm" aria-labelledby="swap-title" novalidate>
+        <div class="swap-head">
+          <div class="tabs"><span aria-current="true" id="swap-title">Swap</span><span>Limit</span></div>
+          <fieldset class="slip" style="border:0;margin:0;padding:0">
+            <legend class="sr-only">Slippage tolerance</legend>
+            <span aria-hidden="true">Slippage</span>
+            <div class="slip-group">
+              <label><input type="radio" name="slip" value="0.1" id="slip01" /><span>0.1%</span></label>
+              <label><input type="radio" name="slip" value="0.5" id="slip05" checked /><span>0.5%</span></label>
+              <label><input type="radio" name="slip" value="1" id="slip1" /><span>1%</span></label>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="leg">
+          <div class="leg-top"><label for="swapAmount">You pay</label><span id="fromBal">Balance —</span></div>
+          <div class="leg-main">
+            <input class="amount" id="swapAmount" inputmode="decimal" autocomplete="off" placeholder="0.0" value="1.5" aria-describedby="fromUsd" />
+            <div class="token-select">
+              <span class="tok" id="fromTok" aria-hidden="true"></span>
+              <label for="fromToken" class="sr-only">Token to pay</label>
+              <select id="fromToken"></select>
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg>
+            </div>
+          </div>
+          <div class="leg-bottom"><span id="fromUsd" class="mono">$0.00</span><button type="button" class="max-btn" id="maxBtn" hidden>Use max</button></div>
+        </div>
+
+        <div class="flip-row"><button type="button" class="flip" id="flipBtn" aria-label="Swap pay and receive tokens"><svg class="icon" aria-hidden="true"><use href="#i-swap"/></svg></button></div>
+
+        <div class="leg">
+          <div class="leg-top"><label for="swapOut">You receive</label><span id="toBal">Balance —</span></div>
+          <div class="leg-main">
+            <input class="amount" id="swapOut" readonly tabindex="-1" placeholder="0.0" aria-describedby="toUsd" />
+            <div class="token-select">
+              <span class="tok" id="toTok" aria-hidden="true"></span>
+              <label for="toToken" class="sr-only">Token to receive</label>
+              <select id="toToken"></select>
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chev"/></svg>
+            </div>
+          </div>
+          <div class="leg-bottom"><span id="toUsd" class="mono">$0.00</span></div>
+        </div>
+
+        <dl class="details" id="quoteDetails" aria-live="polite">
+          <div><dt>Rate</dt><dd class="mono" id="qRate">—</dd></div>
+          <div><dt>Price impact</dt><dd class="mono" id="qImpact">—</dd></div>
+          <div><dt>Pool fee</dt><dd class="mono" id="qFee">—</dd></div>
+          <div><dt>Minimum received</dt><dd class="mono" id="qMin">—</dd></div>
+          <div><dt>Route</dt><dd id="qRoute">—</dd></div>
+        </dl>
+
+        <button type="submit" class="btn btn-gold swap-cta" id="swapCta">Connect wallet</button>
+        <p class="swap-note">Preview only. Nothing is signed or sent on-chain.</p>
+      </form>
+    </div>
+  </section>
+
+  <section id="tokens" aria-labelledby="tokens-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Supported tokens</p>
+        <h2 id="tokens-title">Blue-chip assets, stablecoins, and L2 governance tokens</h2>
+        <p>Tokens are listed after passing a liquidity threshold and a contract review. Bridged versions are labelled per network.</p>
+      </div>
+      <div class="token-tools">
+        <div class="chips" role="group" aria-label="Filter by category">
+          <button type="button" class="chip" data-cat="all" aria-pressed="true">All</button>
+          <button type="button" class="chip" data-cat="major" aria-pressed="false">Majors</button>
+          <button type="button" class="chip" data-cat="stable" aria-pressed="false">Stablecoins</button>
+          <button type="button" class="chip" data-cat="l2" aria-pressed="false">L2 &amp; DeFi</button>
+        </div>
+        <div class="search">
+          <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+          <label for="tokenSearch" class="sr-only">Search tokens</label>
+          <input id="tokenSearch" type="search" placeholder="Search name or symbol" autocomplete="off" />
+        </div>
+      </div>
+      <div class="glass token-table-wrap">
+        <table class="token-table">
+          <caption class="sr-only">Supported tokens with sample prices and 24 hour change</caption>
+          <thead><tr><th scope="col">Token</th><th scope="col" class="num">Price</th><th scope="col" class="num">24h</th><th scope="col" class="num hide-sm">Liquidity</th><th scope="col" class="hide-sm">Networks</th></tr></thead>
+          <tbody id="tokenBody"></tbody>
+        </table>
+      </div>
+      <p class="fine" id="tokenCount" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <section id="liquidity" aria-labelledby="lp-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Liquidity providers</p>
+        <h2 id="lp-title">Put idle assets to work in the pools traders use</h2>
+        <p>Every swap pays a pool fee, and that fee goes to the liquidity providers whose range the trade crosses.</p>
+      </div>
+      <div class="lp-grid">
+        <div class="benefits">
+          <article class="benefit">
+            <span class="badge-ico" aria-hidden="true"><svg class="icon"><use href="#i-coins"/></svg></span>
+            <div><h3>Earn fees on every trade</h3><p>Fees accrue to your position in real time and compound when you collect. No lockups, no emissions schedule to track.</p></div>
+          </article>
+          <article class="benefit">
+            <span class="badge-ico" aria-hidden="true"><svg class="icon"><use href="#i-layers"/></svg></span>
+            <div><h3>Concentrate your range</h3><p>Choose the price band where you want to provide depth. Narrower ranges earn a larger share of fees while price stays inside them.</p></div>
+          </article>
+          <article class="benefit">
+            <span class="badge-ico" aria-hidden="true"><svg class="icon"><use href="#i-exit"/></svg></span>
+            <div><h3>Withdraw any block</h3><p>Positions are NFTs held in your own wallet. Remove liquidity whenever you want, with no exit fee from the protocol.</p></div>
+          </article>
+        </div>
+
+        <form class="calc glass" id="calcForm" aria-labelledby="calc-title" novalidate>
+          <h3 id="calc-title">Fee earnings estimator</h3>
+          <div class="field">
+            <label for="deposit">Deposit (USD)</label>
+            <div class="input-wrap"><span class="muted mono" aria-hidden="true">$</span><input id="deposit" inputmode="decimal" value="10,000" autocomplete="off" /></div>
+          </div>
+          <fieldset class="field" style="border:0;margin:0;padding:0">
+            <legend style="font-size:14px;font-weight:600;margin-bottom:8px;padding:0">Pool</legend>
+            <div class="pool-options" id="poolOptions"></div>
+          </fieldset>
+          <div class="field">
+            <label for="volShare">Trading volume vs. last 30 days</label>
+            <div class="range-row"><input type="range" id="volShare" min="50" max="150" step="5" value="100" aria-describedby="volOut" /><output id="volOut" for="volShare">100%</output></div>
+          </div>
+          <dl class="result">
+            <div><dt>Est. yearly fees</dt><dd id="estYear">$0</dd></div>
+            <div><dt>Fee APR</dt><dd class="apr" id="estApr">0%</dd></div>
+          </dl>
+          <p class="caveat"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>Assumes a full-range position and constant pool TVL. Returns change with volume, and price moves can cause impermanent loss against simply holding.</span></p>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section id="governance" aria-labelledby="gov-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Governance</p>
+        <h2 id="gov-title">AMBR holders set fees, listings, and the treasury</h2>
+        <p>Protocol parameters change only through on-chain votes. Delegate your voting power or vote on proposals directly.</p>
+      </div>
+      <div class="gov-grid">
+        <div class="proposals" id="proposals"></div>
+        <aside class="process glass" aria-labelledby="process-title">
+          <h3 id="process-title">How a proposal ships</h3>
+          <ol class="steps">
+            <li><b>Forum draft</b><span>Discussion for at least 5 days.</span></li>
+            <li><b>Temperature check</b><span>Off-chain signal vote, 3 days.</span></li>
+            <li><b>On-chain vote</b><span>7 days. Needs 40M AMBR quorum.</span></li>
+            <li><b>Timelock &amp; execute</b><span>48-hour delay before contracts update.</span></li>
+          </ol>
+          <dl class="power">
+            <dt class="muted" style="font-size:13px">Your voting power</dt>
+            <dd id="votingPower">Connect a wallet</dd>
+          </dl>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section id="wallets" aria-labelledby="wallets-title">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Wallet integration</p>
+        <h2 id="wallets-title">Connect the wallet you already use</h2>
+        <p>Ambergate never holds your funds. You approve each transaction in your own wallet, and you can revoke token approvals at any time.</p>
+      </div>
+      <div class="wallet-grid" id="walletGrid"></div>
+      <div class="network-row">
+        <span class="label">Live on</span>
+        <span class="net" style="--hue:#8ea2ff"><i aria-hidden="true"></i>Ethereum</span>
+        <span class="net" style="--hue:#5aa9ff"><i aria-hidden="true"></i>Arbitrum</span>
+        <span class="net" style="--hue:#ff6b6b"><i aria-hidden="true"></i>Optimism</span>
+        <span class="net" style="--hue:#4d7cff"><i aria-hidden="true"></i>Base</span>
+        <span class="net" style="--hue:#a47bff"><i aria-hidden="true"></i>Polygon</span>
+      </div>
+      <div class="assurances">
+        <div class="assure"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><div><b>Non-custodial</b><span>Contracts can't move funds without your signature.</span></div></div>
+        <div class="assure"><svg class="icon" aria-hidden="true"><use href="#i-key"/></svg><div><b>We never ask for your seed phrase</b><span>No page, support agent, or form will request it.</span></div></div>
+        <div class="assure"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg><div><b>Open-source contracts</b><span>Verified source for every deployed contract.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="cta-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="cta-band glass">
+        <div>
+          <h2 id="cta-title">Ready for your first swap?</h2>
+          <p>Connect a wallet, pick a pair, and review the full quote before you sign.</p>
+        </div>
+        <a class="btn btn-gold" href="#swapAmount">Start a swap</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Ambergate — design concept. Not a live exchange; no transactions are processed.</span>
+    <span>Sample data only · Not financial advice</span>
+  </div>
+</footer>
+
+<dialog class="modal" id="walletDialog" aria-labelledby="walletTitle">
+  <div class="modal-head">
+    <h2 id="walletTitle">Connect a wallet</h2>
+    <button type="button" class="close" id="closeWallet" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="modal-body" id="walletBody"></div>
+</dialog>
+
+<div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+  const usd0 = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const compact = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 });
+  const fmtAmt = (n) => {
+    if (!isFinite(n) || n === 0) return '0';
+    const d = n >= 1000 ? 2 : n >= 1 ? 4 : 6;
+    return n.toLocaleString('en-US', { maximumFractionDigits: d });
+  };
+
+  // Sample token data (illustrative, not live prices)
+  const TOKENS = [
+    { sym: 'ETH',  name: 'Ether',            cat: 'major',  price: 3420.18, chg: 2.41,  liq: 162e6, nets: ['ETH', 'ARB', 'OP', 'BASE'], hue: '#8ea2ff' },
+    { sym: 'WBTC', name: 'Wrapped Bitcoin',  cat: 'major',  price: 64210.5, chg: 1.12,  liq: 78e6,  nets: ['ETH', 'ARB', 'POL'],        hue: '#f7a440' },
+    { sym: 'USDC', name: 'USD Coin',         cat: 'stable', price: 1.0,     chg: 0.0,   liq: 131e6, nets: ['ETH', 'ARB', 'OP', 'BASE', 'POL'], hue: '#5aa9ff' },
+    { sym: 'USDT', name: 'Tether USD',       cat: 'stable', price: 1.0,     chg: -0.01, liq: 96e6,  nets: ['ETH', 'ARB', 'POL'],        hue: '#3fd1a4' },
+    { sym: 'DAI',  name: 'Dai Stablecoin',   cat: 'stable', price: 1.0,     chg: 0.02,  liq: 41e6,  nets: ['ETH', 'ARB', 'OP'],         hue: '#f5c451' },
+    { sym: 'LINK', name: 'Chainlink',        cat: 'l2',     price: 14.62,   chg: -3.08, liq: 18e6,  nets: ['ETH', 'ARB'],               hue: '#6d8bff' },
+    { sym: 'ARB',  name: 'Arbitrum',         cat: 'l2',     price: 0.82,    chg: 5.73,  liq: 12e6,  nets: ['ARB'],                      hue: '#7cc4ff' },
+    { sym: 'OP',   name: 'Optimism',         cat: 'l2',     price: 1.74,    chg: -1.46, liq: 9.4e6, nets: ['OP'],                       hue: '#ff7a7a' },
+    { sym: 'AMBR', name: 'Ambergate',        cat: 'l2',     price: 0.46,    chg: 8.9,   liq: 6.1e6, nets: ['ARB', 'BASE'],              hue: '#f5b53d' },
+  ];
+  const bySym = Object.fromEntries(TOKENS.map((t) => [t.sym, t]));
+  const DEMO_BAL = { ETH: 4.2, WBTC: 0.085, USDC: 8500, USDT: 1200, DAI: 640, LINK: 120, ARB: 2400, OP: 310, AMBR: 18500 };
+  const DEMO_ADDR = '0x7a3F…c91E';
+
+  const state = { connected: false, from: 'ETH', to: 'USDC', slip: 0.5, cat: 'all', q: '' };
+
+  const setTok = (el, sym) => { el.textContent = sym.slice(0, 3); el.style.setProperty('--hue', bySym[sym].hue); };
+
+  // ---------------- Swap ----------------
+  const fromSel = $('#fromToken'), toSel = $('#toToken'), amtIn = $('#swapAmount');
+  TOKENS.forEach((t) => { fromSel.add(new Option(t.sym, t.sym)); toSel.add(new Option(t.sym, t.sym)); });
+
+  function feeTier(a, b) {
+    if (bySym[a].cat === 'stable' && bySym[b].cat === 'stable') return 0.0001;
+    if ((a === 'ETH' || b === 'ETH') && (bySym[a].cat === 'stable' || bySym[b].cat === 'stable')) return 0.0005;
+    return 0.003;
+  }
+  function parseAmt(v) { const n = Number(String(v).replace(/,/g, '')); return isFinite(n) && n > 0 ? n : 0; }
+
+  function quote() {
+    const f = bySym[state.from], t = bySym[state.to];
+    fromSel.value = state.from; toSel.value = state.to;
+    setTok($('#fromTok'), state.from); setTok($('#toTok'), state.to);
+    const amt = parseAmt(amtIn.value);
+    const fee = feeTier(state.from, state.to);
+    const valueUsd = amt * f.price;
+    const depth = Math.min(f.liq, t.liq) * 0.6;
+    const impact = valueUsd / (valueUsd + depth);
+    const out = (valueUsd * (1 - fee) * (1 - impact)) / t.price;
+    const minOut = out * (1 - state.slip / 100);
+
+    $('#swapOut').value = amt ? fmtAmt(out) : '';
+    $('#fromUsd').textContent = usd.format(valueUsd);
+    $('#toUsd').textContent = usd.format(out * t.price);
+    $('#qRate').textContent = `1 ${f.sym} = ${fmtAmt(f.price / t.price)} ${t.sym}`;
+    const imp = $('#qImpact');
+    imp.textContent = amt ? (impact < 0.0001 ? '< 0.01%' : `${(impact * 100).toFixed(2)}%`) + (impact > 0.02 ? ' (high)' : '') : '—';
+    imp.classList.toggle('impact-high', impact > 0.02);
+    $('#qFee').textContent = `${(fee * 100).toFixed(fee < 0.001 ? 2 : 2)}% · ${usd.format(valueUsd * fee)}`;
+    $('#qMin').textContent = amt ? `${fmtAmt(minOut)} ${t.sym}` : '—';
+    const hop = state.from !== 'ETH' && state.to !== 'ETH' && !(f.cat === 'stable' && t.cat === 'stable');
+    $('#qRoute').textContent = hop ? `${f.sym} → ETH → ${t.sym}` : `${f.sym} → ${t.sym}`;
+
+    const bal = DEMO_BAL[state.from];
+    $('#fromBal').textContent = state.connected ? `Balance ${fmtAmt(bal)}` : 'Balance —';
+    $('#toBal').textContent = state.connected ? `Balance ${fmtAmt(DEMO_BAL[state.to])}` : 'Balance —';
+    $('#maxBtn').hidden = !state.connected;
+
+    const cta = $('#swapCta');
+    if (!state.connected) { cta.textContent = 'Connect wallet'; cta.disabled = false; cta.dataset.action = 'connect'; }
+    else if (!amt) { cta.textContent = 'Enter an amount'; cta.disabled = true; cta.dataset.action = ''; }
+    else if (amt > bal) { cta.textContent = `Insufficient ${f.sym} balance`; cta.disabled = true; cta.dataset.action = ''; }
+    else { cta.textContent = 'Review swap'; cta.disabled = false; cta.dataset.action = 'swap'; }
+    return { amt, out };
+  }
+
+  amtIn.addEventListener('input', () => {
+    // Keep digits and one decimal point.
+    const clean = amtIn.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+    if (clean !== amtIn.value) amtIn.value = clean;
+    quote();
+  });
+  fromSel.addEventListener('change', () => { if (fromSel.value === state.to) state.to = state.from; state.from = fromSel.value; quote(); });
+  toSel.addEventListener('change', () => { if (toSel.value === state.from) state.from = state.to; state.to = toSel.value; quote(); });
+  $$('input[name="slip"]').forEach((r) => r.addEventListener('change', () => { state.slip = Number(r.value); quote(); }));
+  $('#flipBtn').addEventListener('click', (e) => {
+    const out = $('#swapOut').value;
+    [state.from, state.to] = [state.to, state.from];
+    if (out) amtIn.value = out.replace(/,/g, '');
+    e.currentTarget.classList.toggle('spin');
+    quote();
+  });
+  $('#maxBtn').addEventListener('click', () => { amtIn.value = String(DEMO_BAL[state.from]); quote(); amtIn.focus(); });
+  $('#swapForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const cta = $('#swapCta');
+    if (cta.dataset.action === 'connect') return openWallet();
+    if (cta.dataset.action !== 'swap') return;
+    const { amt, out } = quote();
+    cta.disabled = true; cta.textContent = 'Preparing quote…';
+    setTimeout(() => {
+      DEMO_BAL[state.from] -= amt;
+      DEMO_BAL[state.to] += out;
+      toast(`Demo swap: ${fmtAmt(amt)} ${state.from} → ${fmtAmt(out)} ${state.to}. Nothing was broadcast.`);
+      quote();
+    }, 700);
+  });
+  $('#heroStart').addEventListener('click', (e) => { e.preventDefault(); amtIn.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); amtIn.focus({ preventScroll: true }); amtIn.select(); });
+
+  // ---------------- Tokens ----------------
+  function renderTokens() {
+    const q = state.q.trim().toLowerCase();
+    const list = TOKENS.filter((t) => (state.cat === 'all' || t.cat === state.cat) && (!q || t.sym.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)));
+    $('#tokenBody').innerHTML = list.length ? list.map((t) => {
+      const dir = t.chg > 0.005 ? 'up' : t.chg < -0.005 ? 'down' : 'flat';
+      const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '■';
+      const sign = t.chg > 0 ? '+' : t.chg < 0 ? '−' : '';
+      return `<tr>
+        <td><div class="tok-cell"><span class="tok" style="--hue:${t.hue}" aria-hidden="true">${t.sym.slice(0, 3)}</span><div><strong>${t.name}</strong><small class="mono">${t.sym}</small></div></div></td>
+        <td class="num mono">${usd.format(t.price)}</td>
+        <td class="num"><span class="chg ${dir}"><span aria-hidden="true">${arrow}</span>${sign}${Math.abs(t.chg).toFixed(2)}%<span class="sr-only"> ${dir === 'up' ? 'up' : dir === 'down' ? 'down' : 'unchanged'}</span></span></td>
+        <td class="num mono hide-sm">${compact.format(t.liq)}</td>
+        <td class="hide-sm"><div class="chains">${t.nets.map((n) => `<span>${n}</span>`).join('')}</div></td>
+      </tr>`;
+    }).join('') : `<tr class="empty-row"><td colspan="5">No tokens match “${q.replace(/[<>&]/g, '')}”. Try a symbol like ETH or USDC.</td></tr>`;
+    $('#tokenCount').textContent = `Showing ${list.length} of ${TOKENS.length} tokens · Sample prices, not live market data.`;
+  }
+  $$('.chip').forEach((c) => c.addEventListener('click', () => {
+    state.cat = c.dataset.cat;
+    $$('.chip').forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
+    renderTokens();
+  }));
+  let st;
+  $('#tokenSearch').addEventListener('input', (e) => { clearTimeout(st); st = setTimeout(() => { state.q = e.target.value; renderTokens(); }, 120); });
+
+  // ---------------- LP estimator ----------------
+  const POOLS = [
+    { id: 'eth-usdc',  label: 'ETH / USDC',  fee: 0.0005, tvl: 182e6, vol: 96e6 },
+    { id: 'wbtc-eth',  label: 'WBTC / ETH',  fee: 0.003,  tvl: 64e6,  vol: 8e6 },
+    { id: 'usdc-usdt', label: 'USDC / USDT', fee: 0.0001, tvl: 140e6, vol: 210e6 },
+    { id: 'arb-eth',   label: 'ARB / ETH',   fee: 0.003,  tvl: 12e6,  vol: 2.2e6 },
+  ];
+  $('#poolOptions').innerHTML = POOLS.map((p, i) => `<label class="pool"><input type="radio" name="pool" id="pool-${p.id}" value="${p.id}" ${i === 0 ? 'checked' : ''} /><span><b>${p.label}</b><small>${(p.fee * 100).toFixed(2)}% fee · ${compact.format(p.vol)}/day</small></span></label>`).join('');
+  function calc() {
+    const dep = parseAmt($('#deposit').value);
+    const p = POOLS.find((x) => x.id === $('input[name="pool"]:checked').value);
+    const mult = Number($('#volShare').value) / 100;
+    const apr = (p.vol * mult * p.fee * 365) / p.tvl;
+    $('#volOut').textContent = `${Math.round(mult * 100)}%`;
+    $('#estYear').textContent = usd0.format(dep * apr);
+    $('#estApr').textContent = `${(apr * 100).toFixed(1)}%`;
+  }
+  $('#deposit').addEventListener('input', (e) => {
+    const raw = e.target.value.replace(/[^0-9.]/g, '');
+    calc();
+    if (raw && !raw.endsWith('.')) e.target.value = Number(raw).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  });
+  $('#calcForm').addEventListener('change', calc);
+  $('#volShare').addEventListener('input', calc);
+  $('#calcForm').addEventListener('submit', (e) => e.preventDefault());
+
+  // ---------------- Governance ----------------
+  const PROPOSALS = [
+    { id: 'AIP-41', title: 'Lower the ETH/USDC fee tier from 0.05% to 0.04%', status: 'active', forV: 31.8e6, againstV: 19.4e6, quorum: 40e6, meta: 'Ends in 2 days 6 h' },
+    { id: 'AIP-40', title: 'Fund a 250,000 AMBR grant round for LP analytics tools', status: 'passed', forV: 52.1e6, againstV: 8.3e6, quorum: 40e6, meta: 'In timelock · executes in 31 h' },
+    { id: 'AIP-39', title: 'Deploy core contracts on Base', status: 'executed', forV: 61.7e6, againstV: 2.9e6, quorum: 40e6, meta: 'Executed Sep 12' },
+  ];
+  const myVotes = {};
+  const M = (n) => `${(n / 1e6).toFixed(1)}M`;
+  function renderProposals() {
+    $('#proposals').innerHTML = PROPOSALS.map((p) => {
+      const total = p.forV + p.againstV;
+      const f = (p.forV / total) * 100, a = 100 - f;
+      const label = { active: 'Voting open', passed: 'Passed', executed: 'Executed' }[p.status];
+      const vote = myVotes[p.id];
+      return `<article class="proposal glass" aria-labelledby="t-${p.id}">
+        <div class="proposal-top"><span class="pid">${p.id}</span><span class="state ${p.status}"><span class="dot" aria-hidden="true"></span>${label}</span></div>
+        <h3 id="t-${p.id}">${p.title}</h3>
+        <div class="votes">
+          <div class="vote-row"><span>For</span><span class="bar" role="img" aria-label="For ${f.toFixed(1)} percent"><i class="for" style="width:${f}%"></i></span><span class="mono">${f.toFixed(1)}%</span></div>
+          <div class="vote-row"><span>Against</span><span class="bar" role="img" aria-label="Against ${a.toFixed(1)} percent"><i class="against" style="width:${a}%"></i></span><span class="mono">${a.toFixed(1)}%</span></div>
+        </div>
+        <div class="proposal-meta"><span class="mono">${M(total)} / ${M(p.quorum)} AMBR quorum${total >= p.quorum ? ' · reached' : ''}</span><span>${p.meta}</span></div>
+        ${p.status === 'active' ? `<div class="vote-actions">
+          <button type="button" class="btn btn-glass btn-sm" data-vote="for" data-id="${p.id}" aria-pressed="${vote === 'for'}">Vote for</button>
+          <button type="button" class="btn btn-glass btn-sm against" data-vote="against" data-id="${p.id}" aria-pressed="${vote === 'against'}">Vote against</button>
+        </div>` : ''}
+      </article>`;
+    }).join('');
+  }
+  $('#proposals').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-vote]');
+    if (!b) return;
+    if (!state.connected) return openWallet();
+    const p = PROPOSALS.find((x) => x.id === b.dataset.id);
+    const power = DEMO_BAL.AMBR;
+    const prev = myVotes[p.id];
+    if (prev === 'for') p.forV -= power; if (prev === 'against') p.againstV -= power;
+    myVotes[p.id] = b.dataset.vote;
+    if (b.dataset.vote === 'for') p.forV += power; else p.againstV += power;
+    renderProposals();
+    $(`[data-id="${p.id}"][data-vote="${b.dataset.vote}"]`).focus();
+    toast(`Demo vote recorded: ${b.dataset.vote} ${p.id} with ${power.toLocaleString('en-US')} AMBR. No signature requested.`);
+  });
+
+  // ---------------- Wallets ----------------
+  const WALLETS = [
+    { name: 'Browser extension', sub: 'Injected wallets in Chrome, Firefox, Brave', icon: 'i-wallet' },
+    { name: 'WalletConnect', sub: 'Scan a QR code with a mobile wallet', icon: 'i-qr' },
+    { name: 'Hardware wallet', sub: 'Ledger and Trezor via your browser wallet', icon: 'i-chip' },
+    { name: 'Coinbase Wallet', sub: 'Mobile app or extension', icon: 'i-wallet' },
+    { name: 'Safe multisig', sub: 'Team treasuries and DAOs', icon: 'i-shield' },
+    { name: 'Email & passkey', sub: 'Embedded smart wallet, no extension', icon: 'i-globe' },
+  ];
+  const walletBtn = (w, i) => `<button type="button" class="wallet-card" data-wallet="${i}"><span class="w-ico" aria-hidden="true"><svg class="icon"><use href="#${w.icon}"/></svg></span><span><b>${w.name}</b><small>${w.sub}</small></span><svg class="icon arrow" aria-hidden="true"><use href="#i-arrow"/></svg></button>`;
+  $('#walletGrid').innerHTML = WALLETS.map(walletBtn).join('');
+
+  const dlg = $('#walletDialog');
+  let returnTo = null;
+  function renderWalletBody() {
+    const body = $('#walletBody');
+    const note = `<p class="demo-note"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>This is a design preview. Choosing a wallet simulates a connection; no extension opens and nothing is signed. Never enter a recovery phrase on any website.</span></p>`;
+    if (state.connected) {
+      $('#walletTitle').textContent = 'Wallet connected';
+      body.innerHTML = `<div class="connected-box"><span class="muted" style="font-size:13px">Demo account on Arbitrum</span><span class="addr">${DEMO_ADDR}</span>
+        <div class="balances mono">${['ETH', 'USDC', 'ARB', 'AMBR'].map((s) => `<span>${fmtAmt(DEMO_BAL[s])} ${s}</span>`).join('')}</div></div>
+        <button type="button" class="btn btn-glass" id="disconnect">Disconnect</button>`;
+      $('#disconnect').addEventListener('click', () => { setConnected(false); dlg.close(); toast('Wallet disconnected.'); });
+    } else {
+      $('#walletTitle').textContent = 'Connect a wallet';
+      body.innerHTML = note + WALLETS.map(walletBtn).join('');
+    }
+  }
+  function openWallet() {
+    returnTo = document.activeElement;
+    renderWalletBody();
+    dlg.showModal();
+  }
+  dlg.addEventListener('close', () => { if (returnTo && document.contains(returnTo)) returnTo.focus(); });
+  $('#closeWallet').addEventListener('click', () => dlg.close());
+  let downOnBackdrop = false;
+  const outside = (e) => { const r = dlg.getBoundingClientRect(); return e.target === dlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom); };
+  dlg.addEventListener('pointerdown', (e) => { downOnBackdrop = outside(e); });
+  dlg.addEventListener('click', (e) => { if (downOnBackdrop && outside(e)) dlg.close(); downOnBackdrop = false; });
+
+  function connectWith(btn) {
+    const w = WALLETS[Number(btn.dataset.wallet)];
+    btn.setAttribute('aria-busy', 'true');
+    $('b', btn).textContent = `Connecting ${w.name}…`;
+    setTimeout(() => {
+      setConnected(true);
+      if (dlg.open) dlg.close();
+      toast(`Connected (demo) via ${w.name}: ${DEMO_ADDR}`);
+    }, 800);
+  }
+  $('#walletBody').addEventListener('click', (e) => { const b = e.target.closest('[data-wallet]'); if (b) connectWith(b); });
+  $('#walletGrid').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-wallet]');
+    if (!b) return;
+    if (state.connected) return openWallet();
+    returnTo = b;
+    connectWith(b);
+  });
+  $('#navWallet').addEventListener('click', openWallet);
+
+  function setConnected(on) {
+    state.connected = on;
+    const nb = $('#navWallet');
+    nb.dataset.connected = String(on);
+    nb.textContent = on ? DEMO_ADDR : 'Connect wallet';
+    nb.setAttribute('aria-label', on ? `Wallet ${DEMO_ADDR}, open account` : 'Connect wallet');
+    $('#votingPower').textContent = on ? `${DEMO_BAL.AMBR.toLocaleString('en-US')} AMBR` : 'Connect a wallet';
+    quote();
+    $('#walletGrid').innerHTML = WALLETS.map(walletBtn).join('');
+  }
+
+  // ---------------- Toast ----------------
+  function toast(msg) {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span></span>`;
+    $('span', el).textContent = msg;
+    $('#toastRegion').replaceChildren(el);
+    setTimeout(() => el.remove(), 5000);
+  }
+
+  // Close the mobile menu after picking a section.
+  $$('.menu-panel a').forEach((a) => a.addEventListener('click', () => $('.menu').removeAttribute('open')));
+
+  quote();
+  renderTokens();
+  calc();
+  renderProposals();
+})();
+</script>
