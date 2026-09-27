@@ -5157,12 +5157,17 @@
   const GU = window.SEOUL_GU || null;
   const GU_NAMES = GU ? GU.gu.map((g) => g.n) : [];
   const GU_BASES = GU_NAMES.map((n) => ({ n, base: n.slice(0, -1) })).filter((x) => x.base.length >= 2).sort((a, b) => b.base.length - a.base.length);
-  // Which 구 a branch is in: the address first, then the branch name ("서초 아크로비스타" → 서초구)
+  // Which 구 a branch is in: the address first, then the branch name ("서초 아크로비스타" → 서초구).
+  // Besides Seoul the map has 성남시 수정·중원·분당구 and 용인시 수지구 (their records carry `city`).
+  const guLabel = (n) => { const g = GU && GU.gu.find((q) => q.n === n); return g && g.city ? `${g.city} ${n}` : n; };
   function branchGu(b) {
     const a = String(b.address || '').trim();
-    if (a && !/^서울/.test(a) && !GU_NAMES.some((n) => a.startsWith(n))) return { gu: null, why: 'outside' };
-    const inAddr = GU_NAMES.find((n) => a.includes(n));
-    if (inAddr) return { gu: inAddr };
+    const seoul = /^서울/.test(a) || GU.gu.some((g) => !g.city && a.startsWith(g.n));
+    const gg = /^(경기|성남|용인)/.test(a);
+    if (a && !seoul && !gg) return { gu: null, why: 'outside' };
+    const inAddr = GU.gu.find((g) => (g.city ? gg && a.includes(g.city.slice(0, 2)) && a.includes(g.n) : seoul && a.includes(g.n)));
+    if (inAddr) return { gu: inAddr.n };
+    if (gg) return { gu: null, why: 'outside' };  // 경기도의 다른 시·구
     const hit = GU_BASES.find((x) => String(b.name || '').includes(x.base) || a.includes(x.base));
     return hit ? { gu: hit.n } : { gu: null, why: a ? 'unknown' : 'none' };
   }
@@ -5262,11 +5267,18 @@
         walls += `<path class="hm-wall" d="${wall}"/>`;
         const fill = info && info.lead
           ? `color-mix(in srgb, ${info.lead.x.color} ${Math.round(38 + 52 * (info.sum / maxGu))}%, var(--hm-land))`
-          : 'var(--hm-land)';
-        tops += `<polygon class="hm-gu${info ? ' has-br' : ''}" data-hm-gu="${esc(g.n)}" points="${pts(q.map((v) => P(v[0], v[1], T)))}" style="fill:${fill}"/>`;
+          : (g.city ? 'var(--hm-land-gg)' : 'var(--hm-land)');
+        tops += `<polygon class="hm-gu${info ? ' has-br' : ''}${g.city ? ' is-gg' : ''}" data-hm-gu="${esc(g.n)}" points="${pts(q.map((v) => P(v[0], v[1], T)))}" style="fill:${fill}"/>`;
       });
       const c0 = P(g.c[0], g.c[1] + 16, T);
       if (W >= 520) names += `<text class="hm-gu-name" x="${c0[0].toFixed(1)}" y="${c0[1].toFixed(1)}" text-anchor="middle">${esc(g.n)}</text>`;
+    });
+    // City names for the 경기 areas (성남시, 용인시), placed just below their 구
+    const cities = new Map();
+    GU.gu.filter((g) => g.city).forEach((g) => { const c = cities.get(g.city) || { x: 0, y: 0, n: 0, maxY: 0 }; c.x += g.c[0]; c.y += g.c[1]; c.n += 1; c.maxY = Math.max(c.maxY, g.c[1]); cities.set(g.city, c); });
+    cities.forEach((c, name) => {
+      const pt = P(c.x / c.n, c.maxY + 48, T);
+      names += `<text class="hm-city-name" x="${pt[0].toFixed(1)}" y="${pt[1].toFixed(1)}" text-anchor="middle">${esc(name)}</text>`;
     });
 
     // Columns, back to front
@@ -5284,7 +5296,7 @@
       const share = total ? (o.v / total) * 100 : 0;
       const wLab = Math.max(o.x.b.name.length * 12.5, manWon(o.v).length * 7.5) + 10;
       labels.push({ o, ax: tp[0], ay: tp[1] - 6, x: tp[0], y: tp[1] - 8, w: wLab, h: o.rank === 1 ? 44 : 30 });
-      const label = `${o.x.b.name} ${o.loc.gu} · ${won.format(o.v)} · 비중 ${pct1.format(share)}%${o.rank ? ` · ${o.rank}위` : ''}`;
+      const label = `${o.x.b.name} ${guLabel(o.loc.gu)} · ${won.format(o.v)} · 비중 ${pct1.format(share)}%${o.rank ? ` · ${o.rank}위` : ''}`;
       return `<g class="hm-col" data-hm-branch="${o.x.b.id}" tabindex="0" role="img" aria-label="${esc(label)}">
         <polygon points="${pts([D0, A0, A1, D1])}" style="fill:color-mix(in srgb, ${col} 62%, black)"/>
         <polygon points="${pts([A0, B0, B1, A1])}" style="fill:${col}"/>
@@ -5330,7 +5342,7 @@
       <div class="hm-share" aria-hidden="true">${bar || '<span class="hm-share-empty"></span>'}</div>
       <ol class="hm-cands">${ranked.map((o) => {
         const share = total ? (o.v / total) * 100 : 0;
-        const where = o.loc.gu || (o.loc.why === 'outside' ? '서울 밖' : '위치 미등록');
+        const where = o.loc.gu ? guLabel(o.loc.gu) : (o.loc.why === 'outside' ? '지도 밖 지역' : '위치 미등록');
         return `<li class="${o.rank === 1 ? 'is-lead' : ''}" style="--c:${o.x.color}"><span class="hm-cand-name">${o.rank === 1 ? '<b class="hm-win">1위</b>' : ''}${esc(o.x.b.name)}<small>${esc(where)}</small></span><span class="hm-cand-val">${manWon(o.v)}<small>${pct1.format(share)}%</small></span></li>`;
       }).join('')}</ol>`;
 
@@ -5346,7 +5358,7 @@
     const out = all.filter((o) => !o.loc.gu);
     const box = $('#hmOutside');
     box.hidden = !out.length;
-    box.innerHTML = out.length ? `<h3 class="hm-out-title">지도 밖 지점</h3><ul>${out.map((o) => `<li style="--c:${o.x.color}"><span>${esc(o.x.b.name)}<small>${o.loc.why === 'outside' ? '서울 밖' : '주소에 ○○구가 없음'}</small></span><strong>${manWon(o.v)}</strong></li>`).join('')}</ul>` : '';
+    box.innerHTML = out.length ? `<h3 class="hm-out-title">지도 밖 지점</h3><ul>${out.map((o) => `<li style="--c:${o.x.color}"><span>${esc(o.x.b.name)}<small>${o.loc.why === 'outside' ? '지도 밖 지역' : '주소에 ○○구가 없음'}</small></span><strong>${manWon(o.v)}</strong></li>`).join('')}</ul>` : '';
   }
 
   // Hover / focus: column → branch, land → 구
@@ -5360,14 +5372,14 @@
       const o = m.all.find((q) => q.x.b.id === col.dataset.hmBranch);
       if (!o) return;
       const done = m.idx >= m.n;
-      tip.innerHTML = `<strong><i style="background:${o.x.color}"></i> ${esc(o.x.b.name)} · ${esc(o.loc.gu)}</strong>`
+      tip.innerHTML = `<strong><i style="background:${o.x.color}"></i> ${esc(o.x.b.name)} · ${esc(guLabel(o.loc.gu))}</strong>`
         + `<span>누적 총매출<b>${won.format(o.v)}</b></span>`
         + `<span>매출 비중<b>${total ? pct1.format((o.v / total) * 100) : '0.0'}%</b></span>`
         + (o.rank ? `<span>순위<b>${nf.format(o.rank)}위</b></span>` : '')
         + (done ? `<span>이전 기간 대비<b>${deltaHtml(o.x.cur.total, o.x.prev.total).html}</b></span>` : '');
     } else {
       const n = gu.dataset.hmGu, info = m.guInfo.get(n);
-      tip.innerHTML = `<strong>${esc(n)}</strong>` + (info
+      tip.innerHTML = `<strong>${esc(guLabel(n))}</strong>` + (info
         ? info.list.sort((a, b) => b.v - a.v).map((o) => `<span><i style="background:${o.x.color}"></i>${esc(o.x.b.name)}<b>${won.format(o.v)}</b></span>`).join('')
         : '<span class="muted">지점 없음</span>');
     }
