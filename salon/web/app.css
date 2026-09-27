@@ -1270,8 +1270,8 @@ body[data-route="hq"] #branchSelect { display: none; }
 
 /* ── 전체현황 · 서울 3D 지도 (선거 개표 지도 스타일) ── */
 .hq-trend-tools { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
-.hq-map { --hm-land: color-mix(in srgb, var(--fg) 9%, var(--surface-solid)); --hm-wall: color-mix(in srgb, var(--surface-solid) 55%, black); }
-:root[data-theme="light"] .hq-map { --hm-land: color-mix(in srgb, var(--fg) 7%, var(--surface-solid)); --hm-wall: color-mix(in srgb, var(--fg) 30%, var(--surface-solid)); }
+.hq-map { --hm-land-gg: color-mix(in srgb, var(--fg) 5%, var(--surface-solid)); --hm-land: color-mix(in srgb, var(--fg) 9%, var(--surface-solid)); --hm-wall: color-mix(in srgb, var(--surface-solid) 55%, black); }
+:root[data-theme="light"] .hq-map { --hm-land-gg: color-mix(in srgb, var(--fg) 3%, var(--surface-solid)); --hm-land: color-mix(in srgb, var(--fg) 8%, var(--surface-solid)); --hm-wall: color-mix(in srgb, var(--fg) 30%, var(--surface-solid)); }
 .hm-board { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: var(--space-2) var(--space-4); margin: var(--space-2) 0 var(--space-3); }
 .hm-count { display: grid; gap: 2px; min-width: 110px; }
 .hm-count-label { font-size: 12px; font-weight: 700; letter-spacing: .02em; color: var(--accent); }
@@ -1298,6 +1298,7 @@ body[data-route="hq"] #branchSelect { display: none; }
 .hm-wall { fill: var(--hm-wall); }
 .hm-gu { stroke: var(--surface-solid); stroke-width: 1; stroke-linejoin: round; transition: fill var(--dur-fast) ease; }
 .hm-gu.has-br:hover { filter: brightness(1.12); }
+.hm-city-name { fill: var(--fg-muted); font-size: 12.5px; font-weight: 700; font-family: var(--font); letter-spacing: .04em; pointer-events: none; }
 .hm-gu-name { fill: var(--fg-muted); font-size: 10.5px; font-family: var(--font); opacity: .75; pointer-events: none; }
 .hm-col { cursor: default; outline: none; }
 .hm-col:focus-visible polygon { stroke: var(--fg); stroke-width: 1.5; }
