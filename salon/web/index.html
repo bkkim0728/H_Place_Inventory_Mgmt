@@ -56,6 +56,8 @@
       <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
       <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
       <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8Z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
       <symbol id="i-lock-check" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M9.5 15.5l2 2 3.5-3.5"/></symbol>
       <symbol id="i-report" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></symbol>
@@ -406,11 +408,28 @@
             <div class="panel-head">
               <div>
                 <h2 id="hqTrendHeading" class="rp-title">일별 총매출 · 지점별</h2>
-                <p class="muted small">시술 매출 + 제품 판매. 막대에 마우스를 올리면 지점별 금액이 보입니다.</p>
+                <p class="muted small" id="hqTrendHint">시술 매출 + 제품 판매. 막대에 마우스를 올리면 지점별 금액이 보입니다.</p>
               </div>
-              <ul class="hq-legend" id="hqLegend"></ul>
+              <div class="hq-trend-tools">
+                <div class="segmented" role="group" aria-label="보기 방식" id="hqView">
+                  <button type="button" data-hq-view="bars" aria-pressed="true">막대 그래프</button>
+                  <button type="button" data-hq-view="map" aria-pressed="false">서울 3D 지도</button>
+                </div>
+                <ul class="hq-legend" id="hqLegend"></ul>
+              </div>
             </div>
             <div class="hq-chart" id="hqChart"></div>
+            <div class="hq-map" id="hqMap" hidden>
+              <div class="hm-board" id="hmBoard" aria-live="polite"></div>
+              <div class="hm-stage" id="hmStage"></div>
+              <div class="hm-controls">
+                <button type="button" class="btn btn-secondary hm-play" id="hmPlay"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span>하루씩 집계 재생</span></button>
+                <label class="hm-scrub"><span class="sr-only">집계 날짜</span><input type="range" id="hmRange" min="1" max="1" value="1" step="1" /></label>
+                <span class="hm-day muted small" id="hmDay">—</span>
+              </div>
+              <div class="hm-outside" id="hmOutside" hidden></div>
+              <p class="muted small hm-note">지점 위치는 <b>지점 관리</b>의 주소(○○구)나 지점명으로 정합니다. 경계: 통계청 센서스용 행정구역경계(2013).</p>
+            </div>
             <div class="hq-tip" id="hqTip" role="status" hidden></div>
           </section>
 
@@ -1742,7 +1761,7 @@
             <details class="man-item" id="man-hq" data-short="전체현황(전 지점)" data-admin-only>
               <summary><span class="man-no" aria-hidden="true"></span><span class="man-q">전체현황으로 전체 지점 한눈에 보기</span><span class="tag man-role man-role-admin">전체 관리자</span></summary>
               <div class="man-body">
-                <ol class="man-steps"><li><b>전체현황</b>에서 기간(최근 7일, 최근 30일, 이번 달, 지난달)을 고르거나, <b>기간 직접 설정</b>으로 시작일·종료일을 넣습니다(한 번에 최대 1년, 바로 앞의 같은 길이 기간과 비교).</li><li>위쪽 카드에서 전체 총매출·시술 매출·제품 판매·재료비율과 <b>이전 기간 대비</b> 증감, 재고 금액·재고 경고·오늘 근무·시술 매출 입력률을 확인합니다.</li><li><b>총매출 · 지점별</b> 그래프에 마우스를 올리면 지점별 금액이 보입니다. 기간이 길면 주별(2달 넘게)·월별(7달 넘게)로 묶어 보여 줍니다.</li><li><b>지점별 성과</b> 표에서 매출 비중, 객단가, 재료비율, 재고, 근무를 비교합니다. 지점명을 누르면 그 지점의 매장 레포트로 이동합니다.</li><li><b>확인이 필요한 항목</b>(품절, 매출 미입력, 보건증 만료, 매출 급감 등)을 눌러 해당 화면으로 바로 갑니다. <b>엑셀</b>로 지점별 성과를 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출은 각 지점이 매장 레포트에서 입력한 값으로 계산합니다. 입력률이 낮으면 총매출이 실제보다 적게 보입니다.</p>
+                <ol class="man-steps"><li><b>전체현황</b>에서 기간(최근 7일, 최근 30일, 이번 달, 지난달)을 고르거나, <b>기간 직접 설정</b>으로 시작일·종료일을 넣습니다(한 번에 최대 1년, 바로 앞의 같은 길이 기간과 비교).</li><li>위쪽 카드에서 전체 총매출·시술 매출·제품 판매·재료비율과 <b>이전 기간 대비</b> 증감, 재고 금액·재고 경고·오늘 근무·시술 매출 입력률을 확인합니다.</li><li><b>총매출 · 지점별</b> 그래프에 마우스를 올리면 지점별 금액이 보입니다. 기간이 길면 주별(2달 넘게)·월별(7달 넘게)로 묶어 보여 줍니다.</li><li>그래프 오른쪽 위 <b>서울 3D 지도</b>를 누르면 서울 지도 위에 지점별 매출 기둥이 섭니다. 구는 그 구의 1위 지점 색으로 칠해지고, <b>하루씩 집계 재생</b>을 누르면 선거 개표 방송처럼 날마다 매출이 쌓입니다. 지점 위치는 <b>지점 관리</b>의 주소(○○구)나 지점명으로 정하고, 서울 밖이거나 주소가 없는 지점은 지도 아래에 따로 나옵니다.</li><li><b>지점별 성과</b> 표에서 매출 비중, 객단가, 재료비율, 재고, 근무를 비교합니다. 지점명을 누르면 그 지점의 매장 레포트로 이동합니다.</li><li><b>확인이 필요한 항목</b>(품절, 매출 미입력, 보건증 만료, 매출 급감 등)을 눌러 해당 화면으로 바로 갑니다. <b>엑셀</b>로 지점별 성과를 받을 수 있습니다.</li></ol><p class="man-tip"><strong>참고</strong> 시술 매출은 각 지점이 매장 레포트에서 입력한 값으로 계산합니다. 입력률이 낮으면 총매출이 실제보다 적게 보입니다.</p>
                 <a href="#/hq" class="btn btn-secondary btn-sm man-go">전체현황(으)로 가기<svg class="icon" aria-hidden="true"><use href="#i-chev-right"/></svg></a>
               </div>
             </details>
@@ -2728,6 +2747,7 @@
   <script src="xlsx.js"></script>
   <script src="data.js"></script>
   <script src="sns-trends.js"></script>
+  <script src="seoul-gu.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

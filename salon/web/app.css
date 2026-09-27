@@ -1266,3 +1266,64 @@ body[data-route="hq"] #branchSelect { display: none; }
   .tr-deck { grid-template-columns: repeat(2, 1fr); }
   .tr-card { break-inside: avoid; }
 }
+
+/* ── 전체현황 · 서울 3D 지도 (선거 개표 지도 스타일) ── */
+.hq-trend-tools { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+.hq-map { --hm-land: color-mix(in srgb, var(--fg) 9%, var(--surface-solid)); --hm-wall: color-mix(in srgb, var(--surface-solid) 55%, black); }
+:root[data-theme="light"] .hq-map { --hm-land: color-mix(in srgb, var(--fg) 7%, var(--surface-solid)); --hm-wall: color-mix(in srgb, var(--fg) 30%, var(--surface-solid)); }
+.hm-board { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: var(--space-2) var(--space-4); margin: var(--space-2) 0 var(--space-3); }
+.hm-count { display: grid; gap: 2px; min-width: 110px; }
+.hm-count-label { font-size: 12px; font-weight: 700; letter-spacing: .02em; color: var(--accent); }
+.hm-count strong { font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.hm-count strong small { font-size: 13px; color: var(--fg-muted); font-weight: 600; }
+.hm-count-bar { display: block; height: 4px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.hm-count-bar span { display: block; height: 100%; background: var(--accent); transition: width var(--dur-fast) ease; }
+.hm-total { display: grid; gap: 2px; }
+.hm-total strong { font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.hm-share { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--surface-2); min-width: 120px; }
+.hm-share span { display: block; height: 100%; transition: width var(--dur-fast) ease; }
+.hm-cands { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hm-cands li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 170px; flex: 1 1 170px; max-width: 250px;
+  padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--c); }
+.hm-cands li.is-lead { background: color-mix(in srgb, var(--c) 14%, var(--surface-2)); border-color: color-mix(in srgb, var(--c) 45%, var(--border)); border-left-color: var(--c); }
+.hm-cand-name { display: grid; font-weight: 600; font-size: 13px; min-width: 0; }
+.hm-cand-name > :not(small):not(b) { overflow: hidden; }
+.hm-cand-name small, .hm-cand-val small { font-size: 11.5px; font-weight: 500; color: var(--fg-muted); }
+.hm-cand-val { display: grid; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+.hm-lead { stroke: var(--fg-muted); stroke-width: 1; stroke-dasharray: 2 2; }
+.hm-win { justify-self: start; display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; line-height: 18px; background: var(--c); color: #fff; vertical-align: 1px; }
+.hm-stage { min-height: 240px; }
+.hm-stage svg { display: block; width: 100%; height: auto; overflow: visible; }
+.hm-wall { fill: var(--hm-wall); }
+.hm-gu { stroke: var(--surface-solid); stroke-width: 1; stroke-linejoin: round; transition: fill var(--dur-fast) ease; }
+.hm-gu.has-br:hover { filter: brightness(1.12); }
+.hm-gu-name { fill: var(--fg-muted); font-size: 10.5px; font-family: var(--font); opacity: .75; pointer-events: none; }
+.hm-col { cursor: default; outline: none; }
+.hm-col:focus-visible polygon { stroke: var(--fg); stroke-width: 1.5; }
+.hm-label text { font-family: var(--font); paint-order: stroke; stroke: var(--surface-solid); stroke-width: 3px; stroke-linejoin: round; }
+.hm-name { font-size: 12px; font-weight: 700; fill: var(--fg); }
+.hm-val { font-size: 12px; font-weight: 600; fill: var(--fg); font-variant-numeric: tabular-nums; }
+.hm-rank { font-size: 11px; font-weight: 800; fill: var(--accent); }
+.hm-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-2); }
+.hm-scrub { flex: 1 1 180px; display: flex; }
+.hm-scrub input { width: 100%; accent-color: var(--accent); }
+.hm-day { font-variant-numeric: tabular-nums; }
+.hm-outside { margin-top: var(--space-3); }
+.hm-out-title { font-size: 13px; margin: 0 0 var(--space-2); color: var(--fg-muted); font-weight: 600; }
+.hm-outside ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hm-outside li { display: flex; align-items: center; gap: var(--space-3); padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px dashed var(--border-strong); border-left: 4px solid var(--c); font-size: 13px; }
+.hm-outside li span { display: grid; font-weight: 600; }
+.hm-outside li small { font-size: 11.5px; color: var(--fg-muted); font-weight: 500; }
+.hm-note { margin: var(--space-2) 0 0; }
+@media (max-width: 640px) {
+  .hq-trend-tools { align-items: flex-start; }
+  .hm-board { grid-template-columns: 1fr 1fr; }
+  .hm-share { grid-column: 1 / -1; }
+  .hm-cands { display: grid; grid-template-columns: 1fr 1fr; }
+  .hm-cands li { max-width: none; min-width: 0; flex-direction: column; align-items: stretch; gap: 2px; padding: 6px 8px; }
+  .hm-cand-val { text-align: left; grid-template-columns: auto auto; justify-content: space-between; }
+  .hm-name, .hm-val { font-size: 11px; }
+}
+@media print { .hm-controls { display: none; } }
+.segmented[hidden] { display: none; }
+.hq-legend[hidden] { display: none; }
