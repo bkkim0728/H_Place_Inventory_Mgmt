@@ -55,11 +55,14 @@
     branches: '지점 관리',
     manual: '사용 매뉴얼',
     hq: '전체현황',
+    revenue: '매출현황',
     sns: 'SNS 홍보',
     trends: 'SNS 트렌드',
   };
   const MANAGER_ROUTES = ['report', 'staff', 'payroll', 'branches'];
   const ADMIN_ROUTES = ['categories', 'users', 'hq'];  // branch managers use 직원 관리 and 지점 관리 instead
+  const BRANCH_MANAGER_ROUTES = ['revenue'];  // 매출현황: the 전체현황 page for one branch
+  const VIEW_OF = { revenue: 'hq' };           // routes that reuse another route's view
 
   const badge = (s) => `<span class="badge badge-${s}">${svgIcon(STATUS[s].icon)}${STATUS[s].label}</span>`;
   const typeTag = (t) => `<span class="tag tag-${TYPES[t]?.tag || 'adjust'}">${TYPES[t]?.label || t}</span>`;
@@ -308,7 +311,7 @@
       else if (r === 'staff') await loadStaff();
       else if (r === 'payroll') await loadPayroll();
       else if (r === 'users') await loadUsers();
-      else if (r === 'hq') await loadHq();
+      else if (r === 'hq' || r === 'revenue') await loadHq();
       else if (r === 'sns') await loadSns();
       else if (r === 'branches') {
         state.branches = await api.listBranches();
@@ -350,10 +353,11 @@
   // ------------------------------------------------------------------
   function applyRoute(moveFocus = true) {
     let route = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'dashboard';
-    if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager()) || (ADMIN_ROUTES.includes(route) && !isAdmin())) route = 'dashboard';
+    if (!ROUTES[route] || (MANAGER_ROUTES.includes(route) && !isManager()) || (ADMIN_ROUTES.includes(route) && !isAdmin())
+      || (BRANCH_MANAGER_ROUTES.includes(route) && state.profile?.role !== 'manager')) route = isAdmin() && route === 'revenue' ? 'hq' : 'dashboard';
     state.route = route;
     document.body.dataset.route = route;
-    $$('.view').forEach((v) => { v.hidden = v.dataset.view !== route; });
+    $$('.view').forEach((v) => { v.hidden = v.dataset.view !== (VIEW_OF[route] || route); });
     $$('.nav-link').forEach((a) => {
       if (a.dataset.route === route) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
@@ -371,7 +375,7 @@
     if (route === 'categories') renderCategories();
     if (route === 'manual') renderManual();
     if (route === 'sales') loadSales();
-    if (route === 'hq') loadHq();
+    if (route === 'hq' || route === 'revenue') loadHq();
     if (route === 'sns') loadSns();
     if (route === 'trends') loadTrends();
     closeSidebar();
@@ -4812,26 +4816,46 @@
   }
 
   async function loadHq() {
-    if (!isAdmin()) return;
+    const own = !isAdmin();  // 매출현황: a branch manager sees every branch's totals, their own in full
+    if (own && state.profile?.role !== 'manager') return;
     const h = state.hq, r = hqRange(), today = todayKey();
     const ticket = (h.ticket += 1);
     h.loading = true;
     $('#hqSub').textContent = '전체 지점 자료를 불러오는 중…';
-    const branches = state.branches.filter((b) => b.active !== false);
+    $('.hq-title').textContent = own ? '전 지점 매출현황' : '전체 지점 현황';
+    const colorAt = (i) => (i < BRANCH_COLORS ? `var(--br-${i + 1})` : 'var(--fg-muted)');
+    const full = async (b, color) => {
+      const [inv, mv, sales, staff, sched] = await Promise.all([
+        api.listInventory(b.id),
+        api.listMovementsBetween(b.id, r.pFrom, r.to),
+        api.listDailySales(b.id, r.pFrom, r.to).catch(() => []),
+        api.listStaff(b.id).catch(() => []),
+        api.listSchedule(b.id, today, today).catch(() => []),
+      ]);
+      return { b, color, inv, mv, sales, staff, sched };
+    };
+    let note = '';
     try {
-      const data = await Promise.all(branches.map(async (b, i) => {
-        const [inv, mv, sales, staff, sched] = await Promise.all([
-          api.listInventory(b.id),
-          api.listMovementsBetween(b.id, r.pFrom, r.to),
-          api.listDailySales(b.id, r.pFrom, r.to).catch(() => []),
-          api.listStaff(b.id).catch(() => []),
-          api.listSchedule(b.id, today, today).catch(() => []),
-        ]);
-        return { b, color: i < BRANCH_COLORS ? `var(--br-${i + 1})` : 'var(--fg-muted)', inv, mv, sales, staff, sched };
-      }));
+      let data;
+      if (own) {
+        const ownId = state.profile.branch_id || state.branch?.id;
+        const ownB = state.branches.find((b) => b.id === ownId);
+        let ov = [];
+        try { ov = await api.salesOverview(r.pFrom, r.to, r.from); } catch (ex) {
+          note = `다른 지점 자료를 불러오지 못해 우리 지점만 보여 줍니다. (${api.toAppError(ex).message}) 전체 관리자에게 Supabase에서 schema.sql을 다시 실행해 달라고 요청하세요.`;
+        }
+        if (!ov.some((a) => a.id === ownId) && ownB) ov = [...ov, { id: ownB.id, code: ownB.code, name: ownB.name, address: ownB.address }];
+        data = await Promise.all(ov.map(async (a, i) => (a.id === ownId && ownB
+          ? { ...(await full(ownB, colorAt(i))), mine: true }
+          : { b: { id: a.id, code: a.code, name: a.name, address: a.address }, color: colorAt(i), agg: a })));
+      } else {
+        const branches = state.branches.filter((b) => b.active !== false);
+        data = await Promise.all(branches.map((b, i) => full(b, colorAt(i))));
+      }
       if (ticket !== h.ticket) return;
       h.data = data;
-      $('#hqError').hidden = true;
+      $('#hqError').textContent = note;
+      $('#hqError').hidden = !note;
     } catch (ex) {
       if (ticket !== h.ticket) return;
       h.data = [];
@@ -4840,6 +4864,20 @@
     }
     h.loading = false;
     renderHq();
+  }
+
+  // Totals from sales_overview (other branches for a branch manager)
+  function hqCalcAgg(a, from, to, withTop) {
+    let svc = 0, cnt = 0, prod = 0, prodN = 0, mat = 0, entered = 0;
+    const byDay = new Map();
+    (a.days || []).forEach((d) => {
+      if (d.day < from || d.day > to) return;
+      svc += Number(d.svc) || 0; cnt += Number(d.cnt) || 0; prod += Number(d.prod) || 0;
+      prodN += Number(d.prod_n) || 0; mat += Number(d.mat) || 0; if (d.entered) entered += 1;
+      byDay.set(d.day, { svc: Number(d.svc) || 0, prod: Number(d.prod) || 0 });
+    });
+    const products = new Map(withTop ? (a.products || []).map((p) => [p.sku, { name: p.name, unit: p.unit, qty: Number(p.qty) || 0, amt: Number(p.amt) || 0 }]) : []);
+    return { svc, cnt, prod, prodN, mat, total: svc + prod, entered, avg: cnt ? svc / cnt : 0, ratio: svc ? (mat / svc) * 100 : null, byDay, products };
   }
 
   // Per-branch numbers for a date window
@@ -4875,7 +4913,17 @@
     const dot = (k) => k.replace(/-/g, '.');
     const days = dayDiff(r.from, r.to) + 1;
     $('#hqSub').textContent = `${r.label} ${dot(r.from)} ~ ${dot(r.to)} · 비교 기준: ${r.prevLabel} ${dot(r.pFrom)} ~ ${dot(r.pTo)} · 운영 중 지점 ${nf.format(h.data.length)}곳`;
+    const due = Math.max(0, dayDiff(r.from, [r.to, addDays(today, -1)].sort()[0]) + 1);
     const rows = h.data.map((d) => {
+      if (d.agg) {
+        const a = d.agg;
+        return {
+          ...d, cur: hqCalcAgg(a, r.from, r.to, true), prev: hqCalcAgg(a, r.pFrom, r.pTo, false),
+          stock: Number(a.stock) || 0, itemN: Number(a.item_n) || 0,
+          low: Array(Number(a.low_n) || 0).fill(null), out: Array(Number(a.out_n) || 0).fill(null),
+          staffN: Number(a.staff_n) || 0, on: null, onDes: null, off: null, certs: [], due,
+        };
+      }
       const cur = hqCalc(d, r.from, r.to), prev = hqCalc(d, r.pFrom, r.pTo);
       const items = d.inv.filter((i) => i.active);
       const sched = new Map(d.sched.map((x) => [`${x.staff_id}|${x.day}`, x]));
@@ -4888,8 +4936,7 @@
         staffN: d.staff.filter((x) => x.status === 'active').length, on: on.length,
         onDes: on.filter((o) => DESIGNER_POS.includes(o.x.position)).length, off: people.length - on.length,
         certs: d.staff.filter((x) => x.status !== 'left' && x.health_cert_expires && daysUntil(x.health_cert_expires) <= 30),
-        // days that should have a 시술 매출 entry (up to yesterday; today may still be open)
-        due: Math.max(0, dayDiff(r.from, [r.to, addDays(today, -1)].sort()[0]) + 1),
+        due,  // days that should have a 시술 매출 entry (up to yesterday; today may still be open)
       };
     });
     const sum = (list, f) => list.reduce((a, x) => a + f(x), 0);
@@ -4924,13 +4971,13 @@
     $('#hqWarn').innerHTML = `${nf.format(T.low + T.out)}<small>개</small>`;
     $('#hqWarnSub').textContent = `부족 ${nf.format(T.low)} · 품절 ${nf.format(T.out)}`;
     $('#hqWork').textContent = `${nf.format(T.on)}명`;
-    $('#hqWorkSub').textContent = `시술 ${nf.format(T.onDes)} · 스태프 ${nf.format(T.on - T.onDes)} · 휴무 ${nf.format(T.off)} · 재직 ${nf.format(T.staffN)}`;
+    $('#hqWorkSub').textContent = `${rows.some((x) => x.agg) ? '우리 지점 · ' : ''}시술 ${nf.format(T.onDes)} · 스태프 ${nf.format(T.on - T.onDes)} · 휴무 ${nf.format(T.off)} · 재직 ${nf.format(T.staffN)}`;
     const entered = Math.min(T.entered, T.due);
     $('#hqEntry').innerHTML = T.due ? `${pct1.format((entered / T.due) * 100)}<small>%</small>` : '—';
     const perBranch = rows.length ? Math.min(rows[0].due, days) : 0;
     const missingN = rows.filter((x) => Math.min(x.due, days) > x.cur.entered).length;
     $('#hqEntrySub').textContent = T.due
-      ? `입력 ${nf.format(entered)}건 / ${nf.format(T.due)}건 (${nf.format(rows.length)}개 지점 × ${nf.format(perBranch)}일)${r.to >= today ? ' · 오늘 제외' : ''}${missingN ? ` · 빠진 날이 있는 지점 ${nf.format(missingN)}곳` : ' · 모두 입력'}`
+      ? `입력 ${nf.format(entered)}건 / ${nf.format(T.due)}건 (${rows.length > 1 ? `${nf.format(rows.length)}개 지점 × ` : ''}${nf.format(perBranch)}일)${r.to >= today ? ' · 오늘 제외' : ''}${missingN ? ` · 빠진 날이 있는 지점 ${nf.format(missingN)}곳` : ' · 모두 입력'}`
       : '입력할 날이 아직 없습니다 (오늘은 제외)';
 
     // Legend (a single branch needs none)
@@ -4948,7 +4995,9 @@
       const share = T.total ? (x.cur.total / T.total) * 100 : 0;
       const missing = Math.min(x.due, days) - x.cur.entered;
       return `<tr>
-        <th scope="row" class="cell-name"><button type="button" class="link-btn hq-branch" data-hq-branch="${x.b.id}"><i class="hq-dot" style="background:${x.color}" aria-hidden="true"></i>${esc(x.b.name)}</button></th>
+        <th scope="row" class="cell-name">${x.agg
+          ? `<span class="hq-branch"><i class="hq-dot" style="background:${x.color}" aria-hidden="true"></i>${esc(x.b.name)}</span>`
+          : `<button type="button" class="link-btn hq-branch" data-hq-branch="${x.b.id}"><i class="hq-dot" style="background:${x.color}" aria-hidden="true"></i>${esc(x.b.name)}${x.mine ? ' <span class="tag hq-mine">우리 지점</span>' : ''}</button>`}</th>
         <td class="num" data-label="총매출"><strong>${won.format(x.cur.total)}</strong></td>
         <td class="num" data-label="이전 대비">${deltaHtml(x.cur.total, x.prev.total).html}</td>
         <td class="num" data-label="매출 비중"><span class="hq-share"><span class="hq-share-bar" aria-hidden="true"><span style="width:${share.toFixed(1)}%;background:${x.color}"></span></span>${pct1.format(share)}%</span></td>
@@ -4959,7 +5008,7 @@
         <td class="num" data-label="재료비율">${pctText(x.cur.ratio)}</td>
         <td class="num" data-label="재고 금액">${won.format(x.stock)}</td>
         <td class="num" data-label="부족·품절">${x.low.length + x.out.length ? `<span class="hq-warn">${nf.format(x.low.length)} · ${nf.format(x.out.length)}</span>` : '0 · 0'}</td>
-        <td class="num" data-label="오늘 근무">${nf.format(x.on)}/${nf.format(x.staffN)}명</td>
+        <td class="num" data-label="오늘 근무">${x.on == null ? `<span class="muted" title="다른 지점 근무는 보이지 않습니다">—/${nf.format(x.staffN)}명</span>` : `${nf.format(x.on)}/${nf.format(x.staffN)}명`}</td>
         <td class="num" data-label="매출 입력"><span class="${missing > 0 ? 'hq-warn' : ''}">${entry(x)}</span></td>
       </tr>`;
     }).join('') : `<tr><td colspan="13" class="muted rp-empty">${h.loading ? '불러오는 중…' : '운영 중인 지점이 없습니다.'}</td></tr>`;
@@ -4994,7 +5043,7 @@
 
     // Things to look at, most urgent first
     const alerts = [];
-    rows.forEach((x) => {
+    rows.filter((x) => !x.agg).forEach((x) => {
       const n = x.b.name;
       if (x.out.length) alerts.push({ tone: 'danger', text: `${n} · 품절 ${nf.format(x.out.length)}개: ${x.out.slice(0, 3).map((i) => i.name).join(', ')}${x.out.length > 3 ? ' 외' : ''}`, id: x.b.id, to: 'inventory', link: '재고 목록' });
       const miss = Math.min(x.due, days) - x.cur.entered;
@@ -5264,11 +5313,11 @@
     const landTop = top + Math.min(...GU.gu.map((g) => Math.min(...g.p.flatMap((r) => r.filter((_, i) => i % 2 === 1))))) * TY * S - T;
     const minY = Math.max(0, Math.floor(Math.min(landTop, ...labels.map((L) => L.y - L.h)) - 8));
     const lead = ranked[0] && ranked[0].v > 0 ? ranked[0] : null;
-    const aria = `서울 지도. ${keys[m.idx - 1] ? keys[m.idx - 1].long : ''}까지 누적 총매출 ${won.format(total)}.${lead ? ` 1위 ${lead.x.b.name} ${won.format(lead.v)}.` : ''} 지점별 수치는 아래 표에 있습니다.`;
+    const aria = `지도. ${keys[m.idx - 1] ? keys[m.idx - 1].long : ''}까지 누적 총매출 ${won.format(total)}.${lead ? ` 1위 ${lead.x.b.name} ${won.format(lead.v)}.` : ''} 지점별 수치는 아래 표에 있습니다.`;
     $('#hqTip').hidden = true;
     stage.innerHTML = `<svg viewBox="0 ${minY} ${W} ${H - minY}" width="${W}" height="${H - minY}" role="img" aria-label="${esc(aria)}"><g class="hm-land">${walls}${tops}</g><g class="hm-names" aria-hidden="true">${names}</g>${cols}${labelSvg}</svg>`;
     stage.dataset.w = String(W);
-    $('#hqTrendHeading').textContent = '기간 누적 총매출 · 서울 지도';
+    $('#hqTrendHeading').textContent = '기간 누적 총매출';
     m.all = all; m.total = total; m.guInfo = guInfo; m.keys = keys;
 
     // Scoreboard: share bar + one card per branch (the election-night strip)

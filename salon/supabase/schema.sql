@@ -2225,6 +2225,92 @@ create policy "sns media: members delete" on storage.objects
          and public.is_branch_member(public.photo_branch_id(name))
          and not exists (select 1 from public.sns_media m where m.path = storage.objects.name));
 
+-- ---------------------------------------------------------------------------
+-- sales_overview: 전 지점 매출 비교 (전체현황, 지점 관리자의 매출현황)
+-- Totals only — no staff names, pay, schedules or item lists — so a branch
+-- manager can compare with the other branches without reading their records.
+-- p_top_from: products sold from this day to p_to (the current period).
+-- Errors: FORBIDDEN (not an active admin/manager), INVALID_RANGE
+-- ---------------------------------------------------------------------------
+create or replace function public.sales_overview(p_from date, p_to date, p_top_from date default null)
+returns jsonb
+language plpgsql stable security definer set search_path = public
+as $$
+declare
+  v_role text;
+begin
+  select p.role into v_role from public.profiles p where p.user_id = auth.uid() and p.active;
+  if v_role is null or v_role not in ('admin', 'manager') then raise exception 'FORBIDDEN'; end if;
+  if p_from is null or p_to is null or p_to < p_from or p_to - p_from > 800
+     or (p_top_from is not null and (p_top_from < p_from or p_top_from > p_to)) then
+    raise exception 'INVALID_RANGE';
+  end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'id', b.id, 'code', b.code, 'name', b.name, 'address', b.address,
+      'days', coalesce((
+        select jsonb_agg(jsonb_build_object('day', d.day, 'svc', d.svc, 'cnt', d.cnt, 'entered', d.entered,
+                                            'prod', d.prod, 'prod_n', d.prod_n, 'mat', d.mat) order by d.day)
+        from (
+          select x.day, sum(x.svc) svc, sum(x.cnt) cnt, bool_or(x.entered) entered,
+                 sum(x.prod) prod, sum(x.prod_n) prod_n, sum(x.mat) mat
+          from (
+            select s.day, s.service_sales::numeric svc, s.service_count::numeric cnt, true entered,
+                   0::numeric prod, 0 prod_n, 0::numeric mat
+            from public.daily_sales s
+            where s.branch_id = b.id and s.day between p_from and p_to
+            union all
+            select (m.created_at at time zone 'Asia/Seoul')::date, 0, 0, false,
+                   case when m.type = 'sale'
+                        then -m.quantity * coalesce(m.unit_price, case when i.own_prices then i.retail_price else pr.retail_price end, 0)
+                        else 0 end,
+                   case when m.type = 'sale' and m.reverts_id is null
+                             and not exists (select 1 from public.stock_movements r where r.reverts_id = m.id) then 1 else 0 end,
+                   case when m.type = 'use' then -m.quantity * coalesce(m.unit_cost, 0) else 0 end
+            from public.stock_movements m
+            join public.products pr on pr.id = m.product_id
+            left join public.inventory i on i.branch_id = m.branch_id and i.product_id = m.product_id
+            where m.branch_id = b.id and m.type in ('sale', 'use')
+              and m.created_at >= (p_from::timestamp at time zone 'Asia/Seoul')
+              and m.created_at < ((p_to + 1)::timestamp at time zone 'Asia/Seoul')
+          ) x
+          group by x.day
+        ) d), '[]'::jsonb),
+      'stock', (select coalesce(sum(i.stock * (case when i.own_prices then i.cost_price else pr.cost_price end)), 0)
+                from public.inventory i join public.products pr on pr.id = i.product_id
+                where i.branch_id = b.id and pr.active and coalesce(i.in_use, true)),
+      'item_n', (select count(*) from public.inventory i join public.products pr on pr.id = i.product_id
+                 where i.branch_id = b.id and pr.active and coalesce(i.in_use, true)),
+      'low_n', (select count(*) from public.inventory i join public.products pr on pr.id = i.product_id
+                where i.branch_id = b.id and pr.active and coalesce(i.in_use, true) and i.stock > 0 and i.stock <= i.safety_stock),
+      'out_n', (select count(*) from public.inventory i join public.products pr on pr.id = i.product_id
+                where i.branch_id = b.id and pr.active and coalesce(i.in_use, true) and i.stock = 0),
+      'staff_n', (select count(*) from public.staff st where st.branch_id = b.id and st.status = 'active'),
+      'products', case when p_top_from is null then '[]'::jsonb else coalesce((
+        select jsonb_agg(jsonb_build_object('sku', t.sku, 'name', t.name, 'unit', t.unit, 'qty', t.qty, 'amt', t.amt))
+        from (
+          select pr.sku,
+                 case when i.own_prices then i.name else pr.name end as name,
+                 case when i.own_prices then i.unit else pr.unit end as unit,
+                 sum(-m.quantity) qty,
+                 sum(-m.quantity * coalesce(m.unit_price, case when i.own_prices then i.retail_price else pr.retail_price end, 0)) amt
+          from public.stock_movements m
+          join public.products pr on pr.id = m.product_id
+          left join public.inventory i on i.branch_id = m.branch_id and i.product_id = m.product_id
+          where m.branch_id = b.id and m.type = 'sale'
+            and m.created_at >= (p_top_from::timestamp at time zone 'Asia/Seoul')
+            and m.created_at < ((p_to + 1)::timestamp at time zone 'Asia/Seoul')
+          group by 1, 2, 3
+        ) t), '[]'::jsonb) end
+    ) order by b.code)
+    from public.branches b
+    where b.active
+  ), '[]'::jsonb);
+end;
+$$;
+revoke all on function public.sales_overview(date, date, date) from public, anon;
+grant execute on function public.sales_overview(date, date, date) to authenticated;
+
 -- Ask the Supabase API (PostgREST) to reload its schema cache right away, so
 -- new tables and functions are usable without waiting.
 notify pgrst, 'reload schema';

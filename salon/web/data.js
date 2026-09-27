@@ -331,6 +331,8 @@
         if (path) await snsMedia.remove([path]).catch(() => {});
       },
       setSnsPostMedia: (postId, mediaId) => run(sb.rpc('set_sns_post_media', { p_post_id: postId, p_media_id: mediaId || null })),
+      // 전 지점 매출 비교: totals per active branch (admins and branch managers)
+      salesOverview: (from, to, topFrom) => run(sb.rpc('sales_overview', { p_from: from, p_to: to, p_top_from: topFrom || null })),
       listDailySales: (branchId, from, to) =>
         run(sb.from('daily_sales').select('day, service_sales, service_count, memo').eq('branch_id', branchId).gte('day', from).lte('day', to)),
       saveDailySales: (branchId, day, v) =>
@@ -762,6 +764,47 @@
         if (row) Object.assign(row, next); else state.staff.push(next);
         save();
         return delay(next.id);
+      },
+      async salesOverview(from, to, topFrom) {
+        must(me().active && ['admin', 'manager'].includes(me().role), 'FORBIDDEN');
+        must(from && to && from <= to && (!topFrom || (topFrom >= from && topFrom <= to)), 'INVALID_RANGE');
+        const kday = (iso) => new Date(Date.parse(iso) + KST).toISOString().slice(0, 10);
+        const reverted = new Set(state.movements.filter((m) => m.reverts_id).map((m) => m.reverts_id));
+        const out = state.branches.filter((b) => b.active !== false).sort((a, b) => a.code.localeCompare(b.code)).map((b) => {
+          const days = new Map();
+          const row = (d) => { if (!days.has(d)) days.set(d, { day: d, svc: 0, cnt: 0, entered: false, prod: 0, prod_n: 0, mat: 0 }); return days.get(d); };
+          state.dailySales.filter((x) => x.branch_id === b.id && x.day >= from && x.day <= to).forEach((x) => {
+            const r = row(x.day); r.svc += x.service_sales; r.cnt += x.service_count; r.entered = true;
+          });
+          const products = new Map();
+          state.movements.filter((m) => m.branch_id === b.id && (m.type === 'sale' || m.type === 'use')).forEach((m) => {
+            const d = kday(m.created_at);
+            if (d < from || d > to) return;
+            const p = product(m.product_id), v = priced(inv(b.id, m.product_id), p);
+            const r = row(d);
+            if (m.type === 'sale') {
+              const amt = -m.quantity * (m.unit_price ?? v.retail_price ?? 0);
+              r.prod += amt;
+              if (!m.reverts_id && !reverted.has(m.id)) r.prod_n += 1;
+              if (topFrom && d >= topFrom) {
+                const t = products.get(p.sku) || { sku: p.sku, name: v.name, unit: v.unit, qty: 0, amt: 0 };
+                t.qty += -m.quantity; t.amt += amt; products.set(p.sku, t);
+              }
+            } else r.mat += -m.quantity * (m.unit_cost || 0);
+          });
+          const items = state.inventory.filter((i) => i.branch_id === b.id && product(i.product_id).active && i.in_use !== false);
+          return {
+            id: b.id, code: b.code, name: b.name, address: b.address ?? null,
+            days: [...days.values()].sort((x, y) => (x.day < y.day ? -1 : 1)),
+            stock: items.reduce((a, i) => a + i.stock * (priced(i, product(i.product_id)).cost_price || 0), 0),
+            item_n: items.length,
+            low_n: items.filter((i) => statusOf(i) === 'low').length,
+            out_n: items.filter((i) => statusOf(i) === 'out').length,
+            staff_n: state.staff.filter((x) => x.branch_id === b.id && x.status === 'active').length,
+            products: [...products.values()],
+          };
+        });
+        return delay(clone(out));
       },
       async listDailySales(branchId, from, to) {
         must(isManager(branchId), 'FORBIDDEN');
