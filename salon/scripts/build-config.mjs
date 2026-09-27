@@ -1,6 +1,6 @@
 // Writes web/config.js from environment variables. Render runs this as the
 // static site's build command; nothing else needs building.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const url = (process.env.SUPABASE_URL || '').trim();
@@ -24,3 +24,16 @@ if (Boolean(url) !== Boolean(key)) {
 const out = fileURLToPath(new URL('../web/config.js', import.meta.url));
 writeFileSync(out, `// Generated at build time by scripts/build-config.mjs\nwindow.APP_CONFIG = ${JSON.stringify({ supabaseUrl: url.replace(/\/$/, ''), supabaseAnonKey: key, loginDomain }, null, 2)};\n`);
 console.log(url ? `config.js written for ${url}` : 'config.js written in demo mode (no Supabase settings)');
+
+// On Render, stamp local CSS/JS links in index.html with the commit so browsers
+// fetch the new files after each deploy instead of reusing cached copies.
+const commit = (process.env.RENDER_GIT_COMMIT || '').trim().slice(0, 12);
+if (commit) {
+  const page = fileURLToPath(new URL('../web/index.html', import.meta.url));
+  const html = readFileSync(page, 'utf8').replace(
+    /(<(?:script|link)\b[^>]*?\b(?:src|href)=")((?!https?:|\/\/|data:)[^"?#]+\.(?:js|css))(?:\?v=[^"]*)?"/g,
+    (_, pre, path) => `${pre}${path}?v=${commit}"`,
+  );
+  writeFileSync(page, html);
+  console.log(`index.html assets stamped with ?v=${commit}`);
+}

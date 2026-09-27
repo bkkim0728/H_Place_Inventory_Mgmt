@@ -4787,7 +4787,7 @@
   // 전체현황 (admin): every branch, one period against the one before
   // ------------------------------------------------------------------
   state.hq = { period: '7', from: '', to: '', data: [], loading: false, ticket: 0,
-    view: (() => { try { return localStorage.getItem('hp-hq-view') === 'map' ? 'map' : 'bars'; } catch (e) { return 'bars'; } })(),
+    view: (() => { try { return localStorage.getItem('hp-hq-view2') === 'bars' ? 'bars' : 'map'; } catch (e) { return 'map'; } })(),
     map: { idx: 0, n: 0, timer: 0 } };
   const BRANCH_COLORS = 8;  // --br-1 … --br-8 (validated categorical order); more branches reuse none
 
@@ -5124,10 +5124,10 @@
     return won.format(n);
   };
 
-  function setHqView(v) {
+  function setHqView(v, save) {
     const h = state.hq;
     h.view = v === 'map' && GU ? 'map' : 'bars';
-    try { localStorage.setItem('hp-hq-view', h.view); } catch (e) {}
+    if (save) { try { localStorage.setItem('hp-hq-view2', h.view); } catch (e) {} }
     $$('[data-hq-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.hqView === h.view)));
     $('#hqChart').hidden = h.view === 'map';
     $('#hqMap').hidden = h.view !== 'map';
@@ -5140,7 +5140,7 @@
   }
   $('#hqView').addEventListener('click', (e) => {
     const b = e.target.closest('[data-hq-view]');
-    if (b) setHqView(b.dataset.hqView);
+    if (b) setHqView(b.dataset.hqView, true);
   });
   if (!GU) $('#hqView').hidden = true;
 
