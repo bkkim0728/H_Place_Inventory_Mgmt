@@ -1,0 +1,607 @@
+{
+ "id": "2026-W44",
+ "title": "2026년 10월 4주차 미용·뷰티 SNS 마케팅 동향",
+ "period": {
+  "from": "2026-10-26",
+  "to": "2026-11-01"
+ },
+ "published": "2026-11-02",
+ "headline": "외국인 손님은 'DM으로 예약'한다 — 방한객 역대 최대, 인스타그램은 90분 영상 실험, 메타 AI 광고 약관은 11월 20일로",
+ "summary": [
+  "올해 방한 외국인이 10월 27일 기준으로 이미 지난해 연간 최고 기록(1,894만 명)을 넘었습니다. 외국인 뷰티 소비가 두피 케어·메이크업·네일·뷰티약국으로 넓어지고, 미용실 예약을 대신 잡아 주는 'K뷰티 중개' 서비스도 생겨나고 있습니다.",
+  "인스타그램이 최대 90분 가로 영상 'Features'를 미국·브라질 일부 크리에이터와 시험하기 시작했습니다. 다만 광고 수익 분배가 없어 \"왜 공짜로 긴 영상을 올리냐\"는 크리에이터 반발이 큽니다.",
+  "메타의 'AI가 고친 광고도 광고주 책임' 약관은 시행일이 11월 20일로 미뤄졌습니다. 국내에서는 에이피알(3분기 매출 +100%)과 아모레퍼시픽(영업이익 +25%)이 해외 덕분에 좋은 실적을 냈습니다."
+ ],
+ "keywords": [
+  {
+   "k": "방한객 역대 최대",
+   "why": "10/27 기준 작년 연간 기록 1,894만 명 돌파",
+   "src": [
+    16
+   ]
+  },
+  {
+   "k": "K뷰티 중개",
+   "why": "외국인 대신 미용실 예약·스타일링 연결하는 서비스",
+   "src": [
+    14
+   ]
+  },
+  {
+   "k": "DM·왓츠앱 예약",
+   "why": "외국인 손님은 네이버 대신 메신저로 예약",
+   "src": [
+    15
+   ]
+  },
+  {
+   "k": "뷰티약국",
+   "why": "외국인 약국 소비 전년 대비 196.3%↑",
+   "src": [
+    17
+   ]
+  },
+  {
+   "k": "인스타 Features",
+   "why": "최대 90분 가로 영상 시험, 수익 분배는 없음",
+   "src": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "k": "메타 약관 11/20",
+   "why": "AI 자동 수정 광고 책임 조항 시행일 연기",
+   "src": [
+    6,
+    7
+   ]
+  },
+  {
+   "k": "틱톡샵 블프",
+   "why": "미국 블랙프라이데이·사이버먼데이 11/11~30",
+   "src": [
+    9
+   ]
+  },
+  {
+   "k": "흐트러진 레이어드",
+   "why": "불규칙한 층과 가벼운 끝머리 커트",
+   "src": [
+    18
+   ]
+  }
+ ],
+ "platforms": [
+  {
+   "id": "naver",
+   "name": "네이버 플레이스",
+   "signal": "flat",
+   "points": [
+    "이번 주 미용 업종 관련 새 공식 발표는 찾지 못했습니다. 9월 출시된 '플레이스 에이전트'는 리뷰·블로그 후기·예약 가능 여부를 반영해 장소를 추천합니다.",
+    "네이버는 지도 앱 에이전트 고도화(이용자 맞춤 추천)를 연내 적용할 계획이라는 보도가 있어, 플레이스 정보 정비가 계속 중요합니다."
+   ],
+   "src": [
+    12,
+    13
+   ]
+  },
+  {
+   "id": "instagram",
+   "name": "인스타그램",
+   "signal": "up",
+   "points": [
+    "10월 26일, 최대 90분 가로 영상 형식 'Features'를 미국·브라질 일부 크리에이터와 시험한다고 발표했습니다. 짧은 릴스에서 전체 영상으로 이어지게 하고, TV 앱 시청도 염두에 두고 있습니다.",
+    "유튜브처럼 광고 수익을 나누지 않고 성과 보너스·브랜드 협업에 의존한다는 점이 지적됩니다. 인스타그램은 \"장기 수익 모델을 말하기엔 이르다\"는 입장입니다."
+   ],
+   "src": [
+    1,
+    2,
+    3,
+    5
+   ]
+  },
+  {
+   "id": "youtube",
+   "name": "유튜브 쇼츠",
+   "signal": "flat",
+   "points": [
+    "이번 주 새 공식 발표는 없었습니다. 10월 1일 발표된 원본 우대(재업로드 쇼츠 노출 축소)와 한국 등 6개국 쇼츠 보너스 시범이 계속 진행 중입니다.",
+    "인스타그램이 긴 영상에 도전하지만, 검색으로 찾아보는 습관과 광고 수익 분배 면에서 긴 영상은 여전히 유튜브가 유리하다는 분석이 많습니다."
+   ],
+   "src": [
+    10,
+    11,
+    2
+   ]
+  },
+  {
+   "id": "tiktok",
+   "name": "틱톡",
+   "signal": "up",
+   "points": [
+    "틱톡샵이 미국 블랙프라이데이·사이버먼데이 행사를 11월 11~30일로 발표했습니다. 지난해 같은 행사 4일 동안 미국 매출이 5억 달러를 넘었다고 틱톡이 밝혔습니다(회사 발표 수치).",
+    "국내 틱톡샵 일정은 여전히 없어, 미용실에는 해외 손님을 위한 발견 채널로 활용하는 것이 현실적입니다."
+   ],
+   "src": [
+    9
+   ]
+  },
+  {
+   "id": "meta",
+   "name": "메타 광고 (인스타·페이스북)",
+   "signal": "down",
+   "points": [
+    "새 상업·셀프서비스 광고 약관의 시행일이 10월 30일에서 11월 20일로 미뤄졌습니다. AI 기능이 만들거나 고친 광고 내용은 광고주가 전부 책임진다는 조항은 그대로입니다.",
+    "광고주 웹사이트의 콘텐츠를 수집할 수 있다는 조항에 언론사들이 반발하고 있고, 유럽연합 집행위원회도 검토를 이어 가고 있습니다."
+   ],
+   "src": [
+    6,
+    7,
+    8
+   ]
+  }
+ ],
+ "hair": {
+  "colors": [
+   {
+    "name": "카라멜 브라운",
+    "hex": "#8a5a3b"
+   },
+   {
+    "name": "카키 브라운",
+    "hex": "#6b5e45"
+   },
+   {
+    "name": "뮤트 코코아",
+    "hex": "#5b4032"
+   },
+   {
+    "name": "와인 레드",
+    "hex": "#5e1f2e"
+   }
+  ],
+  "styles": [
+   "흐트러진 레이어드",
+   "중단발 레이어드 + 볼륨펌",
+   "굵게 흐르는 웨이브펌"
+  ],
+  "notes": "국내는 불규칙하게 층을 낸 '흐트러진 레이어드'에, 탈색 없이 원래 머리보다 한두 톤 밝은 브라운으로 분위기를 바꾸는 흐름입니다. 카라멜·코퍼 브라운은 따뜻하게, 애쉬·카키 브라운은 차분하게 보입니다. 해외 겨울 컬러로는 와인 레드가 계속 꼽힙니다.",
+  "src": [
+   18,
+   19,
+   20
+  ]
+ },
+ "global": {
+  "points": [
+   "문화체육관광부에 따르면 올해 방한 외래객은 10월 27일 기준으로 지난해 연간 최고 기록(1,894만 명)을 넘었습니다. 지난해보다 두 달 이상 빠른 속도입니다.",
+   "외국인 뷰티 소비가 피부과·성형외과에서 두피 케어·메이크업·네일로 넓어지고, 명동·홍대·성수의 뷰티약국 소비는 전년 대비 196.3% 늘었다는 집계가 나왔습니다.",
+   "외국인 관광객에게 쇼핑 상담·미용실 예약·스타일링을 묶어 주는 'K뷰티 중개' 서비스가 늘고 있습니다. 홍대의 한 미용실은 예약을 네이버·카카오 대신 왓츠앱·인스타그램 DM으로 받는다는 사례도 있습니다."
+  ],
+  "src": [
+   14,
+   15,
+   16,
+   17
+  ]
+ },
+ "actions": [
+  {
+   "title": "외국인 DM 예약 응답 준비",
+   "detail": "인스타그램 DM·왓츠앱으로 오는 예약 문의에 쓸 영어 답장 템플릿을 만드세요. 시술별 최종 가격, 소요 시간, 예약 변경·취소 규정을 처음부터 적어 두면 신뢰가 생깁니다.",
+   "for": "global",
+   "route": "sns"
+  },
+  {
+   "title": "중개 플랫폼은 조건부터 확인",
+   "detail": "K뷰티 중개·예약 대행 서비스에 들어갈 때는 수수료, 추천 기준, 취소·환불 조건을 먼저 확인하고, 매장에 직접 예약한 손님과 가격이 다르지 않게 맞추세요.",
+   "for": "global",
+   "route": "sns"
+  },
+  {
+   "title": "메타 광고 11/20 전에 점검",
+   "detail": "새 약관이 시행되면 AI가 바꾼 광고 내용도 매장 책임입니다. 광고별 Advantage+ 크리에이티브 자동 보정·문구 변경·이미지 생성 기능이 켜져 있는지 확인하고 필요 없는 것은 끄세요.",
+   "for": "domestic",
+   "route": "sns"
+  },
+  {
+   "title": "긴 영상은 유튜브, 인스타는 짧게",
+   "detail": "인스타그램 긴 영상은 아직 미국 일부 시험 단계이고 수익 분배도 없습니다. 시술 전 과정 영상은 유튜브에 올리고, 인스타그램에는 결과 위주 릴스로 요약해 링크하세요. 고객이 나오면 게시 동의를 받으세요.",
+   "for": "domestic",
+   "route": "sns"
+  },
+  {
+   "title": "탈색 없는 '한두 톤 밝게' 메뉴",
+   "detail": "흐트러진 레이어드 커트와 한두 톤 밝은 브라운을 묶은 가을 메뉴를 만들어 보세요. AI로 만든 예시 이미지는 합성 표시를 하고, 실제 시술 사진을 함께 보여 주세요.",
+   "for": "domestic",
+   "route": "sns"
+  },
+  {
+   "title": "두피 케어 코스를 외국인 안내에 추가",
+   "detail": "외국인은 커트·염색보다 두피 마사지·스케일링 같은 관리 프로그램에 관심이 크다는 보도가 있습니다. 영어 메뉴판에 두피 케어 코스와 가격을 넣으세요.",
+   "for": "global",
+   "route": "sns"
+  }
+ ],
+ "watch": [
+  "메타 새 광고 약관 시행 (11/20)",
+  "틱톡샵 미국 블랙프라이데이·사이버먼데이 (11/11~30)",
+  "인스타그램 Features의 시험 국가 확대 여부",
+  "에스티 로더(11/2)·e.l.f.(11월 초) 분기 실적"
+ ],
+ "sources": [
+  {
+   "id": 1,
+   "title": "Instagram tests 'Features' long-form videos, but missing YouTube's ad share for now",
+   "url": "https://9to5google.com/2026/10/26/instagram-features-long-form-video-test/",
+   "publisher": "9to5Google",
+   "date": "2026-10-26"
+  },
+  {
+   "id": 2,
+   "title": "Instagram Is Testing Ability to Share Videos up to 90 Minutes Long and Launches on Apple TV — but Unlike YouTube, It's Still Not Paying Creators a Share of Ad Revenue",
+   "url": "https://variety.com/2026/digital/news/instagram-videos-90-minutes-apple-tv-not-paying-creators-1236931293/",
+   "publisher": "Variety",
+   "date": "2026-10"
+  },
+  {
+   "id": 3,
+   "title": "Instagram wants you to watch 90-minute videos on your TV",
+   "url": "https://www.engadget.com/2297240/instagram-wants-you-to-watch-90-minute-videos-on-your-tv/",
+   "publisher": "Engadget",
+   "date": "2026-10"
+  },
+  {
+   "id": 4,
+   "title": "'Why post unpaid long videos?': Creators question Instagram's 90-minute video push",
+   "url": "https://www.buzzincontent.com/news/why-post-unpaid-long-videos-creators-question-instagrams-90-minute-video-push-12756531",
+   "publisher": "BuzzInContent",
+   "date": "2026-10"
+  },
+  {
+   "id": 5,
+   "title": "Instagram Wants Your Long Form Videos but Won't Pay You Like YouTube",
+   "url": "https://www.androidheadlines.com/2026/10/instagram-features-long-form-creators-monetization.html",
+   "publisher": "Android Headlines",
+   "date": "2026-10"
+  },
+  {
+   "id": 6,
+   "title": "Meta delays its AI terms to November 20. The trust problem does not move",
+   "url": "https://ppc.land/meta-delays-its-ai-terms-to-november-20-the-trust-problem-does-not-move/",
+   "publisher": "PPC Land",
+   "date": "2026-10"
+  },
+  {
+   "id": 7,
+   "title": "Meta delays updated ad terms to Nov 20 amid EU antitrust pushback over AI content scraping",
+   "url": "https://www.adgully.com/post/22803/meta-delays-updated-ad-terms-to-nov-20-amid-eu-antitrust-pushback-over-ai-content-scraping",
+   "publisher": "Adgully",
+   "date": "2026-10"
+  },
+  {
+   "id": 8,
+   "title": "Meta Delays Commercial Terms Update as Publishers Demand Withdrawal",
+   "url": "https://www.unite.ai/meta-delays-commercial-terms-update-as-publishers-demand-withdrawal/",
+   "publisher": "Unite.AI",
+   "date": "2026-10"
+  },
+  {
+   "id": 9,
+   "title": "TikTok Shop Announces Black Friday and Cyber Monday Campaign Running November 11-30",
+   "url": "https://www.manilatimes.net/2026/10/19/tmt-newswire/globenewswire/tiktok-shop-announces-black-friday-and-cyber-monday-campaign-running-november-11-30/2448867",
+   "publisher": "GlobeNewswire (Manila Times)",
+   "date": "2026-10-19"
+  },
+  {
+   "id": 10,
+   "title": "YouTube Shorts Now Favor Original Content: What Clip Channels Should Do",
+   "url": "https://outlierkit.com/resources/youtube-shorts-original-content-update/",
+   "publisher": "OutlierKit (업계 블로그)",
+   "date": "2026-10"
+  },
+  {
+   "id": 11,
+   "title": "Consistency is key: A YouTube Shorts bonus program rewards creators who upload at regular intervals",
+   "url": "https://www.tubefilter.com/2026/10/23/youtube-shorts-pilot-program-consistency-bonus-test/",
+   "publisher": "Tubefilter",
+   "date": "2026-10-23"
+  },
+  {
+   "id": 12,
+   "title": "일상 대화로 장소 찾고 예약까지 한번에…네이버지도, ‘플레이스 에이전트’ 출시",
+   "url": "https://www.navercorp.com/media/pressReleasesDetail?seq=10034667",
+   "publisher": "NAVER",
+   "date": "2026-09"
+  },
+  {
+   "id": 13,
+   "title": "네이버, 에이전트로 지도 초개인화…플레이스 에이전트 신규 기술 개발 착수",
+   "url": "https://www.etnews.com/20260819000278",
+   "publisher": "전자신문",
+   "date": "2026-08-19"
+  },
+  {
+   "id": 14,
+   "title": "제품 판매 넘어 서비스로···'K뷰티 중개' 신산업 개막",
+   "url": "https://www.newsway.co.kr/news/view?ud=2026102316155063349",
+   "publisher": "뉴스웨이",
+   "date": "2026-10-23"
+  },
+  {
+   "id": 15,
+   "title": "美·유럽 관광객 필수 코스된 K-미용실…외국인 특화 헤어샵까지 등장",
+   "url": "https://www.hankyung.com/article/202603036106i",
+   "publisher": "한국경제",
+   "date": "2026-03-03"
+  },
+  {
+   "id": 16,
+   "title": "일본 제치고 역대 최대 뚫은 K-관광…외래객 2300만 안착 해법은",
+   "url": "https://www.mhns.co.kr/news/articleView.html?idxno=766507",
+   "publisher": "더쎈뉴스",
+   "date": "2026-10"
+  },
+  {
+   "id": 17,
+   "title": "요즘 외국인 관광객들 필수 코스... 명동·홍대 덮친 '뷰티약국' 열풍, 왜?",
+   "url": "https://www.hankookilbo.com/news/article/A2026102017270004316",
+   "publisher": "한국일보",
+   "date": "2026-10-20"
+  },
+  {
+   "id": 18,
+   "title": "올가을 기억해야 할 헤어 트렌드는 ‘흐트러진 레이어드’ 커트",
+   "url": "https://www.allurekorea.com/2026/10/14/%EC%98%AC%EA%B0%80%EC%9D%84-%EA%B8%B0%EC%96%B5%ED%95%B4%EC%95%BC-%ED%95%A0-%ED%97%A4%EC%96%B4-%ED%8A%B8%EB%A0%8C%EB%93%9C%EB%8A%94-%ED%9D%90%ED%8A%B8%EB%9F%AC%EC%A7%84-%EB%A0%88%EC%9D%B4%EC%96%B4",
+   "publisher": "얼루어 코리아",
+   "date": "2026-10-14"
+  },
+  {
+   "id": 19,
+   "title": "2026 헤어 트렌드 가이드 (#꾸안꾸 #개성 #텍스처)",
+   "url": "https://www.perfectcorp.com/ko/consumer/blog/hair/hair-trends",
+   "publisher": "퍼펙트코프 (업계 블로그)",
+   "date": "2026"
+  },
+  {
+   "id": 20,
+   "title": "Winter 2026 Hair Color Trends, From Wine Red To Chilly Blonde",
+   "url": "https://www.thezoereport.com/beauty/winter-2026-hair-color-trends",
+   "publisher": "The Zoe Report",
+   "date": "2026"
+  },
+  {
+   "id": 21,
+   "title": "북미·유럽 뚫은 에이피알 날았다...3분기 영업이익 1606억원",
+   "url": "https://www.mt.co.kr/living/2026/10/30/2026103009414075536",
+   "publisher": "머니투데이",
+   "date": "2026-10-30"
+  },
+  {
+   "id": 22,
+   "title": "에이피알, 3분기 7731억원 '분기 최대…해외 94% 성장 공식",
+   "url": "https://www.newspim.com/news/view/20261030000322",
+   "publisher": "뉴스핌",
+   "date": "2026-10-30"
+  },
+  {
+   "id": 23,
+   "title": "[모닝 리포트] 아모레퍼시픽, 3분기 영업익 25%↑…\"미주 성장 주목\"",
+   "url": "https://www.newspim.com/news/view/20261030000090",
+   "publisher": "뉴스핌",
+   "date": "2026-10-30"
+  },
+  {
+   "id": 24,
+   "title": "아모레퍼시픽그룹, 3분기 영업익 25%↑…북미·더마뷰티가 실적 견인",
+   "url": "https://www.etoday.co.kr/news/view/2641928",
+   "publisher": "이투데이",
+   "date": "2026-10"
+  },
+  {
+   "id": 25,
+   "title": "Ulta Beauty, Inc. (ULTA) Stock Price, News, Quote",
+   "url": "https://finance.yahoo.com/quote/ULTA/",
+   "publisher": "Yahoo Finance",
+   "date": "2026-10-30"
+  },
+  {
+   "id": 26,
+   "title": "e.l.f. Beauty, Inc. (ELF) Stock Price, News, Quote",
+   "url": "https://finance.yahoo.com/quote/ELF/",
+   "publisher": "Yahoo Finance",
+   "date": "2026-10-30"
+  },
+  {
+   "id": 27,
+   "title": "Estee Lauder Gears Up to Report Q1 Earnings: What's in the Offing?",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/estee-lauder-gears-report-q1-135500462.html",
+   "publisher": "Yahoo Finance (Zacks)",
+   "date": "2026-10"
+  }
+ ],
+ "method": "공개된 웹 자료(언론 보도, 기업 발표, 업계 블로그)를 웹 검색으로 모아 요약했습니다. 플랫폼 내부 데이터나 실시간 조회수를 직접 분석한 것은 아니며, 업계 블로그 수치는 추정으로 보시고 원문을 확인해 주세요. 이번 주 네이버·유튜브의 미용 업종 관련 새 공식 발표는 찾지 못해 '변화 없음'으로 표시했습니다. 외국인 미용실 예약 사례(DM 예약)는 올해 3월 보도입니다. 틱톡샵 지난해 매출 수치는 회사 자체 발표입니다. 커뮤니티·댓글 반응은 공개 기사·검색 결과를 요약한 것으로, 댓글을 수집해 감성 점수를 계산한 것이 아닙니다.",
+ "stats": [
+  {
+   "value": "1,894만 명+",
+   "label": "올해 방한객, 10/27에 작년 연간 기록 돌파",
+   "src": [
+    16
+   ]
+  },
+  {
+   "value": "+196.3%",
+   "label": "외국인 약국 소비 증가 (전년 대비)",
+   "src": [
+    17
+   ]
+  },
+  {
+   "value": "94%",
+   "label": "에이피알 3분기 해외 매출 비중",
+   "src": [
+    21,
+    22
+   ]
+  },
+  {
+   "value": "90분",
+   "label": "인스타그램 Features 가로 영상 최대 길이 (시험)",
+   "src": [
+    1,
+    3
+   ]
+  }
+ ],
+ "community": {
+  "overview": "인스타그램의 90분 영상에는 \"돈도 안 주면서 긴 영상을 왜 올리냐\"는 크리에이터 반발이 크고, 메타 새 약관에는 광고주·언론사 모두 불신이 큽니다. 외국인 고객 쪽은 한국 미용 서비스를 더 쉽게 예약하려는 수요가 뚜렷합니다.",
+  "platforms": [
+   {
+    "id": "instagram",
+    "name": "인스타그램",
+    "tone": "negative",
+    "keywords": [
+     "90분 영상",
+     "수익 분배 없음",
+     "IGTV 재도전"
+    ],
+    "voices": [
+     "긴 영상을 만들려면 안정적인 광고 수익이 필요한데 인스타그램은 주지 않는다는 크리에이터 반발",
+     "같은 영상을 유튜브에 올리면 돈을 받는데 왜 인스타그램에 공짜로 올리냐는 댓글 반응",
+     "쓸 만한 유튜브 경쟁자가 생긴다는 점은 반갑다는 의견도 일부"
+    ],
+    "src": [
+     2,
+     4,
+     5
+    ]
+   },
+   {
+    "id": "meta",
+    "name": "메타 (광고주·언론사)",
+    "tone": "negative",
+    "keywords": [
+     "약관 연기",
+     "AI 책임",
+     "콘텐츠 수집"
+    ],
+    "voices": [
+     "시행일만 미뤘을 뿐 신뢰 문제는 그대로라는 업계 평가",
+     "광고주 웹사이트 콘텐츠 수집 조항을 아예 철회하라는 언론사 요구"
+    ],
+    "src": [
+     6,
+     8
+    ]
+   },
+   {
+    "id": "naver",
+    "name": "국내 미용업계",
+    "tone": "mixed",
+    "keywords": [
+     "K뷰티 중개",
+     "신규 고객",
+     "수수료 신뢰"
+    ],
+    "voices": [
+     "외국인 응대가 어려운 동네 미용실도 중개를 통해 새 손님을 받을 수 있다는 기대",
+     "중개업체가 수수료를 우선하면 추천을 믿기 어려워진다는 우려"
+    ],
+    "src": [
+     14
+    ]
+   },
+   {
+    "id": "youtube",
+    "name": "유튜브",
+    "tone": "na",
+    "keywords": [
+     "원본 우대",
+     "쇼츠 보너스"
+    ],
+    "voices": [
+     "이번 주 새로 판단할 만한 댓글 반응 자료가 부족함"
+    ],
+    "src": [
+     10
+    ]
+   },
+   {
+    "id": "global",
+    "name": "외국인 방문객 (기사 속 반응)",
+    "tone": "positive",
+    "keywords": [
+     "두피 케어",
+     "DM 예약",
+     "뷰티약국"
+    ],
+    "voices": [
+     "커트·염색보다 두피 마사지·스케일링 같은 관리 프로그램에 관심이 크다는 미용실 증언",
+     "쇼핑 다음 코스로 뷰티약국을 찾는 관광객이 늘었다는 보도"
+    ],
+    "src": [
+     15,
+     17
+    ]
+   }
+  ],
+  "note": "각 플랫폼의 댓글을 직접 모아 수치로 분석한 것이 아닙니다. 유튜브·스톡트윗츠·벤징가 페이지는 이 작업 환경에서 직접 열 수 없어, 검색 결과와 관련 보도에 드러난 반응을 요약했습니다."
+ },
+ "investor": {
+  "tone": "positive",
+  "headline": "K-뷰티 3분기 실적은 해외 덕분에 최대, 미국 뷰티주는 숨 고르기",
+  "items": [
+   {
+    "ticker": "APR",
+    "name": "에이피알 (메디큐브)",
+    "move": "up",
+    "text": "3분기 매출 7,731억 원(+100%), 영업이익 1,606억 원(+69%)으로 분기 최대. 해외 비중 94%, 북미 46%·유럽 23%",
+    "src": [
+     21,
+     22
+    ]
+   },
+   {
+    "ticker": "AMORE",
+    "name": "아모레퍼시픽",
+    "move": "up",
+    "text": "3분기 영업이익 약 25% 증가. 북미 성장과 더마 뷰티가 실적을 이끌었다는 분석",
+    "src": [
+     23,
+     24
+    ]
+   },
+   {
+    "ticker": "ULTA",
+    "name": "얼타 뷰티",
+    "move": "flat",
+    "text": "10월 30일 약 640달러로 하루 1.2% 하락. 52주 고점(약 715달러) 아래에서 등락",
+    "src": [
+     25
+    ]
+   },
+   {
+    "ticker": "ELF",
+    "name": "e.l.f. 뷰티",
+    "move": "flat",
+    "text": "10월 30일 약 112달러로 1.1% 하락. 11월 초 분기 실적 발표 예정",
+    "src": [
+     26
+    ]
+   },
+   {
+    "ticker": "EL",
+    "name": "에스티 로더",
+    "move": "flat",
+    "text": "11월 2일 1분기 실적 발표 예정. 시장 예상 매출 약 36.5억 달러(+4.8%)",
+    "src": [
+     27
+    ]
+   }
+  ],
+  "takeaway": "K-뷰티 기업 실적은 해외, 특히 북미·유럽에서 크게 늘고 있습니다. 해외에서 K-뷰티를 접한 사람들이 한국을 찾을 때 매장을 쉽게 찾고 예약할 수 있도록 영어 안내와 메신저 예약 창구를 갖춰 두세요.",
+  "note": "스톡트윗츠·벤징가 페이지는 이 작업 환경에서 직접 열 수 없어, 검색 결과와 관련 보도를 바탕으로 정리했습니다. 투자 조언이 아닙니다."
+ }
+}
