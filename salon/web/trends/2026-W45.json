@@ -1,0 +1,617 @@
+{
+ "id": "2026-W45",
+ "title": "2026년 11월 1주차 미용·뷰티 SNS 마케팅 동향",
+ "period": {
+  "from": "2026-11-02",
+  "to": "2026-11-08"
+ },
+ "published": "2026-11-09",
+ "headline": "수능(11/19)을 앞두고 수험생 시즌 시작 — 유튜브는 쇼츠를 앞세워 앱을 바꾸고, 메타는 AI 광고 약관을 무기한 보류",
+ "summary": [
+  "2027학년도 수능이 11월 19일(목)입니다. 지난해에도 수능 직후 많은 미용실이 수험생 할인을 했던 만큼, 조건을 분명히 한 수험생 메뉴를 미리 준비할 때입니다.",
+  "유튜브가 모바일 앱 하단의 '구독' 탭을 없애고 쇼츠를 더 크게 보여 주는 개편을 순차 적용해 이용자 반발이 큽니다. 인스타그램은 90분 영상 'Features'에 일부 크리에이터를 거액 계약으로 데려오고 있지만, 일반 크리에이터에게는 아직 수익 분배가 없습니다.",
+  "지난주 전한 메타의 'AI가 고친 광고도 광고주 책임' 약관 개정은 11월 5일 무기한 보류되어 기존 약관이 그대로 적용됩니다. 미국 뷰티 기업(에스티 로더·e.l.f.)은 좋은 실적을 냈고, 에이피알 주가는 한 달 새 크게 내렸습니다."
+ ],
+ "keywords": [
+  {
+   "k": "수능 11/19",
+   "why": "수능 직후 수험생 헤어 수요 시즌",
+   "src": [
+    13
+   ]
+  },
+  {
+   "k": "수험생 할인",
+   "why": "지난해 커트·펌·염색 할인 이벤트가 많았음",
+   "src": [
+    14,
+    15
+   ]
+  },
+  {
+   "k": "구독 탭 삭제",
+   "why": "유튜브 앱 개편, 쇼츠 비중 확대",
+   "src": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "k": "인스타 Features 계약",
+   "why": "일부 크리에이터에 5만~50만 달러 제안 보도",
+   "src": [
+    4,
+    5
+   ]
+  },
+  {
+   "k": "릴스 50%",
+   "why": "인스타그램 이용 시간의 절반이 릴스 (메타 발표, 업계 정리)",
+   "src": [
+    7
+   ]
+  },
+  {
+   "k": "메타 약관 보류",
+   "why": "11/5 사업자 약관 4종 개정 무기한 보류",
+   "src": [
+    8,
+    9
+   ]
+  },
+  {
+   "k": "헤어+사진 체험",
+   "why": "외국인에게 스타일링 후 촬영까지 묶은 상품",
+   "src": [
+    17,
+    18
+   ]
+  },
+  {
+   "k": "글래시 보브",
+   "why": "광택이 살아 있는 단발",
+   "src": [
+    20
+   ]
+  }
+ ],
+ "platforms": [
+  {
+   "id": "naver",
+   "name": "네이버 플레이스",
+   "signal": "flat",
+   "points": [
+    "이번 주 미용 업종 관련 새 공식 발표는 찾지 못했습니다. 플레이스 에이전트는 계속 리뷰·예약 가능 여부를 반영해 미용실을 추천합니다.",
+    "수능 직후에는 수험생과 학부모의 미용실 검색·예약이 몰리기 쉬우니, 수험생 메뉴와 예약 가능 시간을 플레이스에 미리 올려 두는 것이 좋습니다."
+   ],
+   "src": [
+    11,
+    13
+   ]
+  },
+  {
+   "id": "instagram",
+   "name": "인스타그램",
+   "signal": "up",
+   "points": [
+    "90분 가로 영상 'Features'에 유튜브 크리에이터를 데려오려고 일부에게 5만~50만 달러의 직접 계약을 제안했다는 보도가 나왔습니다(비즈니스 인사이더 보도를 인용한 기사들). 일반 크리에이터용 광고 수익 분배나 공개 신청은 아직 없습니다.",
+    "메타에 따르면 인스타그램 이용 시간의 절반가량이 릴스라는 정리가 있습니다(업계 블로그). 짧은 세로 영상이 여전히 핵심입니다."
+   ],
+   "src": [
+    4,
+    5,
+    6,
+    7
+   ]
+  },
+  {
+   "id": "youtube",
+   "name": "유튜브 쇼츠",
+   "signal": "up",
+   "points": [
+    "유튜브가 iOS·안드로이드 앱 하단의 '구독' 버튼을 없애고, 구독 피드는 홈 화면 상단으로 옮겼습니다. 홈에 쇼츠가 훨씬 많이 보이게 바뀌었고, 앱 업데이트 없이 서버에서 순차 적용됩니다.",
+    "구독자보다 쇼츠 피드에서 처음 발견되는 비중이 커질 수 있어, 원본 쇼츠를 꾸준히 올리는 채널이 유리해집니다."
+   ],
+   "src": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "id": "tiktok",
+   "name": "틱톡",
+   "signal": "flat",
+   "points": [
+    "이번 주 국내 관련 새 발표는 찾지 못했습니다. 미국 틱톡샵은 11월 11~30일 블랙프라이데이·사이버먼데이 행사를 앞두고 있습니다.",
+    "국내 틱톡샵 출시 일정은 여전히 없어, 해외 손님에게 매장을 알리는 발견 채널로 쓰는 것이 현실적입니다."
+   ],
+   "src": [
+    12
+   ]
+  },
+  {
+   "id": "meta",
+   "name": "메타 광고 (인스타·페이스북)",
+   "signal": "flat",
+   "points": [
+    "메타가 11월 5일 상업 약관·셀프서비스 광고 약관·생성형 AI 광고 소재 약관 등 4종의 개정을 무기한 보류했습니다. 11월 20일 시행은 없으며 기존 약관이 계속 적용됩니다(지난주 보고서의 '11/20 시행' 내용을 바로잡습니다).",
+    "광고주 웹사이트 콘텐츠를 수집할 수 있다는 조항에 대한 반발과 규제 당국 조사가 배경으로 꼽힙니다. 다시 추진될 수 있어 공지를 계속 확인해야 합니다."
+   ],
+   "src": [
+    8,
+    9,
+    10
+   ]
+  }
+ ],
+ "hair": {
+  "colors": [
+   {
+    "name": "로즈 브라운",
+    "hex": "#8a5a52"
+   },
+   {
+    "name": "베이지 브라운",
+    "hex": "#a58a6e"
+   },
+   {
+    "name": "글래시 다크 브라운",
+    "hex": "#3e2b22"
+   },
+   {
+    "name": "소프트 브라운",
+    "hex": "#7a5c48"
+   }
+  ],
+  "styles": [
+   "글래시 보브 · 미디엄 보브",
+   "바로크 보브 · 턱선 보브",
+   "코트엔 내추럴 웨이브, 패딩엔 슬릭 번"
+  ],
+  "notes": "겨울에는 은은한 베이지·로즈 브라운처럼 무드 있는 컬러와 광택을 살린 보브가 꼽힙니다. 아우터에 따라 스타일을 바꾸는 제안도 나왔습니다: 코트에는 손으로 풀어낸 듯한 웨이브, 두꺼운 패딩에는 깔끔한 슬릭 번, 목 안으로 머리를 넣어 짧아 보이게 하는 '페이크 보브' 연출입니다.",
+  "src": [
+   19,
+   20,
+   21,
+   22
+  ]
+ },
+ "global": {
+  "points": [
+   "청담·압구정의 한 미용실 체인은 일본·중국·대만·동남아 외국인 고객이 전년보다 약 5배 늘었다고 밝혔습니다(8월 보도). 부산에서는 헤어·메이크업 후 주변에서 사진을 찍어 포토북으로 만들어 주는 외국인 체험 프로그램도 운영되었습니다.",
+   "외국인 관광객에게 미용실 예약·스타일링을 대신 연결하는 'K뷰티 중개' 서비스가 늘고 있어, 외국인 응대가 어려운 매장도 새 손님을 받을 기회가 생기고 있습니다.",
+   "외국인 고객은 서울 명동뿐 아니라 청담·부산 등으로 넓어지는 흐름입니다."
+  ],
+  "src": [
+   16,
+   17,
+   18
+  ]
+ },
+ "actions": [
+  {
+   "title": "수험생 메뉴 미리 공지",
+   "detail": "수능(11/19) 직후를 겨냥해 커트·펌·염색 수험생 메뉴를 만들고, 수험표 지참·기간·부분 시술 제외 같은 조건을 플레이스와 인스타그램에 똑같이 적으세요. 시술 사진을 올릴 때는 본인 동의를 받고, 만 19세 미만이면 보호자 동의도 받으세요.",
+   "for": "domestic",
+   "route": "sns"
+  },
+  {
+   "title": "쇼츠 발견을 노린 원본 영상",
+   "detail": "유튜브 홈에 쇼츠가 더 많이 보입니다. 수험생 변신 전후, 겨울 보브 시술 과정처럼 매장에서 직접 찍은 쇼츠를 주 3회 정도 올리세요.",
+   "for": "domestic",
+   "route": "sns"
+  },
+  {
+   "title": "긴 영상은 유튜브, 인스타는 릴스",
+   "detail": "인스타그램 긴 영상은 일부 계약 크리에이터만 수익을 받습니다. 매장은 짧은 릴스에 집중하고, 전 과정 영상은 유튜브에 올리세요.",
+   "for": "domestic",
+   "route": "sns"
+  },
+  {
+   "title": "메타 광고 자동 기능은 계속 점검",
+   "detail": "약관 개정은 보류됐지만 Advantage+ 자동 보정·문구 변경 기능은 그대로 있습니다. 광고 소재가 매장 실제 모습과 다르게 바뀌지 않았는지 주 1회 확인하세요.",
+   "for": "domestic",
+   "route": "sns"
+  },
+  {
+   "title": "외국인용 '헤어+사진' 패키지",
+   "detail": "스타일링 후 매장 앞이나 근처에서 사진을 찍어 주는 패키지를 영어 안내와 최종 가격으로 준비하세요. 손님 사진을 SNS에 올릴 때는 게시 동의를 받고, AI로 보정·합성했다면 표시하세요.",
+   "for": "global",
+   "route": "sns"
+  },
+  {
+   "title": "아우터별 헤어 카드뉴스",
+   "detail": "'코트엔 내추럴 웨이브, 패딩엔 슬릭 번'처럼 겨울 아우터와 어울리는 스타일을 카드뉴스로 만들어 저장·공유를 노리세요.",
+   "for": "domestic",
+   "route": "sns"
+  }
+ ],
+ "watch": [
+  "수능(11/19) 이후 수험생 예약 수요",
+  "틱톡샵 미국 블랙프라이데이·사이버먼데이 (11/11~30)",
+  "메타 약관 개정 재추진 여부",
+  "유튜브 앱 개편의 국내 적용 범위와 쇼츠 노출 변화",
+  "얼타 뷰티 실적 발표 (12/3 예정)"
+ ],
+ "sources": [
+  {
+   "id": 1,
+   "title": "YouTube rolling out app redesign without Subscriptions tab, and everyone hates it",
+   "url": "https://9to5google.com/2026/11/05/youtube-app-redesign-subscriptions-tab/",
+   "publisher": "9to5Google",
+   "date": "2026-11-05"
+  },
+  {
+   "id": 2,
+   "title": "Where's my Subscriptions tab? Users are furious about YouTube's latest redesign",
+   "url": "https://www.androidauthority.com/youtube-subscriptions-tab-redesign-3731679/",
+   "publisher": "Android Authority",
+   "date": "2026-11"
+  },
+  {
+   "id": 3,
+   "title": "YouTube replaces Subscriptions tab with Shorts-focused home page",
+   "url": "https://techbriefly.com/2026/11/06/youtube-replaces-subscriptions-tab-with-shorts-focused",
+   "publisher": "TechBriefly",
+   "date": "2026-11-06"
+  },
+  {
+   "id": 4,
+   "title": "Instagram tries to entice long-form creators",
+   "url": "https://www.socialmediatoday.com/news/instagram-tries-to-entice-long-form-creators/873820/",
+   "publisher": "Social Media Today",
+   "date": "2026-11"
+  },
+  {
+   "id": 5,
+   "title": "Instagram Offers YouTube Creators Up to $500,000 to Join New Long-Form Video Platform",
+   "url": "https://petapixel.com/2026/10/30/instagram-offers-youtube-creators-up-to-500000-to-join-new-long-form-video-platform/",
+   "publisher": "PetaPixel",
+   "date": "2026-10-30"
+  },
+  {
+   "id": 6,
+   "title": "Instagram Features: Does It Pay for 90-Minute Videos?",
+   "url": "https://www.panstag.com/2026/11/instagram-features-90-minute-videos-pay-creators.html",
+   "publisher": "Panstag (블로그)",
+   "date": "2026-11"
+  },
+  {
+   "id": 7,
+   "title": "Instagram Trends: November 2026 — Updated Weekly",
+   "url": "https://newengen.com/insights/instagram-trends/",
+   "publisher": "New Engen (업계 블로그)",
+   "date": "2026-11-06"
+  },
+  {
+   "id": 8,
+   "title": "메타($META), 사업 약관 개정 무기한 보류…11월 20일 시행 중단",
+   "url": "https://www.tokenpost.kr/news/policy/434255",
+   "publisher": "토큰포스트",
+   "date": "2026-11"
+  },
+  {
+   "id": 9,
+   "title": "Meta halts its Nov 20 terms that would let it crawl business websites",
+   "url": "https://ppc.land/meta-halts-its-nov-20-terms-that-would-let-it-crawl-business-websites/",
+   "publisher": "PPC Land",
+   "date": "2026-11"
+  },
+  {
+   "id": 10,
+   "title": "메타, 개정 사업자 약관 시행일 11월 20일로 연기",
+   "url": "https://www.tokenpost.kr/news/tech/426777",
+   "publisher": "토큰포스트",
+   "date": "2026-10"
+  },
+  {
+   "id": 11,
+   "title": "“주차 편한 한식당 찾아줘”…네이버지도, 검색, 예약하는 ‘플레이스 에이전트’ 출시",
+   "url": "https://www.khan.co.kr/article/202609171348001",
+   "publisher": "경향신문",
+   "date": "2026-09-17"
+  },
+  {
+   "id": 12,
+   "title": "TikTok Shop Announces Black Friday and Cyber Monday Campaign Running November 11-30",
+   "url": "https://www.manilatimes.net/2026/10/19/tmt-newswire/globenewswire/tiktok-shop-announces-black-friday-and-cyber-monday-campaign-running-november-11-30/2448867",
+   "publisher": "GlobeNewswire (Manila Times)",
+   "date": "2026-10-19"
+  },
+  {
+   "id": 13,
+   "title": "2027학년도 수능, 2026년 11월 19일 시행",
+   "url": "https://m.dhnews.co.kr/news/view/1065570979216060",
+   "publisher": "대학저널",
+   "date": "2024-08"
+  },
+  {
+   "id": 14,
+   "title": "[2026수능] ‘수험표로 뭐하지?’.. 강력해진 수험생 할인혜택 총정리",
+   "url": "https://www.veritas-a.com/news/articleView.html?idxno=581262",
+   "publisher": "베리타스알파",
+   "date": "2025-11"
+  },
+  {
+   "id": 15,
+   "title": "2026 수험생을 위한 강력한 할인 혜택 모두 모았다!",
+   "url": "https://day3day.co.kr/2026-%EC%88%98%ED%97%98%EC%83%9D%EC%9D%84-%EC%9C%84%ED%95%9C-%EA%B0%95%EB%A0%A5%ED%95%9C-%ED%95%A0%EC%9D%B8-%ED%98%9C%ED%83%9D-%EB%AA%A8%EB%91%90-%EB%AA%A8%EC%95%98%EB%8B%A4/",
+   "publisher": "이동네블로그 (블로그)",
+   "date": "2025-11"
+  },
+  {
+   "id": 16,
+   "title": "제품 판매 넘어 서비스로···'K뷰티 중개' 신산업 개막",
+   "url": "https://www.newsway.co.kr/news/view?ud=2026102316155063349",
+   "publisher": "뉴스웨이",
+   "date": "2026-10-23"
+  },
+  {
+   "id": 17,
+   "title": "부산·청담 미용실에 부쩍 는 외국인들...쇼핑 넘어 ‘헤어·메이크업 체험’까지 인기",
+   "url": "https://v.daum.net/v/HBO10WYCW9",
+   "publisher": "매일경제",
+   "date": "2026-08"
+  },
+  {
+   "id": 18,
+   "title": "헤어숍 들리는 외국인 공략…라이브엑스, 수도권서 접점 확대",
+   "url": "https://m.news.nate.com/view/20260901n29109",
+   "publisher": "네이트 뉴스",
+   "date": "2026-09-01"
+  },
+  {
+   "id": 19,
+   "title": "겨울옷과 헤어스타일에도 궁합이 있습니다",
+   "url": "https://www.allurekorea.com/2026/11/08/%EC%98%AC%EA%B2%A8%EC%9A%B8-%EC%9D%B4-%ED%97%A4%EC%96%B4-%EC%8A%A4%ED%83%80%EC%9D%BC-%EB%AC%B4%EC%A1%B0%EA%B1%B4-%EB%96%A1%EC%83%81-%EC%98%88%EC%A0%95%EC%9E%85%EB%8B%88%EB%8B%A4",
+   "publisher": "얼루어 코리아",
+   "date": "2026-11-08"
+  },
+  {
+   "id": 20,
+   "title": "미용실 예약 전 무조건 정독해야 할 2026 최신 단발 트렌드",
+   "url": "https://www.elle.co.kr/article/1904074",
+   "publisher": "엘르 코리아",
+   "date": "2026"
+  },
+  {
+   "id": 21,
+   "title": "2026 여자 헤어스타일 트렌드 미리 경험해보세요!",
+   "url": "https://visualsalon.co.kr/hair-beauty-contents/?bmode=view&idx=168889644",
+   "publisher": "비주얼살롱 (업계 블로그)",
+   "date": "2025"
+  },
+  {
+   "id": 22,
+   "title": "2026 헤어 트렌드 가이드 (#꾸안꾸 #개성 #텍스처)",
+   "url": "https://www.perfectcorp.com/ko/consumer/blog/hair/hair-trends",
+   "publisher": "퍼펙트코프 (업계 블로그)",
+   "date": "2026"
+  },
+  {
+   "id": 23,
+   "title": "The Estée Lauder Companies Reports Fiscal 2027 First Quarter Results",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/est-e-lauder-companies-reports-110000607.html",
+   "publisher": "Yahoo Finance (회사 발표)",
+   "date": "2026-11-02"
+  },
+  {
+   "id": 24,
+   "title": "Estée Lauder Shares Rise 5.2% as Q1 Earnings Beat Forecasts and FY2027 Outlook Improves",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/est-e-lauder-shares-rise-115315318.html",
+   "publisher": "Yahoo Finance",
+   "date": "2026-11-02"
+  },
+  {
+   "id": 25,
+   "title": "e.l.f. Beauty Announces Second Quarter Fiscal 2027 Results",
+   "url": "https://investor.elfbeauty.com/stock-and-financial/press-releases/landing-news/2026/11-04-2026-210608777",
+   "publisher": "e.l.f. Beauty",
+   "date": "2026-11-04"
+  },
+  {
+   "id": 26,
+   "title": "E.l.f. Beauty (ELF) Q2 2027 earnings",
+   "url": "https://www.cnbc.com/2026/11/04/elf-beauty-elf-q2-2027-earnings.html",
+   "publisher": "CNBC",
+   "date": "2026-11-04"
+  },
+  {
+   "id": 27,
+   "title": "주가로 읽는 K-뷰티: 에이피알 등 성장주 급락...외국인 매수세 지속",
+   "url": "https://www.thebk.co.kr/news/articleView.html?idxno=312713",
+   "publisher": "뷰티경제",
+   "date": "2026-11"
+  },
+  {
+   "id": 28,
+   "title": "에이피알 주가 13,500원 하락 후 장마감",
+   "url": "https://www.anewsa.com/detail.php?number=3215412",
+   "publisher": "아시아뉴스통신",
+   "date": "2026-11-06"
+  },
+  {
+   "id": 29,
+   "title": "Ulta Beauty Inc (ULTA) Stock Price & News",
+   "url": "https://www.google.com/finance/quote/ULTA:NASDAQ",
+   "publisher": "Google Finance",
+   "date": "2026-11-03"
+  }
+ ],
+ "method": "공개된 웹 자료(언론 보도, 기업 발표, 업계 블로그)를 웹 검색으로 모아 요약했습니다. 플랫폼 내부 데이터나 실시간 조회수를 직접 분석한 것은 아니며, 업계 블로그 수치는 추정으로 보시고 원문을 확인해 주세요. 수험생 할인 사례는 지난해(2025년 11월) 자료로, 올해 매장별 행사와 다를 수 있습니다. 외국인 미용실 고객 증가(약 5배)는 8월 보도입니다. 인스타그램 Features 계약 금액은 한 매체 보도를 여러 곳이 인용한 것입니다. 지난주 보고서의 메타 약관 '11/20 시행'은 11월 5일 보류 결정으로 바로잡았습니다. 커뮤니티·댓글 반응은 공개 기사·검색 결과를 요약한 것으로, 댓글을 수집해 감성 점수를 계산한 것이 아닙니다.",
+ "stats": [
+  {
+   "value": "11월 19일",
+   "label": "2027학년도 수능 — 직후부터 수험생 시즌",
+   "src": [
+    13
+   ]
+  },
+  {
+   "value": "50%",
+   "label": "인스타그램 이용 시간 중 릴스 비중 (메타 발표)",
+   "src": [
+    7
+   ]
+  },
+  {
+   "value": "+51%",
+   "label": "e.l.f. 뷰티 2분기 매출 증가",
+   "src": [
+    25,
+    26
+   ]
+  },
+  {
+   "value": "약 5배",
+   "label": "청담 일부 미용실 외국인 고객 증가 (8월 보도)",
+   "src": [
+    17
+   ]
+  }
+ ],
+ "community": {
+  "overview": "유튜브의 구독 탭 삭제에는 이용자 불만이 크게 쏟아졌고, 인스타그램의 긴 영상 거액 계약은 '소수만 받는 돈'이라는 시선이 많습니다. 메타 약관 보류는 반기는 분위기지만 다시 추진될 수 있다는 경계도 있습니다.",
+  "platforms": [
+   {
+    "id": "youtube",
+    "name": "유튜브",
+    "tone": "negative",
+    "keywords": [
+     "구독 탭 삭제",
+     "쇼츠 밀어주기",
+     "익숙함 상실"
+    ],
+    "voices": [
+     "손에 익은 구독 버튼이 사라져 불편하다는 반응이 레딧 등에 쏟아짐",
+     "쇼츠와 업로드 버튼만 앞세운다는 비판",
+     "안드로이드에서는 앱 아이콘을 길게 눌러 구독 피드로 바로 가는 방법이 공유됨"
+    ],
+    "src": [
+     1,
+     2
+    ]
+   },
+   {
+    "id": "instagram",
+    "name": "인스타그램",
+    "tone": "mixed",
+    "keywords": [
+     "거액 계약",
+     "수익 분배 없음",
+     "긴 영상"
+    ],
+    "voices": [
+     "일부 유튜버에게만 큰 계약이 돌아가고 일반 크리에이터는 수익이 없다는 지적",
+     "90분 가로 영상을 공짜로 편집해 올리라는 건 비현실적이라는 반응"
+    ],
+    "src": [
+     5,
+     6
+    ]
+   },
+   {
+    "id": "meta",
+    "name": "메타 (광고주·언론사)",
+    "tone": "mixed",
+    "keywords": [
+     "약관 보류",
+     "웹사이트 수집",
+     "재추진 우려"
+    ],
+    "voices": [
+     "반발 끝에 개정이 보류된 것을 반기는 반응",
+     "언제 다시 추진될지 알 수 없다는 경계"
+    ],
+    "src": [
+     8,
+     9
+    ]
+   },
+   {
+    "id": "naver",
+    "name": "국내 소비자 (수험생)",
+    "tone": "na",
+    "keywords": [
+     "수험생 할인",
+     "수험표"
+    ],
+    "voices": [
+     "올해 수험생 반응을 판단할 자료는 아직 부족함 (지난해에는 할인 정보 정리 글이 많았음)"
+    ],
+    "src": [
+     14,
+     15
+    ]
+   },
+   {
+    "id": "global",
+    "name": "외국인 방문객 (기사 속 반응)",
+    "tone": "positive",
+    "keywords": [
+     "헤어·메이크업 체험",
+     "사진",
+     "청담·부산"
+    ],
+    "voices": [
+     "쇼핑을 넘어 헤어·메이크업을 받고 사진까지 남기는 체험이 인기라는 보도",
+     "서울 중심지 밖 미용실에서도 외국인 손님이 늘었다는 사례"
+    ],
+    "src": [
+     17,
+     18
+    ]
+   }
+  ],
+  "note": "각 플랫폼의 댓글을 직접 모아 수치로 분석한 것이 아닙니다. 유튜브·스톡트윗츠·벤징가 페이지는 이 작업 환경에서 직접 열 수 없어, 검색 결과와 관련 보도에 드러난 반응을 요약했습니다."
+ },
+ "investor": {
+  "tone": "mixed",
+  "headline": "미국 뷰티 기업은 실적 호조로 전망 상향, 에이피알은 한 달 새 큰 폭 하락",
+  "items": [
+   {
+    "ticker": "EL",
+    "name": "에스티 로더",
+    "move": "up",
+    "text": "1분기 조정 주당순이익 0.72달러(예상 약 0.51달러), 매출 7% 증가. 연간 전망을 올렸고 장 전 주가 상승",
+    "src": [
+     23,
+     24
+    ]
+   },
+   {
+    "ticker": "ELF",
+    "name": "e.l.f. 뷰티",
+    "move": "up",
+    "text": "2분기 매출 51% 증가(5.21억 달러), 연간 매출 전망 상향. 일부는 예상치에 못 미쳤다고 평가해 해석이 엇갈림",
+    "src": [
+     25,
+     26
+    ]
+   },
+   {
+    "ticker": "ULTA",
+    "name": "얼타 뷰티",
+    "move": "flat",
+    "text": "11월 3일 약 627달러로 하루 1.6% 하락. 12월 초 실적 발표 예정",
+    "src": [
+     29
+    ]
+   },
+   {
+    "ticker": "APR",
+    "name": "에이피알 (메디큐브)",
+    "move": "down",
+    "text": "10월 6일~11월 5일 약 25.5% 하락해 주요 화장품주 중 낙폭 최대. 11월 6일에도 하락 마감",
+    "src": [
+     27,
+     28
+    ]
+   }
+  ],
+  "takeaway": "미국 뷰티 기업 실적이 좋다는 것은 뷰티 소비가 여전히 탄탄하다는 신호입니다. K-뷰티 주가는 흔들려도 외국인 방문객의 뷰티 체험 수요는 계속 커지고 있습니다.",
+  "note": "스톡트윗츠·벤징가 페이지는 이 작업 환경에서 직접 열 수 없어, 검색 결과와 관련 보도를 바탕으로 정리했습니다. 투자 조언이 아닙니다."
+ }
+}
